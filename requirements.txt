@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-openai
+openai==1.55.3
 python-dotenv
 apscheduler
 requests

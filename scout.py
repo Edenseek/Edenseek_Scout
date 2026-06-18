@@ -66,12 +66,14 @@ Include:
 Keep it under 700 words.
 """
 
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=prompt,
+    response = client.chat.completions.create(
+   	 model="gpt-4o-mini",
+   	 messages=[
+       		 {"role": "user", "content": prompt}
+   	 ]
     )
 
-    report = response.output_text
+    report = response.choices[0].message.content
 
     memory["report_count"] += 1
     memory["last_report"] = timestamp
