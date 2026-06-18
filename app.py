@@ -4,8 +4,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse, FileResponse
 
 from scout import generate_report
+from scheduler import start_scheduler
 
 app = FastAPI(title="Edenseek Scout")
+
+@app.on_event("startup")
+def startup_event():
+    start_scheduler()
 
 REPORTS_DIR = Path("reports")
 
