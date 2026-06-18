@@ -11,8 +11,9 @@ def start_scheduler():
 
     scheduler.add_job(
         scheduled_scout,
-        trigger="interval",
-        minutes=1
+        trigger="cron",
+        hour=8,
+        minute=0
     )
 
     scheduler.start()
