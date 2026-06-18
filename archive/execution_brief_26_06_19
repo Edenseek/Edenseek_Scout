@@ -1,0 +1,169 @@
+# Edenseek Scout – Execution Brief
+
+## June 19, 2026
+
+### Current Status
+
+Completed:
+
+* FastAPI application
+* OpenAI integration
+* Report generation
+* Markdown report storage
+* Dashboard
+* Scheduler
+* Persistent memory
+* Daily autonomous execution
+
+Current Version:
+
+Edenseek Scout v0.3
+
+---
+
+# Objective For Tomorrow
+
+Begin Memory v0.2
+
+Move Scout from simple persistence to accumulating strategic knowledge.
+
+Current Memory:
+
+{
+"report_count": 1,
+"themes": [],
+"opportunities": [],
+"risks": []
+}
+
+Target Memory:
+
+{
+"themes": [
+"AI publishing",
+"comic navigation"
+],
+"opportunities": [
+"interactive comics"
+],
+"risks": [
+"copyright uncertainty"
+]
+}
+
+---
+
+# Task 1
+
+Enhance Report Prompt
+
+Modify Scout instructions to produce structured outputs:
+
+* Themes
+* Opportunities
+* Risks
+
+in addition to the narrative report.
+
+Goal:
+
+Scout should identify reusable strategic observations.
+
+---
+
+# Task 2
+
+Memory Extraction
+
+Create logic to extract:
+
+* themes
+* opportunities
+* risks
+
+from generated reports.
+
+Store in:
+
+data/memory.json
+
+---
+
+# Task 3
+
+Memory Deduplication
+
+Prevent duplicates.
+
+Example:
+
+"AI publishing"
+
+should only appear once.
+
+---
+
+# Task 4
+
+Dashboard Upgrade
+
+Add:
+
+* Report Count
+* Last Report Timestamp
+* Memory Overview
+
+Display:
+
+Themes:
+
+* AI Publishing
+* Symbolic Metadata
+
+Opportunities:
+
+* Interactive Comics
+
+Risks:
+
+* Copyright Regulation
+
+---
+
+# Stretch Goal
+
+Create endpoint:
+
+GET /memory
+
+Returns:
+
+{
+"themes": [...],
+"opportunities": [...],
+"risks": [...]
+}
+
+This will become the basis for future Scout conversations.
+
+---
+
+# Deliverables
+
+By end of day:
+
+* Memory v0.2 operational
+* Strategic themes stored
+* Opportunity tracking stored
+* Risk tracking stored
+* Dashboard memory display working
+
+---
+
+# Success Condition
+
+Scout no longer merely writes reports.
+
+Scout begins building institutional knowledge.
+
+This is the first step toward an actual Edenseek intelligence system.
