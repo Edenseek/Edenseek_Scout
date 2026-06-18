@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, FileResponse
 
 from scout import generate_report
 
@@ -57,3 +57,7 @@ def get_report(filename: str):
         raise HTTPException(status_code=404, detail="Report not found")
 
     return report_path.read_text(encoding="utf-8")
+
+@app.get("/dashboard")
+def dashboard():
+    return FileResponse("static/index.html")

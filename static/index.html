@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Edenseek Scout</title>
+</head>
+<body>
+
+<h1>Edenseek Scout</h1>
+
+<button onclick="runScout()">Run Scout</button>
+
+<h2>Reports</h2>
+
+<ul id="reports"></ul>
+
+<script>
+
+async function loadReports() {
+
+    const response =
+        await fetch("/reports");
+
+    const data =
+        await response.json();
+
+    const reportsList =
+        document.getElementById("reports");
+
+    reportsList.innerHTML = "";
+
+    data.reports.forEach(report => {
+
+        const li =
+            document.createElement("li");
+
+        const link =
+            document.createElement("a");
+
+        link.href =
+            "/report/" + report;
+
+        link.target =
+            "_blank";
+
+        link.innerText =
+            report;
+
+        li.appendChild(link);
+
+        reportsList.appendChild(li);
+
+    });
+}
+
+async function runScout() {
+
+    await fetch("/run-scout", {
+        method: "POST"
+    });
+
+    loadReports();
+}
+
+loadReports();
+
+</script>
+
+</body>
+</html>
