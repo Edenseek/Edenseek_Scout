@@ -5,12 +5,15 @@ from openai import OpenAI
 from logging_config import logger
 import os
 import json
+import time
+import threading
 
 load_dotenv()
 
 REPORTS_DIR = Path("reports")
 REPORTS_DIR.mkdir(exist_ok=True)
 MEMORY_FILE = Path("data/memory.json")
+memory_lock = threading.Lock()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -29,11 +32,45 @@ def load_memory():
         return json.load(f)
 
 def save_memory(memory):
-
     MEMORY_FILE.parent.mkdir(exist_ok=True)
 
-    with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+    temp_file = MEMORY_FILE.with_suffix(".json.tmp")
+
+    with open(temp_file, "w", encoding="utf-8") as f:
         json.dump(memory, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+
+    os.replace(temp_file, MEMORY_FILE)
+
+def call_openai_with_retries(prompt, max_attempts=3, timeout=60):
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            logger.info(f"OpenAI request attempt {attempt} starting")
+
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                timeout=timeout,
+            )
+
+            logger.info(f"OpenAI request attempt {attempt} completed")
+            return response
+
+        except Exception as e:
+            last_error = e
+            logger.exception(f"OpenAI request attempt {attempt} failed: {e}")
+
+            if attempt < max_attempts:
+                sleep_seconds = 2 ** attempt
+                logger.info(f"Retrying OpenAI request in {sleep_seconds} seconds")
+                time.sleep(sleep_seconds)
+
+    raise last_error
 
 def generate_report():
     logger.info("Scout report generation started")
@@ -72,22 +109,17 @@ Keep it under 700 words.
     try:
         logger.info("OpenAI request starting")
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-
-        logger.info("OpenAI request completed")
+        response = call_openai_with_retries(prompt)
 
         report = response.choices[0].message.content
 
-        memory["report_count"] += 1
-        memory["last_report"] = timestamp
+        with memory_lock:
+            memory = load_memory()
+            memory["report_count"] += 1
+            memory["last_report"] = timestamp
 
-        save_memory(memory)
-        logger.info("Memory updated")
+            save_memory(memory)
+            logger.info("Memory updated")
 
         filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S.md")
         filepath = REPORTS_DIR / filename

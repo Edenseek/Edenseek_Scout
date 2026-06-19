@@ -76,7 +76,10 @@ def run_scout(username: str = Depends(require_auth)):
 
     except Exception as e:
         logger.exception(f"Manual Scout run failed: {e}")
-        raise
+        raise HTTPException(
+            status_code=503,
+            detail="Scout report generation failed"
+        )
 
 @app.get("/reports")
 def list_reports(username: str = Depends(require_auth)):
@@ -94,9 +97,14 @@ def list_reports(username: str = Depends(require_auth)):
 
 @app.get("/report/{filename}", response_class=PlainTextResponse)
 def get_report(filename: str, username: str = Depends(require_auth)):
-    report_path = REPORTS_DIR / filename
+    reports_root = REPORTS_DIR.resolve()
+    report_path = (REPORTS_DIR / filename).resolve()
 
-    if not report_path.exists():
+    if reports_root not in report_path.parents:
+        logger.warning(f"Blocked path traversal attempt: {filename}")
+        raise HTTPException(status_code=400, detail="Invalid report path")
+
+    if not report_path.exists() or not report_path.is_file():
         raise HTTPException(status_code=404, detail="Report not found")
 
     return report_path.read_text(encoding="utf-8")
