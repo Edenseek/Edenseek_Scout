@@ -1,69 +1,197 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Edenseek Scout</title>
+  <title>Edenseek Scout</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f5f7;
+      color: #1f2933;
+      margin: 0;
+      padding: 0;
+    }
+
+    header {
+      background: #111827;
+      color: white;
+      padding: 24px 40px;
+    }
+
+    main {
+      padding: 32px 40px;
+      max-width: 1100px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 32px;
+    }
+
+    .subtitle {
+      color: #cbd5e1;
+      margin-top: 8px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    .card h2 {
+      font-size: 16px;
+      margin: 0 0 10px;
+      color: #4b5563;
+    }
+
+    .metric {
+      font-size: 28px;
+      font-weight: bold;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+
+    .reports {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    .report-item {
+      padding: 10px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .report-item a {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .status {
+      margin-top: 12px;
+      color: #4b5563;
+    }
+  </style>
 </head>
 <body>
+  <header>
+    <h1>Edenseek Scout</h1>
+    <div class="subtitle">Always-on AI research agent for Edenseek, Phrasmos, and Caelaris</div>
+  </header>
 
-<h1>Edenseek Scout</h1>
+  <main>
+    <div class="grid">
+      <div class="card">
+        <h2>Service Status</h2>
+        <div class="metric" id="service-status">Online</div>
+      </div>
 
-<button onclick="runScout()">Run Scout</button>
+      <div class="card">
+        <h2>Reports Generated</h2>
+        <div class="metric" id="report-count">—</div>
+      </div>
 
-<h2>Reports</h2>
+      <div class="card">
+        <h2>Latest Report</h2>
+        <div class="metric" id="latest-report">—</div>
+      </div>
 
-<ul id="reports"></ul>
+      <div class="card">
+        <h2>Next Scheduled Run</h2>
+        <div class="metric">08:00 UTC</div>
+      </div>
+    </div>
 
-<script>
+    <div class="card">
+      <h2>Manual Scout Run</h2>
+      <button id="run-button" onclick="runScout()">Run Scout</button>
+      <div class="status" id="run-status">Ready.</div>
+    </div>
 
-async function loadReports() {
+    <br>
 
-    const response =
-        await fetch("/reports");
+    <section class="reports">
+      <h2>Recent Reports</h2>
+      <div id="reports-list">Loading reports...</div>
+    </section>
+  </main>
 
-    const data =
-        await response.json();
+  <script>
+    async function loadReports() {
+      const response = await fetch("/reports");
+      const data = await response.json();
 
-    const reportsList =
-        document.getElementById("reports");
+      const reports = data.reports || [];
+      document.getElementById("report-count").innerText = reports.length;
+      document.getElementById("latest-report").innerText = reports[0] || "None";
 
-    reportsList.innerHTML = "";
+      const list = document.getElementById("reports-list");
+      list.innerHTML = "";
 
-    data.reports.forEach(report => {
+      if (reports.length === 0) {
+        list.innerHTML = "<p>No reports yet.</p>";
+        return;
+      }
 
-        const li =
-            document.createElement("li");
+      reports.forEach(report => {
+        const div = document.createElement("div");
+        div.className = "report-item";
+        div.innerHTML = `<a href="/report/${report}" target="_blank">${report}</a>`;
+        list.appendChild(div);
+      });
+    }
 
-        const link =
-            document.createElement("a");
+    async function runScout() {
+      const button = document.getElementById("run-button");
+      const status = document.getElementById("run-status");
 
-        link.href =
-            "/report/" + report;
+      button.disabled = true;
+      status.innerText = "Scout is running...";
 
-        link.target =
-            "_blank";
+      try {
+        const response = await fetch("/run-scout", {
+          method: "POST"
+        });
 
-        link.innerText =
-            report;
+        if (!response.ok) {
+          throw new Error("Scout run failed");
+        }
 
-        li.appendChild(link);
+        const data = await response.json();
+        status.innerText = `Scout completed: ${data.report}`;
+        await loadReports();
 
-        reportsList.appendChild(li);
-
-    });
-}
-
-async function runScout() {
-
-    await fetch("/run-scout", {
-        method: "POST"
-    });
+      } catch (error) {
+        status.innerText = "Scout run failed. Check logs/scout.log.";
+      } finally {
+        button.disabled = false;
+      }
+    }
 
     loadReports();
-}
-
-loadReports();
-
-</script>
-
+  </script>
 </body>
 </html>
