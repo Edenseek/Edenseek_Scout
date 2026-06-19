@@ -8,6 +8,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from scout import generate_report
 from scheduler import start_scheduler
+from logging_config import logger
 
 app = FastAPI(title="Edenseek Scout")
 
@@ -25,6 +26,7 @@ def require_auth(credentials: HTTPBasicCredentials = Depends(security)):
     password_ok = secrets.compare_digest(credentials.password, SCOUT_PASSWORD)
 
     if not (username_ok and password_ok):
+        logger.warning("Authentication failed")
         raise HTTPException(
             status_code=401,
             detail="Invalid authentication credentials",
@@ -36,7 +38,9 @@ def require_auth(credentials: HTTPBasicCredentials = Depends(security)):
 
 @app.on_event("startup")
 def startup_event():
+    logger.info("Edenseek Scout app starting")
     start_scheduler()
+    logger.info("Edenseek Scout startup complete")
 
 
 REPORTS_DIR = Path("reports")
@@ -59,13 +63,20 @@ def health():
 
 @app.post("/run-scout")
 def run_scout(username: str = Depends(require_auth)):
-    report_path = generate_report()
+    logger.info("Manual Scout run requested")
 
-    return {
-        "status": "success",
-        "report": report_path
-    }
+    try:
+        report_path = generate_report()
+        logger.info(f"Manual Scout run completed: {report_path}")
 
+        return {
+            "status": "success",
+            "report": report_path
+        }
+
+    except Exception as e:
+        logger.exception(f"Manual Scout run failed: {e}")
+        raise
 
 @app.get("/reports")
 def list_reports(username: str = Depends(require_auth)):

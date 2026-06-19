@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
+from logging_config import logger
 import os
 import json
 
@@ -35,6 +36,8 @@ def save_memory(memory):
         json.dump(memory, f, indent=2)
 
 def generate_report():
+    logger.info("Scout report generation started")
+
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     memory = load_memory()
 
@@ -66,24 +69,37 @@ Include:
 Keep it under 700 words.
 """
 
-    response = client.chat.completions.create(
-   	 model="gpt-4o-mini",
-   	 messages=[
-       		 {"role": "user", "content": prompt}
-   	 ]
-    )
+    try:
+        logger.info("OpenAI request starting")
 
-    report = response.choices[0].message.content
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
 
-    memory["report_count"] += 1
-    memory["last_report"] = timestamp
+        logger.info("OpenAI request completed")
 
-    save_memory(memory)
+        report = response.choices[0].message.content
 
-    filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S.md")
-    filepath = REPORTS_DIR / filename
+        memory["report_count"] += 1
+        memory["last_report"] = timestamp
 
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(report)
+        save_memory(memory)
+        logger.info("Memory updated")
 
-    return str(filepath)
+        filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S.md")
+        filepath = REPORTS_DIR / filename
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(report)
+
+        logger.info(f"Report saved: {filepath}")
+        logger.info("Scout report generation completed")
+
+        return str(filepath)
+
+    except Exception as e:
+        logger.exception(f"Scout report generation failed: {e}")
+        raise
