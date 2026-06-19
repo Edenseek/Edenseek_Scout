@@ -3,6 +3,7 @@
 > Internal architecture documentation. Basis for v0.4 planning.
 > **Stack:** Python · FastAPI · OpenAI (`gpt-4o-mini`) · APScheduler
 > **Version:** 0.3 (per execution brief; README still reads 0.1 — see Technical Debt)
+> **Last verified against commit:** `2c42f26`
 
 ---
 
@@ -63,6 +64,7 @@ REST endpoints.
 | `app.py` | FastAPI app definition, startup hook that boots the scheduler, all HTTP endpoints, serves dashboard. |
 | `scout.py` | Core logic: memory load/save, prompt construction, OpenAI call, report file writing. |
 | `scheduler.py` | APScheduler setup; registers a daily cron job that calls `generate_report()`. |
+| `logging_config.py` | Logging setup: rotating file handler (`logs/scout.log`) + console; shared `logger`. |
 | `static/index.html` | Minimal dashboard (vanilla JS): "Run Scout" button + report list with links. |
 | `requirements.txt` | Dependencies: fastapi, uvicorn, openai==1.55.3, python-dotenv, apscheduler, requests, beautifulsoup4. |
 | `.env` / `.env.example` | Holds `OPENAI_API_KEY`. |
@@ -73,6 +75,8 @@ REST endpoints.
 ---
 
 ## 4. FastAPI Endpoints
+
+All endpoints except `/` and `/health` require HTTP Basic auth (`require_auth` in `app.py`).
 
 | Method | Path | Behavior |
 |---|---|---|
@@ -119,17 +123,24 @@ REST endpoints.
 - Server timezone defines the 08:00 cron firing.
 - Commit `daa8a1a` ("Fix OpenAI SDK compatibility for Oracle deployment") and the pinned
   `openai==1.55.3` indicate a target of Oracle Cloud. Developed on Windows.
-- No authentication, TLS, or reverse-proxy configuration is present in the repo.
+- **HTTP Basic authentication is implemented in the app** (`app.py`, `require_auth`), gating
+  `/run-scout`, `/reports`, `/report/{filename}`, and `/dashboard`. Credentials come from
+  `SCOUT_USERNAME` / `SCOUT_PASSWORD`.
+- **TLS and reverse proxy live in the deployment, not the repo.** `CLAUDE.md` documents the
+  production chain as Cloudflare → Nginx → FastAPI (HTTPS terminated upstream); no Nginx or TLS
+  config is checked into this repository. ⚠️ The presence of Nginx is asserted by `CLAUDE.md` but
+  unverified here — confirm against the live VM and keep the two docs consistent.
 
 ---
 
 ## 8. Known Risks
 
-- **No authentication/authorization.** `POST /run-scout` is open — anyone who can reach it can
-  trigger billable OpenAI calls (cost / DoS exposure).
 - **Path traversal in `/report/{filename}`.** The filename is joined directly to `REPORTS_DIR` with
   only an existence check; inputs like `../.env` could read arbitrary files — including the API key.
-  Needs sanitization / containment validation.
+  Needs sanitization / containment validation. **Still open (P0)** — auth now gates the endpoint, but
+  the containment check is not yet in place, so an authenticated request can still escape `reports/`.
+- **No rate limiting.** `POST /run-scout` is authenticated but unthrottled — an authenticated caller
+  can still drive billable OpenAI calls (cost / DoS exposure).
 - **Synchronous blocking endpoint.** `/run-scout` runs a multi-second OpenAI call on the request
   thread; there is no timeout or retry on the API call.
 - **No error handling** around OpenAI or file I/O; a failed call propagates a 500 with no graceful
@@ -145,13 +156,20 @@ REST endpoints.
 
 - **Memory is effectively inert** — the strategic fields are never updated; the feature is
   half-wired.
+- **No atomic memory writes** — `save_memory()` writes `data/memory.json` in place; a crash mid-write
+  can truncate or corrupt the file. **P0 for Beta.**
+- **No memory locking** — manual and scheduled runs can race on `data/memory.json` (lost updates).
+- **No OpenAI timeout/retry** — `generate_report()` makes a single unbounded call; a hung request
+  stalls report generation with no graceful degradation. **P0 for Beta.**
 - **Deprecated lifecycle hook** — `@app.on_event("startup")` is deprecated in modern FastAPI and
   should move to a lifespan handler.
-- **No tests; minimal logging** — only `print` statements. `logs/` and `prompts/` directories are
-  present but empty/unused.
-- **Mixed indentation** in `scout.py`'s `client.chat.completions.create(...)` call (tabs vs spaces)
-  is a latent style / parse fragility.
+- **No tests** — no automated suite exists; `prompts/` directory is present but unused.
 - **Version drift** — README says v0.1, the execution brief says v0.3.
+
+**Resolved since earlier drafts** (kept here so the record stays honest):
+- ✅ File logging is implemented (`logging_config.py`, rotating handler → `logs/scout.log` + console);
+  the prior "only `print` statements" note no longer applies.
+- ✅ The mixed-indentation issue in `scout.py`'s `client.chat.completions.create(...)` call is fixed.
 
 ---
 
@@ -185,3 +203,42 @@ items 5–6 in the same release — they are low-effort, high-severity security 
 > ⚠️ **Priority callout:** Because of the path-traversal issue (#6), if the service is exposed the
 > `.env` file (real `OPENAI_API_KEY`) is currently readable over HTTP. Treat this as the top
 > priority for v0.4.
+
+## 11. Beta Readiness Criteria
+
+The goal of Beta is not feature completeness.
+
+The definition of Beta is:
+
+> "Scout can operate unattended without corrupting itself."
+
+Before Beta, the following must be completed.
+
+### Reliability
+
+- Path traversal vulnerability fixed
+- OpenAI timeout and retry handling
+- Atomic writes for memory and reports
+- Graceful handling of OpenAI failures
+- Dashboard reflects actual scheduler state
+
+### Security
+
+- Authentication enforced
+- HTTPS enabled through Cloudflare
+- Rate limiting on expensive endpoints
+- Environment secrets protected
+
+### Persistence
+
+- Memory survives crashes
+- Memory survives restarts
+- Concurrent runs cannot corrupt memory
+
+### Validation
+
+- Basic automated test suite
+- Memory round-trip tests
+- Endpoint smoke tests
+
+Beta is achieved when Scout can run continuously without operator supervision and without risk of data corruption.

@@ -1,233 +1,412 @@
 # CLAUDE.md — Edenseek Scout AI Developer Guide
 
-> **Read this first.** This is the primary onboarding document for AI agents (Claude Code sessions)
-> and developers working on Edenseek Scout. It assumes no prior context. Deeper documentation lives
-> in [`docs/architecture/`](./docs/architecture/) — this file is the fast path to being productive.
+> **Read this first.**
+>
+> This is the primary onboarding document for Claude Code sessions and future AI agents working on Edenseek Scout.
+>
+> If you are new to the project, read this file first, then:
+>
+> 1. `docs/architecture/scout_v0.3_synopsis.md`
+> 2. `docs/architecture/scout_status_and_tech_debt.md`
+> 3. `docs/architecture/scout_beta_roadmap.md`
+> 4. `docs/architecture/scout_future_vision.md`
+>
+> Last Updated: June 2026
+>
+> Status: Production Alpha
 
 ---
 
-## 1. Project Overview
+# 1. Project Overview
 
-Edenseek Scout is an "always-on" AI research agent for **Edenseek Publishing**. It autonomously
-generates concise strategic intelligence reports for Derek Uskert covering AI, publishing, and the
-comics industry, framed around Edenseek's projects:
+Edenseek Scout is an always-on AI research agent for Edenseek Publishing.
 
-- **Phrasmos** — symbolic image tagging and metadata.
-- **Caelaris** — a comic publishing project.
-- Long-term goal — AI-assisted comic navigation and creator tools.
+Scout continuously monitors developments in:
 
-Reports are produced on a daily schedule and on demand, stored as Markdown, and surfaced through a
-minimal web dashboard. **Current version: v0.3.** (Note: `README.md` still reads v0.1 — the
-execution brief and these docs are authoritative.)
+* Artificial Intelligence
+* Publishing
+* Comics
+* Digital media
+* Strategic opportunities relevant to Edenseek
 
-The project is small and early-stage by design (three core Python modules). Treat it as a foundation
-to grow, not a finished system.
+Scout generates autonomous intelligence reports, maintains persistent memory, and presents results through a web dashboard.
+
+Long-term vision:
+
+> Scout evolves from a report generator into Edenseek's autonomous intelligence and research system.
 
 ---
 
-## 2. Current Architecture
+# 2. Current Production Status
 
-A single-process FastAPI application with three core modules. Triggers (HTTP or scheduler) call one
-function, `generate_report()`, which reads memory, calls OpenAI, writes a Markdown report, and
-updates memory.
+Version:
 
-```
-                ┌─────────────┐
-   HTTP ───────▶│   app.py    │  FastAPI (endpoints, startup hook)
-                └──────┬──────┘
-                       │ start_scheduler()  (on startup)
-                       ▼
-                ┌─────────────┐
-   cron 08:00 ─▶│ scheduler.py│  APScheduler BackgroundScheduler
-                └──────┬──────┘
-                       │ generate_report()
-                       ▼
-                ┌─────────────┐   OpenAI Chat Completions (gpt-4o-mini)
-                │  scout.py   │◀────────────────────────────────────────▶ OpenAI API
-                └──┬───────┬──┘
-       reads/writes│       │writes
-                   ▼       ▼
-        data/memory.json   reports/YYYY-MM-DD_HH-MM-SS.md
+```text
+v0.3 Production Alpha
 ```
 
-**Stack:** Python · FastAPI · uvicorn · OpenAI (`gpt-4o-mini`, SDK pinned `openai==1.55.3`) ·
-APScheduler · python-dotenv. (`requests` and `beautifulsoup4` are present, anticipating future
-web-research capability, but are not yet used.)
+Deployment:
 
-Full detail: [`docs/architecture/scout_v0.3_synopsis.md`](./docs/architecture/scout_v0.3_synopsis.md).
+```text
+Oracle Cloud VM
+↓
+systemd
+↓
+FastAPI
+↓
+Nginx
+↓
+Cloudflare
+↓
+scout.edenseek.com
+```
 
----
+Production URLs:
 
-## 3. Deployment Architecture
+```text
+https://scout.edenseek.com/dashboard
+https://scout.edenseek.com/health
+```
 
-- Runs as a **single-process ASGI app via uvicorn**; the scheduler lives **in-process** (no external
-  worker or queue).
-- Deployed on an **Oracle Cloud VM**, kept alive by **systemd** (survives reboots).
-- Source is synchronized to **GitHub**.
-- Assumes a **persistent, writable local filesystem** for `reports/`, `data/`, and `logs/` — not
-  ephemeral container storage.
-- `OPENAI_API_KEY` is supplied via `.env` (gitignored) / environment.
-- The 08:00 daily report fires on **server local time**.
-- No reverse proxy, TLS, or authentication is configured in the repo yet (see §8).
+Current Capabilities:
 
----
-
-## 4. Key Files and Responsibilities
-
-| Path | Responsibility |
-|---|---|
-| `app.py` | FastAPI app, startup hook that boots the scheduler, all HTTP endpoints, serves the dashboard. |
-| `scout.py` | Core logic: memory load/save, prompt construction, OpenAI call, report file writing. |
-| `scheduler.py` | APScheduler setup; registers the daily cron job calling `generate_report()`. |
-| `static/index.html` | Minimal dashboard (vanilla JS): "Run Scout" button + report list. |
-| `requirements.txt` | Python dependencies. |
-| `.env` / `.env.example` | Holds `OPENAI_API_KEY`. |
-| `reports/*.md` | Generated report artifacts (timestamped). |
-| `data/memory.json` | Persistent state (gitignored). |
-| `archive/execution_brief_26_06_19` | Original roadmap doc ("Memory v0.2"). |
-| `docs/architecture/` | Architecture, vision, and status/tech-debt documentation. |
-
-**HTTP endpoints (in `app.py`):**
-
-| Method | Path | Behavior |
-|---|---|---|
-| GET | `/` | `{name, status:"online"}` |
-| GET | `/health` | Liveness check |
-| POST | `/run-scout` | Generates a report synchronously; returns its path |
-| GET | `/reports` | Lists report filenames, newest first |
-| GET | `/report/{filename}` | Returns raw report Markdown (404 if missing) |
-| GET | `/dashboard` | Serves `static/index.html` |
-
-**Memory model (`data/memory.json`):**
-`{report_count, themes[], opportunities[], risks[], last_report}`.
-⚠️ Today only `report_count` and `last_report` are actually written. `themes`, `opportunities`, and
-`risks` are passed into the prompt but never extracted or persisted — wiring this up is the headline
-v0.4 feature ("Memory v0.2").
+| Capability               | Status   |
+| ------------------------ | -------- |
+| Oracle VM Deployment     | ✅        |
+| Cloudflare DNS           | ✅        |
+| HTTPS                    | ✅        |
+| Authentication           | ✅        |
+| Structured Logging       | ✅        |
+| Scheduler                | ✅        |
+| Report Generation        | ✅        |
+| Dashboard                | ✅        |
+| Persistent Memory        | ⚠️ Basic |
+| Knowledge Accumulation   | ❌        |
+| Active Research          | ❌        |
+| Conversational Interface | ❌        |
 
 ---
 
-## 5. Current Production Status
+# 3. Architecture
 
-| Capability | Status |
-|---|---|
-| Oracle VM deployment | ✅ Complete |
-| systemd persistence | ✅ Complete |
-| GitHub synchronization | ✅ Complete |
-| OpenAI integration | ✅ Complete |
-| FastAPI app, scheduler, report storage, dashboard | ✅ Operational (v0.3) |
-| Structured/accumulating memory | ⛔ Not yet (planned for v0.4) |
-| Logging to file | 🔶 Planned |
-| Scheduler reliability hardening | 🔶 Open |
+Current Architecture:
 
-Scout is **live and producing daily reports**. See
-[`docs/architecture/scout_status_and_tech_debt.md`](./docs/architecture/scout_status_and_tech_debt.md)
-for the authoritative status tracker.
+```text
+Browser
+   ↓ HTTPS
+Cloudflare
+   ↓
+scout.edenseek.com
+   ↓
+Nginx
+   ↓
+FastAPI
+   ↓
+Scout
+   ↓
+OpenAI API
+   ↓
+reports/*.md
+   ↓
+data/memory.json
+```
 
----
+The current system consists of three primary modules:
 
-## 6. Development Principles
+```text
+app.py
+scheduler.py
+scout.py
+```
 
-1. **Knowledge is the asset.** Optimize for the quality and durability of what Scout *knows*.
-   Reports are a rendering of knowledge, not the end goal.
-2. **Every observation should be reusable.** Prefer structured, deduplicated, queryable outputs over
-   one-off prose.
-3. **Cite and date everything** as research capability grows, so conclusions stay auditable and
-   stale knowledge can be retired.
-4. **Degrade gracefully.** Unattended autonomy demands timeouts, retries, and error handling; a
-   failed source or LLM call must never corrupt the knowledge base.
-5. **Secure by default.** Scout handles credentials and runs unattended; auth, input validation, and
-   least privilege are not optional.
-6. **Evolve, don't rewrite.** The three-module foundation is sound — grow memory, research, and
-   interfaces incrementally.
-7. **Keep docs honest.** When you change behavior, update the relevant doc in `docs/architecture/`
-   so "current state" and "vision" stay distinct and accurate.
+Scout remains intentionally simple.
 
----
-
-## 7. Known Technical Debt
-
-- **Memory is effectively inert** — strategic fields are never written back (half-wired feature).
-- **Console-only output** — no file logging; `logs/scout.log` is planned.
-- **In-process scheduler with no job store** — loses state on restart; would double-fire under
-  multiple workers.
-- **Synchronous `/run-scout`** — blocks on a multi-second OpenAI call; no timeout or retry.
-- **No error handling** around OpenAI / file I/O — failures surface as raw 500s.
-- **No locking on `data/memory.json`** — concurrent runs (manual + cron) can race.
-- **Deprecated `@app.on_event("startup")`** — should migrate to FastAPI lifespan handlers.
-- **No tests; minimal tooling** — `logs/` and `prompts/` dirs exist but are unused.
-- **Mixed indentation** in `scout.py`'s `client.chat.completions.create(...)` call.
-- **Version drift** — README (v0.1) vs. execution brief (v0.3).
+Do not introduce unnecessary complexity.
 
 ---
 
-## 8. Security Considerations
+# 4. Key Files
 
-Scout runs unattended with a live API key, so security is a first-class concern. Current gaps,
-queued for the next security review (priority order):
-
-1. **Authentication** — `POST /run-scout` and read endpoints are open; anyone with network access
-   can trigger billable OpenAI calls.
-2. **Path traversal in `/report/{filename}`** — the filename is joined to `reports/` with only an
-   existence check, so inputs like `../.env` could read arbitrary files, **including the
-   `OPENAI_API_KEY`**. This is the highest-severity open issue: if the service is internet-exposed,
-   the API key is currently readable over HTTP. Validate that the resolved path stays within
-   `reports/`.
-3. **HTTPS/TLS** — ensure traffic is encrypted (terminate at a reverse proxy or configure directly).
-4. **Rate limiting** — bound cost and DoS exposure on `/run-scout` and other expensive endpoints.
-
-Never commit `.env` or secrets (it is gitignored — keep it that way).
+| File                 | Purpose                           |
+| -------------------- | --------------------------------- |
+| `app.py`             | FastAPI application and endpoints |
+| `scheduler.py`       | APScheduler jobs                  |
+| `scout.py`           | Core Scout logic                  |
+| `logging_config.py`  | Logging setup                     |
+| `static/index.html`  | Dashboard                         |
+| `reports/`           | Generated reports                 |
+| `logs/scout.log`     | Runtime logs                      |
+| `data/memory.json`   | Persistent memory                 |
+| `.env`               | Secrets and configuration         |
+| `docs/architecture/` | Architecture documentation        |
 
 ---
 
-## 9. Current Priorities
+# 5. Development Workflow
 
-The next milestone is **v0.4**, combining the "Memory v0.2" feature work with security hardening.
+Canonical workflow:
 
-**Feature work (from the execution brief):**
-1. Structured report output (model emits themes/opportunities/risks as JSON alongside the narrative).
-2. Memory extraction & write-back into `data/memory.json`.
-3. Deduplication of accumulated themes/opportunities/risks.
-4. A `GET /memory` endpoint + dashboard panel (report count, last-report time, memory overview).
+```text
+Local Development
+      ↓
+GitHub
+      ↓
+Oracle VM
+```
 
-**Hardening (land in the same release):**
-5. Add authentication; rate-limit `/run-scout`.
-6. Fix the `/report/{filename}` path traversal.
-7. Make report generation async/background with timeout + retry + error handling.
-8. Migrate to FastAPI lifespan handlers; evaluate persistent APScheduler job storage.
-9. Add file logging (`logs/scout.log`) and a basic test suite.
-10. Reconcile version/docs.
+Deployment:
 
-**Suggested ordering:** ship memory features (1–4) as the v0.4 headline, but land items 5–6 in the
-same release — they are low-effort, high-severity fixes.
+```bash
+git add .
+git commit -m "message"
+git push
 
----
+ssh oracle-vm
+git pull
 
-## 10. Long-Term Vision
+sudo systemctl restart edenseek-scout
+```
 
-Scout is intended to evolve from a scheduled report generator into **Edenseek's autonomous
-intelligence and research system** — an agent that continuously observes the world, maintains durable
-institutional knowledge, and produces strategic guidance on demand.
+Avoid editing production code directly on the VM.
 
-Target capability pillars:
-- **Durable memory** — a structured, deduplicated knowledge base (not a scratchpad).
-- **Active research** — gather and verify external sources (hence `requests`/`beautifulsoup4`).
-- **Synthesis** — connect signals across publishing, AI, comics, Phrasmos, Caelaris, and strategic
-  opportunities.
-- **Conversational access** — a chat interface over accumulated knowledge.
-- **Autonomy & continuity** — reliable, restart-safe, event- and schedule-driven operation.
+Production changes should originate locally and flow through GitHub.
 
-The north-star phrasing from the project's own brief: *"Scout no longer merely writes reports. Scout
-begins building institutional knowledge."*
+Exceptions:
 
-Full vision: [`docs/architecture/scout_future_vision.md`](./docs/architecture/scout_future_vision.md).
+* Environment variables
+* Server configuration
+* SSL certificates
 
 ---
 
-## Quick Orientation for a New Session
+# 6. Current Priorities
 
-- **What exists now:** `docs/architecture/scout_v0.3_synopsis.md`
-- **Where it's going:** `docs/architecture/scout_future_vision.md`
-- **What's done / pending / risky:** `docs/architecture/scout_status_and_tech_debt.md`
-- **Original intent:** `README.md` and `archive/execution_brief_26_06_19`
-- **Run locally:** `uvicorn app:app` (needs `OPENAI_API_KEY` in `.env`); dashboard at `/dashboard`.
-- **Golden rule:** Do not commit secrets, and update the docs when you change behavior.
+The next milestone is:
+
+```text
+Production Beta
+```
+
+Beta is defined as:
+
+> Scout can operate unattended without corrupting itself.
+
+Current priorities:
+
+## Priority 1 — Reliability
+
+* Fix path traversal vulnerability
+* Add OpenAI timeout handling
+* Add OpenAI retry handling
+* Implement atomic memory writes
+
+## Priority 2 — Memory v0.4
+
+* Structured report output
+* Memory extraction
+* Memory deduplication
+* Memory API endpoint
+* Dashboard memory viewer
+
+## Priority 3 — Operability
+
+* FastAPI lifespan migration
+* Scheduler health endpoint
+* Test suite
+* Rate limiting
+
+## Priority 4 — Persistence
+
+* SQLite migration
+* Report metadata
+* Queryable memory
+
+---
+
+# 7. Security Notes
+
+Scout is internet accessible.
+
+Security is not optional.
+
+Current high-priority issues:
+
+## Path Traversal
+
+Endpoint:
+
+```text
+GET /report/{filename}
+```
+
+Must be hardened before Beta.
+
+## Memory Corruption
+
+Current writes are not atomic.
+
+A crash during write can corrupt memory.
+
+## OpenAI Failure Handling
+
+Current requests require:
+
+* Timeouts
+* Retries
+* Graceful degradation
+
+Never commit:
+
+```text
+.env
+API keys
+passwords
+certificates
+```
+
+---
+
+# 8. Development Principles
+
+## Knowledge Is The Asset
+
+Reports are not the product.
+
+Knowledge is the product.
+
+Reports are one rendering of knowledge.
+
+---
+
+## Evolve, Don't Rewrite
+
+The current architecture is intentionally simple.
+
+Prefer:
+
+```text
+small improvements
+```
+
+over:
+
+```text
+large rewrites
+```
+
+---
+
+## Reliability Before Intelligence
+
+Before adding:
+
+* multi-agent systems
+* advanced memory
+* research automation
+
+ensure:
+
+* reliability
+* security
+* persistence
+
+are solved first.
+
+---
+
+## Keep Documentation Accurate
+
+Whenever architecture changes:
+
+Update:
+
+```text
+scout_v0.3_synopsis.md
+scout_status_and_tech_debt.md
+scout_beta_roadmap.md
+```
+
+Documentation drift is considered technical debt.
+
+---
+
+# 9. Long-Term Vision
+
+Scout is expected to evolve through four stages.
+
+## Stage 1 — Production Alpha
+
+Current state.
+
+Characteristics:
+
+* Single agent
+* Scheduled reports
+* Basic memory
+* Dashboard
+
+---
+
+## Stage 2 — Production Beta
+
+Characteristics:
+
+* Reliable unattended operation
+* Structured memory
+* Security hardening
+* Test coverage
+
+Goal:
+
+Trust Scout.
+
+---
+
+## Stage 3 — Intelligence Platform
+
+Characteristics:
+
+* Knowledge base
+* Source tracking
+* Trend detection
+* Conversational interface
+
+Goal:
+
+Institutional knowledge.
+
+---
+
+## Stage 4 — Autonomous Research Organization
+
+Characteristics:
+
+* Research agent
+* Critic agent
+* Strategist agent
+* Publisher agent
+
+Goal:
+
+Generate, critique, refine, and distribute strategic intelligence with minimal human intervention.
+
+---
+
+# 10. First Actions For A New Claude Session
+
+Read:
+
+```text
+docs/architecture/scout_v0.3_synopsis.md
+docs/architecture/scout_status_and_tech_debt.md
+docs/architecture/scout_beta_roadmap.md
+```
+
+Then determine:
+
+1. Current milestone
+2. Highest-priority technical debt
+3. Smallest safe improvement
+4. Required documentation updates
+
+Do not begin large refactors without reviewing the roadmap and architecture documents.
