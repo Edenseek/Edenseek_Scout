@@ -2,8 +2,8 @@
 
 > Internal architecture documentation. Basis for v0.4 planning.
 > **Stack:** Python · FastAPI · OpenAI (`gpt-4o-mini`) · APScheduler
-> **Version:** 0.3 (per execution brief; README still reads 0.1 — see Technical Debt)
-> **Last verified against commit:** `2c42f26`
+> **Version:** 0.3 (README and execution brief now agree on 0.3)
+> **Last verified against commit:** `fdf0ab8`
 
 ---
 
@@ -135,18 +135,20 @@ All endpoints except `/` and `/health` require HTTP Basic auth (`require_auth` i
 
 ## 8. Known Risks
 
-- **Path traversal in `/report/{filename}`.** The filename is joined directly to `REPORTS_DIR` with
-  only an existence check; inputs like `../.env` could read arbitrary files — including the API key.
-  Needs sanitization / containment validation. **Still open (P0)** — auth now gates the endpoint, but
-  the containment check is not yet in place, so an authenticated request can still escape `reports/`.
+- **Path traversal in `/report/{filename}`.** ✅ **Resolved (commit fdf0ab8).** `app.py` resolves the
+  requested path and rejects any path whose resolved parent is outside `reports/`
+  (`reports_root not in report_path.parents`), so an authenticated request can no longer escape
+  `reports/`.
 - **No rate limiting.** `POST /run-scout` is authenticated but unthrottled — an authenticated caller
-  can still drive billable OpenAI calls (cost / DoS exposure).
-- **Synchronous blocking endpoint.** `/run-scout` runs a multi-second OpenAI call on the request
-  thread; there is no timeout or retry on the API call.
-- **No error handling** around OpenAI or file I/O; a failed call propagates a 500 with no graceful
-  degradation.
-- **Concurrency on the memory file** — no locking; concurrent runs (manual + cron) could race on
-  `data/memory.json`.
+  can still drive billable OpenAI calls (cost / DoS exposure). **Still open.**
+- **Synchronous blocking endpoint.** `/run-scout` still runs the OpenAI call on the request thread
+  (no background task); however, the call is now bounded — see timeout/retry below. **Partially open.**
+- **OpenAI timeout/retry/error handling.** ✅ **Resolved (commit fdf0ab8).** `call_openai_with_retries`
+  applies a 60s timeout, up to 3 attempts with exponential backoff, and logs failures; `/run-scout`
+  wraps generation and returns 503 on failure rather than an unhandled 500.
+- **Concurrency on the memory file** — ✅ **Resolved in-process (commit fdf0ab8).** The
+  load-modify-save of `data/memory.json` is guarded by a module-level `threading.Lock`. Cross-process
+  safety still depends on the future SQLite migration.
 - **Scheduler durability** — in-process scheduler with no job store loses state on restart, and
   multiple workers would double-fire the job.
 
@@ -155,18 +157,21 @@ All endpoints except `/` and `/health` require HTTP Basic auth (`require_auth` i
 ## 9. Technical Debt
 
 - **Memory is effectively inert** — the strategic fields are never updated; the feature is
-  half-wired.
-- **No atomic memory writes** — `save_memory()` writes `data/memory.json` in place; a crash mid-write
-  can truncate or corrupt the file. **P0 for Beta.**
-- **No memory locking** — manual and scheduled runs can race on `data/memory.json` (lost updates).
-- **No OpenAI timeout/retry** — `generate_report()` makes a single unbounded call; a hung request
-  stalls report generation with no graceful degradation. **P0 for Beta.**
+  half-wired. (Addressed by the planned Memory v0.4 — see `PROJECT_MEMORY_SCHEMA.md`.)
 - **Deprecated lifecycle hook** — `@app.on_event("startup")` is deprecated in modern FastAPI and
   should move to a lifespan handler.
 - **No tests** — no automated suite exists; `prompts/` directory is present but unused.
-- **Version drift** — README says v0.1, the execution brief says v0.3.
 
 **Resolved since earlier drafts** (kept here so the record stays honest):
+- ✅ **Atomic memory writes** (commit fdf0ab8) — `save_memory()` writes a temp file, `fsync`s, then
+  `os.replace()`s; a crash mid-write can no longer truncate `data/memory.json`.
+- ✅ **In-process memory locking** (commit fdf0ab8) — load-modify-save is guarded by a
+  `threading.Lock`, preventing manual/cron races within the process.
+- ✅ **OpenAI timeout & retry** (commit fdf0ab8) — `call_openai_with_retries` bounds each call (60s)
+  and retries up to 3× with backoff and failure logging.
+- ✅ **Path traversal fixed** (commit fdf0ab8) — `/report/{filename}` validates the resolved path
+  stays within `reports/`.
+- ✅ **Version drift resolved** — README and the execution brief now both read v0.3.
 - ✅ File logging is implemented (`logging_config.py`, rotating handler → `logs/scout.log` + console);
   the prior "only `print` statements" note no longer applies.
 - ✅ The mixed-indentation issue in `scout.py`'s `client.chat.completions.create(...)` call is fixed.
@@ -200,9 +205,10 @@ feature work with security hardening.
 **Suggested ordering:** ship the brief's memory features (1–4) as the headline of v0.4, but land
 items 5–6 in the same release — they are low-effort, high-severity security fixes.
 
-> ⚠️ **Priority callout:** Because of the path-traversal issue (#6), if the service is exposed the
-> `.env` file (real `OPENAI_API_KEY`) is currently readable over HTTP. Treat this as the top
-> priority for v0.4.
+> ✅ **Priority callout resolved (commit fdf0ab8):** The path-traversal exposure (#6) is fixed — the
+> `.env` file is no longer reachable via `/report/{filename}`. Items #1–4 (Memory v0.4) and the
+> remaining hardening (#5 rate limiting, #7 async generation, #8 lifespan/job store) are now the
+> active scope.
 
 ## 11. Beta Readiness Criteria
 
@@ -216,11 +222,11 @@ Before Beta, the following must be completed.
 
 ### Reliability
 
-- Path traversal vulnerability fixed
-- OpenAI timeout and retry handling
-- Atomic writes for memory and reports
-- Graceful handling of OpenAI failures
-- Dashboard reflects actual scheduler state
+- [x] Path traversal vulnerability fixed (commit fdf0ab8)
+- [x] OpenAI timeout and retry handling (commit fdf0ab8)
+- [x] Atomic writes for memory (commit fdf0ab8) — report writes still non-atomic
+- [ ] Graceful handling of OpenAI failures (bounded + 503, but no degraded-mode fallback)
+- [ ] Dashboard reflects actual scheduler state
 
 ### Security
 

@@ -6,14 +6,22 @@
 >
 > If you are new to the project, read this file first, then:
 >
-> 1. `docs/architecture/scout_v0.3_synopsis.md`
-> 2. `docs/architecture/scout_status_and_tech_debt.md`
-> 3. `docs/architecture/scout_beta_roadmap.md`
-> 4. `docs/architecture/scout_future_vision.md`
+> 1. `SCOUT_CHARTER.md` (repo root) — governing identity and boundaries (**Scout is read-and-advise only**)
+> 2. `docs/architecture/scout_v0.3_synopsis.md`
+> 3. `docs/architecture/scout_status_and_tech_debt.md`
+> 4. `docs/architecture/scout_beta_roadmap.md`
+> 5. `docs/architecture/scout_future_vision.md`
 >
-> Last Updated: June 2026
+> Governance & specs (the v0.4 source of truth):
 >
-> Status: Production Alpha
+> * `docs/architecture/SCOUT_ORCHESTRATOR.md`
+> * `docs/architecture/SCOUT_SCHEDULE.md`
+> * `docs/architecture/PROJECT_MEMORY_SCHEMA.md`
+> * `docs/architecture/REPORT_SPECIFICATION.md`
+>
+> Last Updated: June 2026 · Last verified against commit: fdf0ab8
+>
+> Status: Production Alpha (Reliability hardening complete; active milestone: Memory v0.4)
 
 ---
 
@@ -193,14 +201,18 @@ Beta is defined as:
 
 Current priorities:
 
-## Priority 1 — Reliability
+## Priority 1 — Reliability ✅ Complete (commit fdf0ab8)
 
-* Fix path traversal vulnerability
-* Add OpenAI timeout handling
-* Add OpenAI retry handling
-* Implement atomic memory writes
+* [x] Fix path traversal vulnerability
+* [x] Add OpenAI timeout handling
+* [x] Add OpenAI retry handling
+* [x] Implement atomic memory writes
 
-## Priority 2 — Memory v0.4
+Remaining reliability follow-ups (graceful degradation, in-process memory locking is done
+but cross-process safety is not, scheduler validation) are folded into Priorities 3–4.
+The active milestone is now **Priority 2 — Memory v0.4**.
+
+## Priority 2 — Memory v0.4 ⬅ active
 
 * Structured report output
 * Memory extraction
@@ -229,9 +241,10 @@ Scout is internet accessible.
 
 Security is not optional.
 
-Current high-priority issues:
+The high-priority issues below were the Beta blockers; all three are now resolved
+(commit fdf0ab8). They are kept here as a record and as guardrails for future changes.
 
-## Path Traversal
+## Path Traversal ✅ Resolved (commit fdf0ab8)
 
 Endpoint:
 
@@ -239,21 +252,22 @@ Endpoint:
 GET /report/{filename}
 ```
 
-Must be hardened before Beta.
+`app.py` resolves the requested path and rejects any path whose resolved parent escapes
+`reports/`. Do not regress this when changing report-serving code.
 
-## Memory Corruption
+## Memory Corruption ✅ Resolved (commit fdf0ab8)
 
-Current writes are not atomic.
+`save_memory()` now writes a temp file, `fsync`s, then `os.replace()`s (atomic rename), and
+the load-modify-save is guarded by a `threading.Lock`. A crash mid-write can no longer
+corrupt memory. Cross-process safety still awaits the SQLite migration (Priority 4).
 
-A crash during write can corrupt memory.
+## OpenAI Failure Handling ✅ Resolved (commit fdf0ab8)
 
-## OpenAI Failure Handling
+`call_openai_with_retries` applies a 60s timeout and up to 3 retries with backoff:
 
-Current requests require:
-
-* Timeouts
-* Retries
-* Graceful degradation
+* [x] Timeouts
+* [x] Retries
+* [ ] Graceful degradation (bounded + 503 on failure; no degraded-mode fallback yet)
 
 Never commit:
 

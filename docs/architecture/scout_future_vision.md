@@ -150,8 +150,9 @@ These principles should guide every change so the system converges on the vision
 4. **Degrade gracefully.** Unattended autonomy demands timeouts, retries, and error handling; a
    failed source or LLM call must never corrupt the knowledge base.
 5. **Secure by default.** Scout handles credentials and runs unattended; authentication, input
-   validation, and least privilege are not optional. (The current path-traversal exposure of the
-   API key is the standing example of why — see the v0.3 synopsis.)
+   validation, and least privilege are not optional. (The path-traversal exposure that once made the
+   API key readable over HTTP — now fixed in commit fdf0ab8 — is the cautionary example of why; see
+   the v0.3 synopsis.)
 6. **Evolve, don't rewrite.** The three-module foundation is sound. Grow memory, research, and
    interfaces incrementally.
 
@@ -185,3 +186,70 @@ writes to; conversation is only as good as the knowledge it draws from.
   `archive/execution_brief_26_06_19`; this document consolidates and extends that intent.
 - When you complete work that meaningfully advances a pillar, update the v0.3 synopsis (or its
   successor) so the "current state" and "vision" documents stay distinct and accurate.
+
+## Operational Maturity Model
+
+Scout is expected to evolve through four stages.
+
+### Stage 1 — Alpha
+
+Current state.
+
+Characteristics:
+
+- Single agent
+- Daily reports
+- Basic memory
+- Manual oversight required
+
+Goal:
+
+Prove architecture and deployment model.
+
+---
+
+### Stage 2 — Beta
+
+Characteristics:
+
+- Reliable unattended operation
+- Durable memory
+- Structured report output
+- Test coverage
+- Security hardening
+
+Goal:
+
+Trust Scout to operate without supervision.
+
+---
+
+### Stage 3 — Intelligence Platform
+
+Characteristics:
+
+- Structured knowledge base
+- Memory retrieval
+- Source provenance
+- Trend detection
+- Conversational interface
+
+Goal:
+
+Institutional knowledge accumulation.
+
+---
+
+### Stage 4 — Autonomous Research Organization
+
+Characteristics:
+
+- Multiple cooperating agents
+- Critic agent
+- Strategist agent
+- Research agent
+- Publisher agent
+
+Goal:
+
+Generate, critique, refine, and distribute strategic intelligence with minimal human intervention.

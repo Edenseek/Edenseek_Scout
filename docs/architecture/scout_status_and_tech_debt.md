@@ -6,8 +6,10 @@
 >
 > * `scout_v0.3_synopsis.md` — Current architecture and implementation
 > * `scout_future_vision.md` — Long-term vision and system direction
+> * `SCOUT_CHARTER.md` (repo root) — Governing identity and boundaries
 >
 > Status reflects the production Alpha deployment completed on Oracle Cloud and Cloudflare.
+> Last verified against commit: fdf0ab8
 
 ---
 
@@ -127,9 +129,12 @@ Required Fix:
 * Verify path remains inside reports directory
 * Reject traversal attempts
 
-Status: Open
+Status: Resolved (commit fdf0ab8)
 
-Priority: P0
+Resolution: `app.py` resolves the requested path and rejects any path whose resolved
+parent is outside `reports/` (`reports_root not in report_path.parents`).
+
+Priority: P0 (closed)
 
 ---
 
@@ -161,9 +166,12 @@ fsync
 atomic rename
 ```
 
-Status: Open
+Status: Resolved (commit fdf0ab8)
 
-Priority: P0
+Resolution: `scout.py` `save_memory()` writes a temp file, `flush()` + `os.fsync()`, then
+`os.replace()` for an atomic rename.
+
+Priority: P0 (closed)
 
 ---
 
@@ -193,9 +201,12 @@ Required Fix:
 * Retry policy
 * Failure logging
 
-Status: Open
+Status: Resolved (commit fdf0ab8)
 
-Priority: P0
+Resolution: `scout.py` `call_openai_with_retries()` applies a 60s request timeout, up to 3
+attempts with exponential backoff, and logs each failed attempt.
+
+Priority: P0 (closed)
 
 ---
 
@@ -219,7 +230,12 @@ Required Fix:
   or
 * SQLite migration
 
-Status: Open
+Status: Partially resolved (commit fdf0ab8)
+
+Resolution: `scout.py` guards the load-modify-save of memory with a module-level
+`threading.Lock`, preventing in-process races between manual and scheduled runs. Note this
+protects a single process only; cross-process safety (e.g. multiple workers) still depends
+on the future SQLite migration.
 
 Priority: P1
 
@@ -322,10 +338,10 @@ The following items must be complete before Beta.
 
 ## Reliability
 
-* [ ] Path traversal fixed
-* [ ] OpenAI timeout handling
-* [ ] OpenAI retry handling
-* [ ] Atomic memory writes
+* [x] Path traversal fixed
+* [x] OpenAI timeout handling
+* [x] OpenAI retry handling
+* [x] Atomic memory writes
 * [ ] Scheduler validation
 * [ ] Graceful failure handling
 
@@ -355,12 +371,15 @@ The following items must be complete before Beta.
 
 ## Milestone A — Reliability Hardening
 
-Target: Immediate
+Status: Complete (commit fdf0ab8)
 
-* Fix path traversal
-* Add OpenAI timeout
-* Add retry handling
-* Implement atomic writes
+* [x] Fix path traversal
+* [x] Add OpenAI timeout
+* [x] Add retry handling
+* [x] Implement atomic writes
+
+Remaining reliability follow-ups (scheduler validation, graceful failure handling,
+cross-process write safety) are tracked under Milestones C and D.
 
 ---
 

@@ -1,13 +1,15 @@
 # Scout Beta Roadmap
 
-## Milestone A — Stop The Bleeding
+> Last verified against commit: fdf0ab8
 
-Target: Immediate
+## Milestone A — Stop The Bleeding  ✅ Complete (commit fdf0ab8)
 
-- Fix path traversal
-- Add OpenAI timeout
-- Add retry handling
-- Atomic memory writes
+- [x] Fix path traversal
+- [x] Add OpenAI timeout
+- [x] Add retry handling
+- [x] Atomic memory writes
+
+Active milestone is now **B — Memory v0.4**.
 
 ## Milestone B — Memory v0.4
 
