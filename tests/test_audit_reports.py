@@ -12,6 +12,7 @@ import audit_scoring  # noqa: E402
 import audit_prioritization  # noqa: E402
 import audit_failure_analysis  # noqa: E402
 import audit_retrieval_blockers  # noqa: E402
+import audit_history_analysis  # noqa: E402
 import audit_reports  # noqa: E402
 
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "dataset" / "society_of_killers" / "issue_1"
@@ -29,7 +30,19 @@ REQUIRED_KEYS = {
     "highest_leverage": {"highest_leverage_failure", "ranked_failures", "process_backlog"},
     "failure_clusters": {"artifact_count", "issue_wide_failures", "page_clusters", "unpaged_cluster"},
     "retrieval_blockers": {"retrieval_readiness_score", "packet_coverage", "packet_blockers", "artifact_blockers"},
+    "historical": {"dataset_id", "snapshots_analyzed", "confidence", "metrics", "failure_trends"},
 }
+
+_HIST_SNAPS = [
+    {"timestamp": "t0", "dataset_id": "d", "quality_score": 50,
+     "scores": {"metadata_completeness": 87, "character_consistency": 10,
+                "dialogue_completeness": 70, "retrieval_readiness": 25},
+     "artifact_count": 105, "weak_total_flagged": 105, "failure_summary": {"missing_characters": 95}},
+    {"timestamp": "t1", "dataset_id": "d", "quality_score": 56,
+     "scores": {"metadata_completeness": 87, "character_consistency": 20,
+                "dialogue_completeness": 73, "retrieval_readiness": 25},
+     "artifact_count": 105, "weak_total_flagged": 90, "failure_summary": {"missing_characters": 80}},
+]
 
 _SAMPLE_HISTORY = [{
     "timestamp": "2026-06-22T00:00:00Z", "dataset_id": "d", "quality_score": 53,
@@ -59,6 +72,7 @@ class TestAuditReports(unittest.TestCase):
         cls.result["blocks"]["failure_clusters"] = audit_failure_analysis.build_failure_clusters(artifacts)
         cls.result["blocks"]["retrieval_blockers"] = audit_retrieval_blockers.build_retrieval_blockers(
             artifacts, cls.result["blocks"]["retrieval"])
+        cls.result["blocks"]["historical"] = audit_history_analysis.build_historical_intelligence(_HIST_SNAPS)
 
     def test_write_all_reports(self):
         with tempfile.TemporaryDirectory() as d:

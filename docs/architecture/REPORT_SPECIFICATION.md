@@ -21,6 +21,7 @@
 | Highest Leverage Failure Report | `reports/highest_leverage/highest_leverage_failure_report.md` | Phase 3A |
 | Failure Cluster Report    | `reports/failure_clusters/failure_cluster_report.md` | Phase 3B |
 | Retrieval Blockers Report | `reports/retrieval_blockers/retrieval_blockers_report.md` | Phase 3B |
+| Historical Intelligence Report | `reports/historical/historical_intelligence_report.md` | Phase 4 |
 
 All report types are **read-only, deterministic, and advisory**: Scout inspects, scores,
 explains, and recommends; it never modifies canonical data, approves/rejects/locks
@@ -380,6 +381,29 @@ retrieval (Charter §4). See `RETRIEVAL_READINESS.md`.
   "packet_coverage": {"packets_evaluated":1,"artifacts_referenced":1,"artifact_count":105,"coverage_percent":1},
   "packet_blockers":   [ {"blocker","severity","affected_packets","detail"} ],
   "artifact_blockers": [ {"blocker_type","severity","affected_count","affected_percent","estimated_impact"} ]
+}
+```
+
+### 6.5 Historical Intelligence Report (Phase 4)
+
+Deterministic trend analysis over recorded `audit_history` snapshots for the most-recent
+dataset (or `?dataset_id=`). **Explains change; never predicts it.** Confidence:
+`insufficient_history` (<2 snapshots), `preliminary` (2), `trend` (≥3). Reads no canonical
+data. See `HISTORICAL_INTELLIGENCE.md`.
+
+```json
+{
+  "dataset_id": "society_of_killers/issue_1",
+  "snapshots_analyzed": 5,
+  "confidence": "trend",
+  "window": {"first": "...", "last": "..."},
+  "metrics": [ {"name","better_when","first","last","change","direction","consistency","series":[]} ],
+  "failure_trends": [ {"failure_type","domain","first_percent","last_percent","change","direction"} ],
+  "new_failures": [], "resolved_failures": [],
+  "stagnant_domains": [ {"domain","first_percent","last_percent","change"} ],
+  "delta": {"from","to","metrics":{},"failures":{},"new_failures":[],"resolved_failures":[]},
+  "observed_correlations": [ {"interval":{"from","to"},"quality_change":0,"inferred_changes":{}} ],
+  "note": "Observational only ..."
 }
 ```
 

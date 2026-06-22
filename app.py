@@ -8,11 +8,14 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from scout import generate_report, load_memory
 from scheduler import start_scheduler
+from typing import Optional
+
 from dataset_auditor import (
     run_dataset_audit,
     analyze_failures,
     analyze_clusters,
     analyze_retrieval_blockers,
+    analyze_trends,
 )
 from audit_inputs import AuditInputError
 from audit_reports import REPORT_FILES, REPORTS_ROOT
@@ -210,3 +213,9 @@ def get_audit_retrieval_blockers(username: str = Depends(require_auth)):
     except AuditInputError as e:
         logger.warning(f"Retrieval blocker analysis input error: {e}")
         raise HTTPException(status_code=422, detail=f"Invalid audit input: {e}")
+
+
+@app.get("/audit/trends")
+def get_audit_trends(dataset_id: Optional[str] = None, username: str = Depends(require_auth)):
+    # Historical Intelligence reads only recorded snapshots; no dataset is opened.
+    return analyze_trends(dataset_id)

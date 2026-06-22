@@ -15,6 +15,7 @@ import audit_scoring
 import audit_prioritization
 import audit_failure_analysis
 import audit_retrieval_blockers
+import audit_history_analysis
 import audit_reports
 import scout
 
@@ -71,6 +72,8 @@ def run_dataset_audit(input_dir=None):
     }
     history = scout.record_audit_history(snapshot)
     result["blocks"]["audit_history"] = {"history": history, "latest_delta": _latest_delta(history)}
+    # ---- Phase 4: historical intelligence (most-recent dataset) ----
+    result["blocks"]["historical"] = audit_history_analysis.build_historical_intelligence(history)
 
     latest_reports = audit_reports.write_reports(result, REPORTS_ROOT, generated_at)
 
@@ -142,3 +145,13 @@ def analyze_retrieval_blockers(input_dir=None):
         "retrieval_blockers": audit_retrieval_blockers.build_retrieval_blockers(
             result["artifacts"], result["blocks"]["retrieval"]),
     }
+
+
+def analyze_trends(dataset_id=None):
+    """Historical Intelligence over recorded snapshots (memory-only, read-only).
+
+    Opens no canonical dataset; pure over ``audit_history``.
+    """
+    track = scout.load_memory().get("projects", {}).get("edenseek_dataset", {})
+    history = track.get("audit_history", [])
+    return audit_history_analysis.build_historical_intelligence(history, dataset_id)

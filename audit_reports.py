@@ -24,6 +24,7 @@ REPORT_FILES = {
     "highest_leverage": ("highest_leverage", "highest_leverage_failure_report.md"),
     "failure_clusters": ("failure_clusters", "failure_cluster_report.md"),
     "retrieval_blockers": ("retrieval_blockers", "retrieval_blockers_report.md"),
+    "historical": ("historical", "historical_intelligence_report.md"),
 }
 
 _ADVISORY = (
@@ -463,6 +464,82 @@ def _render_retrieval_blockers(block, generated_at):
     return "\n".join(lines) + "\n" + _json_block(b)
 
 
+def _render_historical(block, generated_at):
+    b = block
+    w = b["window"]
+    lines = [
+        "# Historical Intelligence Report",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        _ADVISORY,
+        "",
+        "## Summary",
+        f"- Dataset: {b['dataset_id']}",
+        f"- Snapshots analyzed: {b['snapshots_analyzed']}",
+        f"- Confidence: {b['confidence']}",
+        f"- Window: {w['first']} → {w['last']}",
+        "",
+        f"_{b['note']}_",
+    ]
+    if b["confidence"] == "insufficient_history":
+        return "\n".join(lines) + "\n\n" + _json_block(b)
+
+    lines += [
+        "",
+        "## Metric trends",
+        "",
+        "| Metric | First | Last | Change | Direction | Consistency |",
+        "|--------|-------|------|--------|-----------|-------------|",
+    ]
+    for m in b["metrics"]:
+        lines.append(
+            f"| {m['name']} | {m['first']} | {m['last']} | {m['change']:+d} | "
+            f"{m['direction']} | {m['consistency']} |"
+        )
+
+    lines += ["", "## Failure-category trends (% of artifacts)", "",
+              "| Failure | Domain | First % | Last % | Change | Direction |",
+              "|---------|--------|---------|--------|--------|-----------|"]
+    for f in b["failure_trends"]:
+        lines.append(
+            f"| {f['failure_type']} | {f['domain']} | {f['first_percent']} | "
+            f"{f['last_percent']} | {f['change']:+d} | {f['direction']} |"
+        )
+
+    lines += ["",
+              f"- New failures since first audit: {', '.join(b['new_failures']) or 'none'}",
+              f"- Resolved failures: {', '.join(b['resolved_failures']) or 'none'}",
+              "",
+              "## Stagnant pipeline areas"]
+    if b["stagnant_domains"]:
+        for d in b["stagnant_domains"]:
+            lines.append(f"- {d['domain']}: {d['first_percent']}% → {d['last_percent']}% ({d['change']:+d})")
+    else:
+        lines.append("- None")
+
+    delta = b["delta"]
+    lines += ["", "## Since previous audit"]
+    if delta:
+        lines.append(f"- {delta['from']} → {delta['to']}")
+        qd = delta["metrics"].get("quality_score", 0)
+        lines.append(f"- Quality change: {qd:+d}")
+        moved = {k: v for k, v in delta["failures"].items() if v != 0}
+        lines.append("- Failure % changes: " +
+                     (", ".join(f"{k} {v:+d}" for k, v in sorted(moved.items())) or "none"))
+
+    lines += ["", "## Observed correlations (observational only — not causal)"]
+    if b["observed_correlations"]:
+        for c in b["observed_correlations"]:
+            changes = ", ".join(f"{k} {v}" for k, v in sorted(c["inferred_changes"].items()))
+            lines.append(f"- {c['interval']['from']} → {c['interval']['to']}: "
+                         f"quality {c['quality_change']:+d}; co-occurring: {changes}")
+    else:
+        lines.append("- None observed")
+    lines.append("")
+    return "\n".join(lines) + "\n" + _json_block(b)
+
+
 _RENDERERS = {
     "dataset": _render_dataset,
     "character": _render_character,
@@ -476,6 +553,7 @@ _RENDERERS = {
     "highest_leverage": _render_highest_leverage,
     "failure_clusters": _render_failure_clusters,
     "retrieval_blockers": _render_retrieval_blockers,
+    "historical": _render_historical,
 }
 
 

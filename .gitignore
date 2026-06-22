@@ -19,4 +19,5 @@ reports/root_cause/
 reports/highest_leverage/
 reports/failure_clusters/
 reports/retrieval_blockers/
+reports/historical/
 claude_scout.bat

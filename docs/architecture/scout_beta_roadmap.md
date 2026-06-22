@@ -40,11 +40,17 @@ Adds a compact `failure_summary` to each audit-history snapshot. (See
 
 Result: Scout explains why dataset quality is low and which pipeline area is implicated.
 
-## Phase 4 — Historical Intelligence
+## Phase 4 — Historical Intelligence ✅
 
-* What improved / what got worse across audit snapshots
-* Which interventions appear to have helped; are recurring failures shrinking
-* Are new failures appearing
+* Metric and failure-category trends across audit snapshots (most-recent dataset)
+* Since-previous-audit delta; new/resolved failures; stagnant pipeline areas
+* Observational correlations (co-occurrence, never causation); confidence levels
+  (insufficient/preliminary/trend)
+* Historical Intelligence Report + `GET /audit/trends`
+
+Deterministic, read-only, observational; reads only `audit_history` snapshots (no canonical
+data, no schema change). **Explains change; never predicts it.** See
+`HISTORICAL_INTELLIGENCE.md`.
 
 Result: Scout reports dataset-quality trajectory over time (reads history; never
 self-modifies from it).
