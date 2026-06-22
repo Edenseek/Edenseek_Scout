@@ -25,6 +25,7 @@ REPORT_FILES = {
     "failure_clusters": ("failure_clusters", "failure_cluster_report.md"),
     "retrieval_blockers": ("retrieval_blockers", "retrieval_blockers_report.md"),
     "historical": ("historical", "historical_intelligence_report.md"),
+    "retrieval_readiness": ("retrieval_readiness", "retrieval_readiness_intel.md"),
 }
 
 _ADVISORY = (
@@ -540,6 +541,48 @@ def _render_historical(block, generated_at):
     return "\n".join(lines) + "\n" + _json_block(b)
 
 
+def _render_retrieval_readiness(block, generated_at):
+    b = block
+    lines = [
+        "# Retrieval Readiness Intelligence Report",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        _ADVISORY,
+        "",
+        "## Verdict",
+        f"- **{b['verdict']}**",
+        f"- Readiness score: {b['readiness_score']}/100",
+        f"- {b['explanation']}",
+        "",
+        "_Assesses readiness only; Scout never performs or implements retrieval, and makes no "
+        "recommendations or predictions._",
+        "",
+        "## Dimensions",
+        "",
+        "| Dimension | Status | Measured | Evidence |",
+        "|-----------|--------|----------|----------|",
+    ]
+    for d in b["dimensions"]:
+        lines.append(
+            f"| {d['dimension']} | {d['status']} | {d['measured_percent']}% | {d['evidence']} |"
+        )
+    lines += [
+        "",
+        f"- Strengths: {', '.join(b['strengths']) or 'none'}",
+        f"- Weaknesses: {', '.join(b['weaknesses']) or 'none'}",
+        "",
+        "## Readiness trend",
+    ]
+    if b["trend"]:
+        lines.append(f"- retrieval_readiness: {b['trend'].get('retrieval_readiness')} "
+                     f"(confidence: {b['trend'].get('confidence')})")
+    else:
+        lines.append("- Insufficient history for a readiness trend.")
+    lines.append("")
+    return "\n".join(lines) + "\n" + _json_block(b)
+
+
 _RENDERERS = {
     "dataset": _render_dataset,
     "character": _render_character,
@@ -554,6 +597,7 @@ _RENDERERS = {
     "failure_clusters": _render_failure_clusters,
     "retrieval_blockers": _render_retrieval_blockers,
     "historical": _render_historical,
+    "retrieval_readiness": _render_retrieval_readiness,
 }
 
 

@@ -22,6 +22,7 @@
 | Failure Cluster Report    | `reports/failure_clusters/failure_cluster_report.md` | Phase 3B |
 | Retrieval Blockers Report | `reports/retrieval_blockers/retrieval_blockers_report.md` | Phase 3B |
 | Historical Intelligence Report | `reports/historical/historical_intelligence_report.md` | Phase 4 |
+| Retrieval Readiness Intelligence Report | `reports/retrieval_readiness/retrieval_readiness_intel.md` | Phase 5 |
 
 All report types are **read-only, deterministic, and advisory**: Scout inspects, scores,
 explains, and recommends; it never modifies canonical data, approves/rejects/locks
@@ -404,6 +405,27 @@ data. See `HISTORICAL_INTELLIGENCE.md`.
   "delta": {"from","to","metrics":{},"failures":{},"new_failures":[],"resolved_failures":[]},
   "observed_correlations": [ {"interval":{"from","to"},"quality_change":0,"inferred_changes":{}} ],
   "note": "Observational only ..."
+}
+```
+
+### 6.6 Retrieval Readiness Intelligence Report (Phase 5)
+
+A derived synthesis classifying retrieval readiness into four dimensions (coverage,
+grounding_quality, traceability, confidence_boundaries) and a verdict
+(`ready`/`partially_ready`/`not_ready`; grounding is the hard-stop). Reuses Phase 3B
+Retrieval Blockers + Phase 1 retrieval block + Phase 4 trend. Assesses readiness only —
+never performs retrieval; no recommendations, no predictions. See `RETRIEVAL_READINESS.md` §8.
+
+```json
+{
+  "dataset_id": "society_of_killers/issue_1",
+  "verdict": "not_ready",
+  "readiness_score": 25,
+  "dimensions": [ {"dimension","status","measured_percent","evidence","contributing_blockers"} ],
+  "strengths": ["confidence_boundaries"],
+  "weaknesses": ["coverage", "grounding_quality", "traceability"],
+  "trend": {"retrieval_readiness": "stable", "confidence": "trend"},
+  "explanation": "...", "note": "Assesses readiness only ..."
 }
 ```
 

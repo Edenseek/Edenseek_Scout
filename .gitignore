@@ -20,4 +20,5 @@ reports/highest_leverage/
 reports/failure_clusters/
 reports/retrieval_blockers/
 reports/historical/
+reports/retrieval_readiness/
 claude_scout.bat

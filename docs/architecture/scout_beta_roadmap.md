@@ -55,9 +55,15 @@ data, no schema change). **Explains change; never predicts it.** See
 Result: Scout reports dataset-quality trajectory over time (reads history; never
 self-modifies from it).
 
-## Phase 5 — Retrieval Readiness Intelligence
+## Phase 5 — Retrieval Readiness Intelligence ✅
 
-* Deeper retrieval-readiness scoring, evidence-packet analysis, coverage/gap detection
+* Readiness verdict (ready / partially_ready / not_ready; grounding is the hard-stop)
+* Four readiness dimensions: coverage, grounding quality, traceability, confidence boundaries
+* Reuses Phase 3B Retrieval Blockers + Phase 1 retrieval block + Phase 4 trend (derived view)
+* Retrieval Readiness Intelligence Report + `GET /audit/retrieval-readiness`
+
+Deterministic, read-only, derived; assesses readiness only (never performs retrieval); no
+recommendations, no predictions, no schema change. See `RETRIEVAL_READINESS.md` §8.
 
 Result: Foundation for the **Cartographer Agent**.
 

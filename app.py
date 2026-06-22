@@ -15,6 +15,7 @@ from dataset_auditor import (
     analyze_failures,
     analyze_clusters,
     analyze_retrieval_blockers,
+    analyze_retrieval_readiness,
     analyze_trends,
 )
 from audit_inputs import AuditInputError
@@ -219,3 +220,12 @@ def get_audit_retrieval_blockers(username: str = Depends(require_auth)):
 def get_audit_trends(dataset_id: Optional[str] = None, username: str = Depends(require_auth)):
     # Historical Intelligence reads only recorded snapshots; no dataset is opened.
     return analyze_trends(dataset_id)
+
+
+@app.get("/audit/retrieval-readiness")
+def get_audit_retrieval_readiness(username: str = Depends(require_auth)):
+    try:
+        return analyze_retrieval_readiness()
+    except AuditInputError as e:
+        logger.warning(f"Retrieval readiness input error: {e}")
+        raise HTTPException(status_code=422, detail=f"Invalid audit input: {e}")

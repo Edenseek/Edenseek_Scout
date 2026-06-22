@@ -56,3 +56,30 @@ readiness only.
 
 - Deterministic, read-only, diagnostic; no actions, no retrieval, no numeric predictions,
   no self-modification.
+
+## 8. Readiness Intelligence / Verdict (Phase 5)
+
+`audit_retrieval_readiness.build_retrieval_readiness(retrieval_block, retrieval_blockers,
+retrieval_trend=None)` is a **derived synthesis** over the Phase 1 retrieval block, the
+Phase 3B Retrieval Blockers, and (read-only context) the Phase 4 `retrieval_readiness`
+trend. It classifies readiness into four dimensions and an overall verdict. No new stored
+data, no schema change, no canonical access; it never performs retrieval.
+
+**Dimensions** (status band: strong ≥ 80, adequate ≥ 40, weak < 40):
+
+| Dimension | Measured from |
+|---|---|
+| `coverage` | `packet_coverage.coverage_percent` |
+| `grounding_quality` | % of packets with scored (non-null) confidence |
+| `traceability` | % of packets with matched fields, scope, and approved referenced artifacts |
+| `confidence_boundaries` | % of artifacts carrying a grounding description (100 − `no_grounding`%) — the descriptive basis needed to bound what can be answered |
+
+**Verdict (grounding is the hard-stop dimension):**
+
+- `not_ready` — grounding_quality is weak.
+- `partially_ready` — grounding not weak, but at least one dimension is weak.
+- `ready` — no dimension weak (so grounding is adequate or strong).
+
+The report lists strengths (strong dimensions), weaknesses (weak dimensions), the measured
+evidence per dimension, and the read-only readiness trend. It is descriptive of the current
+measured state only — **no recommendations, no predictions** (Charter §4).

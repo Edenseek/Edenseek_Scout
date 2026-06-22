@@ -15,6 +15,7 @@ import audit_scoring
 import audit_prioritization
 import audit_failure_analysis
 import audit_retrieval_blockers
+import audit_retrieval_readiness
 import audit_history_analysis
 import audit_reports
 import scout
@@ -33,6 +34,16 @@ def _latest_delta(history):
     change = history[-1]["quality_score"] - history[-2]["quality_score"]
     direction = "up" if change > 0 else "down" if change < 0 else "unchanged"
     return {"quality_score_change": change, "direction": direction}
+
+
+def _retrieval_trend(historical):
+    """Extract the retrieval_readiness trend from a Historical Intelligence block."""
+    if not historical or historical.get("confidence") == "insufficient_history":
+        return None
+    metric = next((m for m in historical.get("metrics", []) if m["name"] == "retrieval_readiness"), None)
+    if not metric:
+        return None
+    return {"retrieval_readiness": metric["direction"], "confidence": historical.get("confidence")}
 
 
 def run_dataset_audit(input_dir=None):
@@ -74,6 +85,11 @@ def run_dataset_audit(input_dir=None):
     result["blocks"]["audit_history"] = {"history": history, "latest_delta": _latest_delta(history)}
     # ---- Phase 4: historical intelligence (most-recent dataset) ----
     result["blocks"]["historical"] = audit_history_analysis.build_historical_intelligence(history)
+
+    # ---- Phase 5: retrieval readiness intelligence (derived synthesis) ----
+    result["blocks"]["retrieval_readiness"] = audit_retrieval_readiness.build_retrieval_readiness(
+        result["blocks"]["retrieval"], result["blocks"]["retrieval_blockers"],
+        _retrieval_trend(result["blocks"]["historical"]), result["dataset_id"])
 
     latest_reports = audit_reports.write_reports(result, REPORTS_ROOT, generated_at)
 
@@ -155,3 +171,16 @@ def analyze_trends(dataset_id=None):
     track = scout.load_memory().get("projects", {}).get("edenseek_dataset", {})
     history = track.get("audit_history", [])
     return audit_history_analysis.build_historical_intelligence(history, dataset_id)
+
+
+def analyze_retrieval_readiness(input_dir=None):
+    """Retrieval Readiness Intelligence verdict (read-only; no retrieval performed)."""
+    result = _load_and_score(input_dir)
+    retrieval_block = result["blocks"]["retrieval"]
+    blockers = audit_retrieval_blockers.build_retrieval_blockers(result["artifacts"], retrieval_block)
+    trend = _retrieval_trend(analyze_trends())
+    return {
+        "dataset_id": result["dataset_id"],
+        "retrieval_readiness": audit_retrieval_readiness.build_retrieval_readiness(
+            retrieval_block, blockers, trend, result["dataset_id"]),
+    }

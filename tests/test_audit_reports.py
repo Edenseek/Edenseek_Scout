@@ -12,6 +12,7 @@ import audit_scoring  # noqa: E402
 import audit_prioritization  # noqa: E402
 import audit_failure_analysis  # noqa: E402
 import audit_retrieval_blockers  # noqa: E402
+import audit_retrieval_readiness  # noqa: E402
 import audit_history_analysis  # noqa: E402
 import audit_reports  # noqa: E402
 
@@ -31,6 +32,7 @@ REQUIRED_KEYS = {
     "failure_clusters": {"artifact_count", "issue_wide_failures", "page_clusters", "unpaged_cluster"},
     "retrieval_blockers": {"retrieval_readiness_score", "packet_coverage", "packet_blockers", "artifact_blockers"},
     "historical": {"dataset_id", "snapshots_analyzed", "confidence", "metrics", "failure_trends"},
+    "retrieval_readiness": {"verdict", "readiness_score", "dimensions", "strengths", "weaknesses"},
 }
 
 _HIST_SNAPS = [
@@ -73,6 +75,8 @@ class TestAuditReports(unittest.TestCase):
         cls.result["blocks"]["retrieval_blockers"] = audit_retrieval_blockers.build_retrieval_blockers(
             artifacts, cls.result["blocks"]["retrieval"])
         cls.result["blocks"]["historical"] = audit_history_analysis.build_historical_intelligence(_HIST_SNAPS)
+        cls.result["blocks"]["retrieval_readiness"] = audit_retrieval_readiness.build_retrieval_readiness(
+            cls.result["blocks"]["retrieval"], cls.result["blocks"]["retrieval_blockers"], None, "d")
 
     def test_write_all_reports(self):
         with tempfile.TemporaryDirectory() as d:
