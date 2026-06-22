@@ -13,6 +13,7 @@ from logging_config import logger
 import audit_inputs
 import audit_scoring
 import audit_prioritization
+import audit_failure_analysis
 import audit_reports
 import scout
 
@@ -47,6 +48,11 @@ def run_dataset_audit(input_dir=None):
     result["blocks"]["review_priority"] = audit_prioritization.prioritize(result["artifacts"])
     result["blocks"]["page_heatmap"] = audit_prioritization.build_page_heatmap(result["artifacts"])
 
+    # ---- Phase 3A: dataset failure analysis ----
+    root_cause = audit_failure_analysis.build_root_cause(result["artifacts"])
+    result["blocks"]["root_cause"] = root_cause
+    result["blocks"]["highest_leverage"] = audit_failure_analysis.build_highest_leverage_failure(root_cause)
+
     # ---- Phase 2: append audit-history snapshot, then build the history block ----
     snapshot = {
         "timestamp": generated_at,
@@ -55,6 +61,7 @@ def run_dataset_audit(input_dir=None):
         "scores": result["scores"],
         "artifact_count": result["artifact_count"],
         "weak_total_flagged": weak["total_flagged"],
+        "failure_summary": audit_failure_analysis.failure_summary(root_cause),
     }
     history = scout.record_audit_history(snapshot)
     result["blocks"]["audit_history"] = {"history": history, "latest_delta": _latest_delta(history)}
@@ -88,5 +95,22 @@ def run_dataset_audit(input_dir=None):
         "weak_artifacts": summary["weak_artifacts_summary"],
         "priority": {"total": priority["total"], "by_impact": priority["by_impact"]},
         "page_heatmap": {"unpaged_count": result["blocks"]["page_heatmap"]["unpaged_count"]},
+        "highest_leverage_failure": result["blocks"]["highest_leverage"]["highest_leverage_failure"],
         "reports": latest_reports,
+    }
+
+
+def analyze_failures(input_dir=None):
+    """Compute failure analysis without writing reports or memory (read-only).
+
+    Pure and deterministic; used by the agent-facing `/audit/failures` endpoint.
+    """
+    input_dir = _resolve_input_dir(input_dir)
+    inputs = audit_inputs.load_inputs(input_dir)
+    result = audit_scoring.run_audit(inputs)
+    root_cause = audit_failure_analysis.build_root_cause(result["artifacts"])
+    return {
+        "dataset_id": result["dataset_id"],
+        "root_cause": root_cause,
+        "highest_leverage": audit_failure_analysis.build_highest_leverage_failure(root_cause),
     }

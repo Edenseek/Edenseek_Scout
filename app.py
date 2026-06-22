@@ -8,7 +8,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from scout import generate_report, load_memory
 from scheduler import start_scheduler
-from dataset_auditor import run_dataset_audit
+from dataset_auditor import run_dataset_audit, analyze_failures
 from audit_inputs import AuditInputError
 from audit_reports import REPORT_FILES, REPORTS_ROOT
 from logging_config import logger
@@ -178,3 +178,12 @@ def get_audit_history(username: str = Depends(require_auth)):
     memory = load_memory()
     track = memory.get("projects", {}).get("edenseek_dataset", {})
     return {"audit_history": track.get("audit_history", [])}
+
+
+@app.get("/audit/failures")
+def get_audit_failures(username: str = Depends(require_auth)):
+    try:
+        return analyze_failures()
+    except AuditInputError as e:
+        logger.warning(f"Failure analysis input error: {e}")
+        raise HTTPException(status_code=422, detail=f"Invalid audit input: {e}")

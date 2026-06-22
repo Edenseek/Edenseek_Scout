@@ -195,6 +195,14 @@ def assess_artifact(pa):
         "effort": len(blocking),
         "suggested_action": _suggested_action(weakness) if weakness else None,
         "score": round(_pct(sum(dims), len(dims))),
+        # Raw flags (structured signals for failure analysis — Phase 3+).
+        "missing_fields": pa["missing_fields"],
+        "has_characters": pa["has_characters"],
+        "has_dialogue": pa["has_dialogue"],
+        "is_reviewed": pa["is_reviewed"],
+        "is_locked": pa["is_locked"],
+        "is_approved": pa["is_approved"],
+        "status": pa["status"],
     }
 
 

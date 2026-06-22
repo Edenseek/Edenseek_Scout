@@ -10,6 +10,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import audit_inputs  # noqa: E402
 import audit_scoring  # noqa: E402
 import audit_prioritization  # noqa: E402
+import audit_failure_analysis  # noqa: E402
 import audit_reports  # noqa: E402
 
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "dataset" / "society_of_killers" / "issue_1"
@@ -23,6 +24,8 @@ REQUIRED_KEYS = {
     "review_priority": {"total", "by_impact", "queue"},
     "page_heatmap": {"pages", "unpaged_count"},
     "audit_history": {"history", "latest_delta"},
+    "root_cause": {"artifact_count", "failures"},
+    "highest_leverage": {"highest_leverage_failure", "ranked_failures", "process_backlog"},
 }
 
 _SAMPLE_HISTORY = [{
@@ -47,6 +50,9 @@ class TestAuditReports(unittest.TestCase):
         cls.result["blocks"]["review_priority"] = audit_prioritization.prioritize(artifacts)
         cls.result["blocks"]["page_heatmap"] = audit_prioritization.build_page_heatmap(artifacts)
         cls.result["blocks"]["audit_history"] = {"history": _SAMPLE_HISTORY, "latest_delta": None}
+        rc = audit_failure_analysis.build_root_cause(artifacts)
+        cls.result["blocks"]["root_cause"] = rc
+        cls.result["blocks"]["highest_leverage"] = audit_failure_analysis.build_highest_leverage_failure(rc)
 
     def test_write_all_reports(self):
         with tempfile.TemporaryDirectory() as d:

@@ -15,4 +15,6 @@ reports/weak_artifacts/
 reports/review_priority/
 reports/page_heatmap/
 reports/audit_history/
+reports/root_cause/
+reports/highest_leverage/
 claude_scout.bat

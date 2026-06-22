@@ -20,6 +20,8 @@ REPORT_FILES = {
     "review_priority": ("review_priority", "review_priority_queue.md"),
     "page_heatmap": ("page_heatmap", "page_heat_map.md"),
     "audit_history": ("audit_history", "audit_history.md"),
+    "root_cause": ("root_cause", "root_cause_report.md"),
+    "highest_leverage": ("highest_leverage", "highest_leverage_failure_report.md"),
 }
 
 _ADVISORY = (
@@ -276,6 +278,94 @@ def _render_audit_history(block, generated_at):
     return "\n".join(lines) + "\n" + _json_block(b)
 
 
+def _ids_sample(failure):
+    ids = failure["affected_artifact_ids"]
+    shown = ", ".join(f"`{i}`" for i in ids[:10])
+    extra = failure["affected_count"] - min(10, len(ids))
+    return shown + (f" … (+{extra} more)" if extra > 0 else "")
+
+
+def _render_root_cause(block, generated_at):
+    b = block
+    lines = [
+        "# Root Cause Report",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        _ADVISORY,
+        "",
+        "## Summary",
+        f"- Artifacts: {b['artifact_count']}",
+        f"- Failure categories: {len(b['failures'])}",
+        "",
+        "_Diagnostic only: Scout explains where the dataset fails; it does not prescribe "
+        "engineering actions or predict score changes._",
+        "",
+        "## Failures (most prevalent first)",
+        "",
+        "| Failure | Domain | Severity | Impact | Affected | % | Pages |",
+        "|---------|--------|----------|--------|----------|---|-------|",
+    ]
+    for f in b["failures"]:
+        pages = ", ".join(str(p) for p in f["affected_pages"]) or "—"
+        lines.append(
+            f"| {f['failure_type']} | {f['domain']} | {f['severity']} | {f['estimated_impact']} | "
+            f"{f['affected_count']} | {f['affected_percent']} | {pages} |"
+        )
+    lines.append("")
+    lines.append("### Affected artifacts (sample)")
+    for f in b["failures"]:
+        lines.append(f"- **{f['failure_type']}** ({f['affected_count']}): {_ids_sample(f)}")
+    lines.append("")
+    return "\n".join(lines) + "\n" + _json_block(b)
+
+
+def _render_highest_leverage(block, generated_at):
+    b = block
+    top = b["highest_leverage_failure"]
+    lines = [
+        "# Highest Leverage Failure Report",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        _ADVISORY,
+        "",
+        "## Largest content-quality failure",
+    ]
+    if top:
+        lines += [
+            f"- **{top['failure_type']}** ({top['domain']})",
+            f"- Affected: {top['affected_count']} ({top['affected_percent']}%)",
+            f"- Impact band: {top['estimated_impact']}",
+            f"- {top['rationale']}",
+        ]
+    else:
+        lines.append("- No content-quality failures detected.")
+    lines += [
+        "",
+        "_Diagnostic only: this names the dominant failure and its scale. It does not "
+        "prescribe engineering actions or predict numeric score changes._",
+        "",
+        "## Ranked content failures",
+        "",
+        "| Failure | Domain | Affected | % | Impact |",
+        "|---------|--------|----------|---|--------|",
+    ]
+    for f in b["ranked_failures"]:
+        lines.append(
+            f"| {f['failure_type']} | {f['domain']} | {f['affected_count']} | "
+            f"{f['affected_percent']} | {f['estimated_impact']} |"
+        )
+    lines += ["", "## Process backlog (publisher workflow, reported separately)"]
+    if b["process_backlog"]:
+        for k, v in b["process_backlog"].items():
+            lines.append(f"- {k}: {v}")
+    else:
+        lines.append("- None")
+    lines.append("")
+    return "\n".join(lines) + "\n" + _json_block(b)
+
+
 _RENDERERS = {
     "dataset": _render_dataset,
     "character": _render_character,
@@ -285,6 +375,8 @@ _RENDERERS = {
     "review_priority": _render_review_priority,
     "page_heatmap": _render_page_heatmap,
     "audit_history": _render_audit_history,
+    "root_cause": _render_root_cause,
+    "highest_leverage": _render_highest_leverage,
 }
 
 
