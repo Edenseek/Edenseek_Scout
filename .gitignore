@@ -7,4 +7,9 @@ __pycache__/
 *.pyc
 logs/*.log
 reports/*.md
+reports/dataset/
+reports/character/
+reports/dialogue/
+reports/retrieval/
+reports/weak_artifacts/
 claude_scout.bat

@@ -1,0 +1,35 @@
+{
+  "retrieval_evidence_packet_version": "v1",
+  "retrieval_evidence_packets": [
+    {
+      "artifacts": [
+        {
+          "approval_state": "creator_approved",
+          "artifact_id": "1::NEW::1",
+          "artifact_type": "panel",
+          "attributes": {
+            "action": "display",
+            "mood": "mysterious",
+            "setting": "symbolic"
+          },
+          "characters": [],
+          "dialogue": [],
+          "geometry": {
+            "height": 0.9922328308721947,
+            "width": 0.9934842731917686,
+            "x": 0.006515726808231379,
+            "y": 0.0011973106560648388
+          },
+          "llm_input_version": "v1",
+          "page_range": [
+            1
+          ],
+          "summary": "The panel features a colorful coat of arms with various symbols and a motto."
+        }
+      ],
+      "confidence": null,
+      "matched_fields": [],
+      "scope": ""
+    }
+  ]
+}

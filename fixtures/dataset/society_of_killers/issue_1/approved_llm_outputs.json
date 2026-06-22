@@ -1,0 +1,2668 @@
+{
+  "llm_enrichment_output_version": "v1",
+  "llm_enrichment_outputs": [
+    {
+      "artifact_id": "1::NEW::1",
+      "input_ref": "1::NEW::1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "display",
+            "mood": "mysterious",
+            "setting": "symbolic"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "The panel features a colorful coat of arms with various symbols and a motto."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_2_panel_1",
+      "input_ref": "page_2_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "observation",
+            "mood": "tense",
+            "setting": "control room"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Astrid St James"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "SUBJECT: ASTRID ST JAMES: \"IN 1963 YALE UNIVERSITY PSYCHOLOGIST STANLEY MILGRAM RAN AN EXPERIMENT WHERE ONE GROUP OF TEST SUBJECTS ('TEACHERS') WOULD QUIZ OTHER TEST SUBJECTS ('LEARNERS') ABOUT GENERAL KNOWLEDGE.\"",
+            "IF THE LEARNER GOT AN ANSWER WRONG, THE TEACHER WOULD BE INSTRUCTED TO ZAP THEM WITH EVER STRONGER ELECTRIC SHOCKS. THE RESULTS PROVED THAT ORDINARY PEOPLE - IF INSTRUCTED TO DO SO BY A PERSON IN A PRESUMED POSITION OF AUTHORITY - WOULD TORTURE COMPLETE STRANGERS.",
+            "IN THE ORIGINAL MILGRAM EXPERIMENT THE LEARNERS WERE PAID ACTORS. IN THIS CONTEMPORARY RETURN OF THE EXPERIMENT, THE TESTERS COULD TORTURE THE LEARNERS IN A VR WORLD WHERE THERE WERE NO LIMITS ON THE SEVERITY OF THE PAIN THEY COULD INFLICT..."
+          ],
+          "summary": "The panel depicts a high-tech control room where two individuals observe a VR experiment related to obedience and authority."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "3::NEW::5",
+      "input_ref": "3::NEW::5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "discussion",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "THESE SUBJECTS ARE TOAST. ANYONE LEFT?",
+            "WELL, THERE'S THE GIRL..."
+          ],
+          "summary": "Characters discuss the fate of subjects, indicating a tense situation."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "3::NEW::6",
+      "input_ref": "3::NEW::6",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "warning",
+            "mood": "threatening",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "THAT IS INCORRECT. YOUR CORRECTION WILL BE 700 VOLTS."
+          ],
+          "summary": "A character makes a threatening statement about a correction involving high voltage."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_3_panel_3",
+      "input_ref": "page_3_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "pleading",
+            "mood": "desperate",
+            "setting": "medical"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "PLEASE, MAKE IT STOP!"
+          ],
+          "summary": "A man is restrained on a medical table, pleading for the procedure to stop."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_3_panel_4",
+      "input_ref": "page_3_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "interrogation",
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Unnamed Male Character",
+            "Unnamed Male Character"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "NAME?",
+            "ASTRID ST. JAMES. SHE'S RUTHLESS.",
+            "GET HER TO MY OFFICE. SHE'S THE ONE."
+          ],
+          "summary": "Two characters discuss a person named Astrid St. James, indicating her ruthlessness."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_4_panel_1",
+      "input_ref": "page_4_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "dialogue",
+            "mood": "confrontational",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Astrid"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "HEY ASTRID, YOU WANT TO HOOK UP AGAIN?",
+            "LEARN HOW TO FUCK LIKE A BIG BOY FIRST."
+          ],
+          "summary": "Astrid responds to a proposition with a sharp retort."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_4_panel_2",
+      "input_ref": "page_4_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "contemplation",
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A character is seated at a desk, facing away, in a dimly lit office filled with books and documents."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_4_panel_3",
+      "input_ref": "page_4_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "waiting",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A character's legs are shown, suggesting a moment of anticipation or tension."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_4_panel_4",
+      "input_ref": "page_4_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "THIS IS A NON-SMOKING BUILDING"
+          ],
+          "summary": "A character is smoking in an office while another character looks on disapprovingly."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_4_panel_5",
+      "input_ref": "page_4_panel_5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "SOMETHING"
+          ],
+          "summary": "A character is seated at a table, holding a knife, while another character is visible in the background."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_6_panel_1",
+      "input_ref": "page_6_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "threat",
+            "mood": "intimidating",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "IT LICKS AND BEGS OR IT GETS THE WHIP AGAIN!"
+          ],
+          "summary": "A character threatens another with a whip while demanding obedience."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_6_panel_2",
+      "input_ref": "page_6_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "WHAT'S THE BIG DEAL? SHE ASKED FOR IT."
+          ],
+          "summary": ""
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_6_panel_3",
+      "input_ref": "page_6_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "intense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "ARE YOU NOT ENTERTAINED?"
+          ],
+          "summary": "A woman in a provocative outfit stands over two bound men, questioning their entertainment."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_6_panel_4",
+      "input_ref": "page_6_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "confrontational",
+            "setting": "outdoor cafe"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "OF COURSE YOUR BOYFRIEND IS FUCKING OTHER GIRLS. YOU HAVE ANY IDEA HOW BORING YOU ARE TO HIM?"
+          ],
+          "summary": "A woman confronts another about her boyfriend's infidelity, highlighting her perceived lack of interest."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_7_panel_1",
+      "input_ref": "page_7_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "handing document",
+            "mood": "serious",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "BECAUSE OF YOUR UNIQUE PROFILE..."
+          ],
+          "summary": "A man in a suit is handing a document to a woman seated at a desk."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_7_panel_2",
+      "input_ref": "page_7_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "questioning",
+            "mood": "contemplative",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "YOU MEAN I'M A PSYCHOPATH?"
+          ],
+          "summary": "A character exhales smoke while questioning if they are a psychopath."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_7_panel_3",
+      "input_ref": "page_7_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "NOT YET. BUT THERE'S TRAINING FOR THAT."
+          ],
+          "summary": "A tense conversation occurs between two characters, with one expressing that training is available."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_7_panel_4",
+      "input_ref": "page_7_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "YOU HAVE A GIFT, ASTRID. DON'T SQUANDER IT."
+          ],
+          "summary": ""
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_8_panel_1",
+      "input_ref": "page_8_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "conversation",
+            "mood": "casual",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Astrid"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "HEY ASTRID, YOU GOING TO CLASS?"
+          ],
+          "summary": "A character named Astrid is sitting on the grass, reading a paper while being approached by another character who asks if she is going to class."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_8_panel_2",
+      "input_ref": "page_8_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "refusal",
+            "mood": "defiant",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "NOPE. NEVER AGAIN."
+          ],
+          "summary": "A hand holds a smartphone displaying a QR code and a reflection of a character's face."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_8_panel_3",
+      "input_ref": "page_8_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "observation",
+            "mood": "curious",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "THAT WAS FAST."
+          ],
+          "summary": "A woman observes a black limousine parked on the street while others look on."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_8_panel_4",
+      "input_ref": "page_8_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": [
+            "Ms. St. Claire"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "MS. ST. CLAIRE, WELCOME TO THE SOCIETY OF KILLERS."
+          ],
+          "summary": "Ms. St. Claire is approached by a man who welcomes her to the Society of Killers."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_8_panel_5",
+      "input_ref": "page_8_panel_5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "tense",
+            "setting": "car"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "SUCH FANCY TREATMENT. GUESS I'M SPECIAL.",
+            "YOU ARE. BUT THERE ARE OTHERS..."
+          ],
+          "summary": "A woman in a car comments on her treatment, while a man responds with a hint of concern."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_9_panel_1",
+      "input_ref": "page_9_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "dynamic",
+            "setting": "urban"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "The panel features a character in a futuristic outfit, holding a weapon, with digital elements surrounding them."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_10_panel_1",
+      "input_ref": "page_10_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "observation",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Quentin Larouche"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "SUBJECT: QUENTIN LAROUCHE: \"MAOA WARRIOR GENE, PREDISPOSED TO HYPER VIOLENCE, VICTIM OF HORRIFIC CHILD ABUSE, TRAUMA TO FRONTAL LOBES, LOW SKIN CONDUCTANCE, CONVICTED OF MASSACRE OF 23 INNOCENT BYSTANDERS AT OPEN-AIR MARKET IN AFGHANISTAN, 0% PROBABILITY OR REHABILITATION, RECOMMENDED LIFETIME SOLITARY CONFINEMENT.\""
+          ],
+          "summary": "A group of individuals observes Quentin Larouche, who is confined in a cage, while a report about him is displayed."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_11_panel_1",
+      "input_ref": "page_11_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "tense",
+            "setting": "interrogation"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Larouche"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "WELL, LAROUCHE - YOU WANT THE EASY WAY OR THE HARD WAY?"
+          ],
+          "summary": "A character confronts Larouche with a choice between two options."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_11_panel_2",
+      "input_ref": "page_11_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "intense",
+            "setting": "prison"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "HARDER THE BETTER."
+          ],
+          "summary": "A man with a stern expression speaks from behind bars."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_11_panel_3",
+      "input_ref": "page_11_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "preparation",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "FUCK ME.",
+            "I KNEW HE'D SAY THAT.",
+            "BASKET CASE.",
+            "LET'S DO THIS."
+          ],
+          "summary": "A group of characters expresses their frustration and determination in a tense moment."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_11_panel_4",
+      "input_ref": "page_11_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "subduing",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "THAT WAS EASY...",
+            "WAS IT?"
+          ],
+          "summary": "A group of individuals is restraining a man in an orange outfit while one of them comments on the ease of the situation."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_11_panel_5",
+      "input_ref": "page_11_panel_5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "questioning",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "WAS IT?"
+          ],
+          "summary": "A character poses a question with a challenging expression."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_12_panel_1",
+      "input_ref": "page_12_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "attack",
+            "mood": "violent",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A violent confrontation occurs as one character strikes another, causing blood to spurt."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_12_panel_2",
+      "input_ref": "page_12_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "CRUHK"
+          ],
+          "summary": "A character is being forcefully restrained, expressing pain."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_12_panel_3",
+      "input_ref": "page_12_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "threatening",
+            "setting": "dark"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "COME GET SOME, PSYCHO-BOY."
+          ],
+          "summary": "A character threatens another with a weapon in a dark setting."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_12_panel_4",
+      "input_ref": "page_12_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": ""
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_12_panel_5",
+      "input_ref": "page_12_panel_5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "taunt",
+            "mood": "menacing",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "THAT TICKLED..."
+          ],
+          "summary": "A character with a menacing expression comments on a previous action."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_13_panel_1",
+      "input_ref": "page_13_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "attack",
+            "mood": "violent",
+            "setting": "prison"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "KRAK"
+          ],
+          "summary": "A character in an orange jumpsuit is violently attacking another character, while two others look on in shock."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_13_panel_2",
+      "input_ref": "page_13_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "chaotic",
+            "setting": "cage"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "CLANG"
+          ],
+          "summary": "A character is hanging upside down in a cage, creating a loud noise."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_13_panel_3",
+      "input_ref": "page_13_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "assault",
+            "mood": "violent",
+            "setting": "prison"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A guard is attacking a prisoner from behind in a dark prison setting."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_13_panel_4",
+      "input_ref": "page_13_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "biting",
+            "mood": "intense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "CRUNCH"
+          ],
+          "summary": "A character is biting down on something, producing a crunching sound."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_13_panel_5",
+      "input_ref": "page_13_panel_5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "AAAAAGH!!!"
+          ],
+          "summary": "A character is screaming in distress."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_14_panel_1",
+      "input_ref": "page_14_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "intense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A character is shown in a dynamic pose, seemingly in a confrontation with another character."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_15_panel_1",
+      "input_ref": "page_15_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "phone call",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "YOU WANT HIM, YOU GOT HIM. I NEVER WANT TO SEE HIS FACE AGAIN."
+          ],
+          "summary": "A man speaks on the phone while observing a group of people in a cage."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_15_panel_2",
+      "input_ref": "page_15_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "communication",
+            "mood": "focused",
+            "setting": "vehicle"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "GREAT. ETA IS 20 MINUTES."
+          ],
+          "summary": "A character is speaking on the phone while driving, indicating their estimated time of arrival."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_15_panel_3",
+      "input_ref": "page_15_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "NOW IT'S A PARTY."
+          ],
+          "summary": ""
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_16_panel_1",
+      "input_ref": "page_16_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "healing",
+            "mood": "urgent",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Samara",
+            "Sister"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "SISTER SAMARA, WE BESEECH THEE, CURE OUR BABY! REMOVE SATAN'S SCOURGE!",
+            "I SHALL HEAL THIS CHILD..."
+          ],
+          "summary": "A group gathers in a field, pleading with Samara to heal a child."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_17_panel_1",
+      "input_ref": "page_17_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "notification",
+            "mood": "tense",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Samara"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "HOLD ON, SAMARA, HONEY. SAYS PAYMENT WAS DECLINED."
+          ],
+          "summary": "A character informs Samara that the payment has been declined."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_17_panel_2",
+      "input_ref": "page_17_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "tense",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "YOU DIDN'T PAY THE CREDIT CARD?!",
+            "I DID! I SWEAR I DID!"
+          ],
+          "summary": "A woman confronts a man about not paying the credit card."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_17_panel_3",
+      "input_ref": "page_17_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "time_check",
+            "mood": "contemplative",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "LET'S PUT A PIN IN THAT, SHALL WE?"
+          ],
+          "summary": "A character is looking at their watch while speaking."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_18_panel_1",
+      "input_ref": "page_18_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "conversational",
+            "setting": "car"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "THESE PEOPLE MUST THINK WE RUN A CHARITY.",
+            "I GOT A CALL TODAY. AN INVITATION."
+          ],
+          "summary": "Two characters are having a conversation in a car at night."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_18_panel_2",
+      "input_ref": "page_18_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "advising",
+            "mood": "urgent",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "YOU DON'T HAVE TIME FOR ANY INVITATIONS. EYE ON THE PRIZE, SWEETIE."
+          ],
+          "summary": "A car is parked in a field as a voice advises to focus on the goal."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_18_panel_3",
+      "input_ref": "page_18_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "defiant",
+            "setting": "night"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "I DON'T WANT THE PRIZE ANYMORE, MOTHER."
+          ],
+          "summary": "A character expresses their refusal to accept a prize, addressing their mother."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_18_panel_4",
+      "input_ref": "page_18_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "YOU CRAZY? YOU'RE A CASH-COW, HONEY. YOU'RE GOING TO DO EXACTLY WHAT I SAY YOU'RE GOING TO DO..."
+          ],
+          "summary": "A character expresses frustration and asserts control over another."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_18_panel_5",
+      "input_ref": "page_18_panel_5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "threat",
+            "mood": "tense",
+            "setting": "car"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "OH, REALLY?"
+          ],
+          "summary": "A tense confrontation occurs in a car, with one character threatening another with a knife."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_19_panel_1",
+      "input_ref": "page_19_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A woman stands in a field, bound and looking up at a helicopter hovering above her, with a vehicle nearby."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_19_panel_2",
+      "input_ref": "page_19_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "captivity",
+            "mood": "tense",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A woman stands with her back to the viewer, bound and looking up at a helicopter hovering above her."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_19_panel_3",
+      "input_ref": "page_19_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "WELCOME TO THE SOCIETY.",
+            "JUST GET ME OUT OF HERE..."
+          ],
+          "summary": ""
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_20_panel_1",
+      "input_ref": "page_20_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "narration",
+            "mood": "suspenseful",
+            "setting": "lounge"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "FIVE, HOMELESS ON THE STREETS OF BROOKLYN BY 14, BOOKED 46 TIMES FOR THEFT, VANDALISM, MALE PROSTITUTION BY AGE 18. SLEPT IN A PUBLIC LIBRARY READING EVERY BOOK ABOUT FINANCE AVAILABLE. STARTED HIS OWN PONZI SCHEME AT 22. MULTIMILLIONAIRE BY 25. SUSPECT IN MULTIPLE SERIAL KILLINGS."
+          ],
+          "summary": "A man in a suit holds a drink while standing in a luxurious lounge, where others are seated and engaged in conversation."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_20_panel_2",
+      "input_ref": "page_20_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "threat",
+            "mood": "threatening",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "I'D LIKE TO CHOP YOU INTO LITTLE TINY PIECES AND MAKE A STEW."
+          ],
+          "summary": "A character expresses a violent threat in a tense situation."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_20_panel_3",
+      "input_ref": "page_20_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "flirtatious",
+            "setting": "social gathering"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "I\u2019d love to get to know you better, too."
+          ],
+          "summary": "A woman in a blue dress holds a glass and speaks with a smile."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_20_panel_4",
+      "input_ref": "page_20_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "conversation",
+            "mood": "curious",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "I'D LIKE TO GET TO KNOW"
+          ],
+          "summary": "A character expresses a desire to get to know someone."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_22_panel_1",
+      "input_ref": "page_22_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "conversation",
+            "mood": "curious",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "YOU ACTUALLY LIVE HERE?",
+            "AMONG MANY OTHER PLACES."
+          ],
+          "summary": "A woman in a blue dress enters a stylish room, questioning if the man behind her actually lives there."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_22_panel_2",
+      "input_ref": "page_22_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": ""
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_22_panel_3",
+      "input_ref": "page_22_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "pouring",
+            "mood": "casual",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": [
+            "man",
+            "woman"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "VODKA, NEAT?",
+            "WHATEVER'S EASIEST.",
+            "EVERYTHING'S EASY WITH YOU, ISN'T IT?"
+          ],
+          "summary": "A man is pouring vodka while a woman stands in the background looking out the window."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_22_panel_4",
+      "input_ref": "page_22_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "communication",
+            "mood": "urgent",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "WHY COMPLICATE THINGS, RIGHT?",
+            "RIGHT?...",
+            "FUCK, HE'S ONTO US. MOVE!"
+          ],
+          "summary": "A woman with red hair is speaking into an earpiece, expressing urgency."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_23_panel_1",
+      "input_ref": "page_23_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "SVLAM!"
+          ],
+          "summary": "A group of armed officers bursts through a doorway, ready for action."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_23_panel_2",
+      "input_ref": "page_23_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "interrogation",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "WHERE IS HE?!"
+          ],
+          "summary": "A masked figure demands to know the whereabouts of someone."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_23_panel_3",
+      "input_ref": "page_23_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "exclamation",
+            "mood": "urgent",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "HE WAS...RIGHT THERE!"
+          ],
+          "summary": "A character expresses urgency and concern about someone's recent presence."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_23_panel_4",
+      "input_ref": "page_23_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "climbing",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A man is climbing a pole towards a window."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_23_panel_5",
+      "input_ref": "page_23_panel_5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "SUSPECT IS MOVING! REPEAT....!"
+          ],
+          "summary": "A tactical team is in pursuit of a suspect, preparing for action."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_24_panel_1",
+      "input_ref": "page_24_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "emergence",
+            "mood": "surprised",
+            "setting": "elevator"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "WRUNK"
+          ],
+          "summary": "A man in a suit is emerging from an elevator with a surprised expression."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_24_panel_2",
+      "input_ref": "page_24_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "suspenseful",
+            "setting": "room"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A character is holding a blue garment while looking towards a door in a dimly lit room."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_24_panel_3",
+      "input_ref": "page_24_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "waiting",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": [
+            "man"
+          ]
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A man is leaning against a wall, appearing tense and cautious."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_24_panel_4",
+      "input_ref": "page_24_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "urging",
+            "mood": "tense",
+            "setting": "alley"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Mr. Thorne"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "YOU WOULD BE WELL-ADVISED TO GET INTO THIS VEHICLE NOW, MR. THORNE...",
+            "AND YOU WOULD BE CORRECT."
+          ],
+          "summary": "Mr. Thorne is being urged to enter a vehicle in a tense alleyway."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_24_panel_5",
+      "input_ref": "page_24_panel_5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "dialogue",
+            "mood": "confrontational",
+            "setting": "vehicle"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "AH, YOU AGAIN. YOU'RE NOTHING IF NOT PERSISTENT."
+          ],
+          "summary": "A character is seated in a vehicle, holding a card and addressing another character off-panel."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_24_panel_6",
+      "input_ref": "page_24_panel_6",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "tense",
+            "setting": "alley"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "HEY!",
+            "SKREEE"
+          ],
+          "summary": "Two police officers are in an alley, one is aiming a gun while the other is alert."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_25_panel_1",
+      "input_ref": "page_25_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "awe",
+            "setting": "space"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A figure stands on a ledge, gazing at a massive floating city in a surreal landscape."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_26_panel_1",
+      "input_ref": "page_26_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "presentation",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "AS YOU CAN SEE, A RELATIVISTIC TERM THAT'S ALL MEANING WITHOUT ANTAGONIST. THAT IS.",
+            "CLEANSE WHAT?"
+          ],
+          "summary": "A speaker addresses an audience, discussing a relativistic term and its implications."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_26_panel_2",
+      "input_ref": "page_26_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "lecture",
+            "mood": "dark",
+            "setting": "classroom"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "MAO, RAISED BY HYPER-DISCIPLINARIAN GRANDFATHER WHO USED TORTURE TO TEACH. SPECIALIST IN PHILOSOPHY OF EVIL AND MING DYNASTY TORTURE PROTOCOLS. PRACTICES THEM IN PRIVATE WITH ANYONE UNLUCKY ENOUGH TO ASK HER OUT ON A DATE.",
+            "Stays have their jobs for us, but us, right? For black and deep desires. Human nature is evil, and goodness is caused by intentional activity. It will have blood, they say; blood will have blood."
+          ],
+          "summary": "A classroom setting where a speaker discusses the philosophy of evil and torture protocols."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_26_panel_3",
+      "input_ref": "page_26_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "conversation",
+            "mood": "neutral",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": [
+            "MS. YAN"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "MS. YAN, I HOPE YOU DON'T MIND. I FOUND YOUR LECTURE THOUGHT PROVOKING."
+          ],
+          "summary": "A character enters a room, expressing appreciation for a lecture."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_26_panel_4",
+      "input_ref": "page_26_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "declaration",
+            "mood": "serious",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "CLEANSE."
+          ],
+          "summary": "A character expresses a desire to cleanse something."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_26_panel_5",
+      "input_ref": "page_26_panel_5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "reflective",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "THINKING ABOUT EVIL IS MEANINGLESS. ONLY BY RETREATING IT DO WE REALIZE ITS POTENTIAL TO CLEAN."
+          ],
+          "summary": "A woman walks confidently while contemplating the nature of evil."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_28_panel_1",
+      "input_ref": "page_28_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "curious",
+            "setting": "interior"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "WHAT CAN YOU TEACH ME THAT I DON'T ALREADY KNOW?"
+          ],
+          "summary": "A character questions what more they can learn, holding a smartphone."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_28_panel_2",
+      "input_ref": "page_28_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "questioning",
+            "mood": "confrontational",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": [
+            "female character",
+            "male character"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "WHAT CAN YOU TEACH ME THAT I DON'T ALREADY KNOW?",
+            "HOW TO KILL."
+          ],
+          "summary": "A female character questions what more she can learn, while a male character responds with a dark answer."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_28_panel_3",
+      "input_ref": "page_28_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "planning",
+            "mood": "contemplative",
+            "setting": "laboratory"
+          }
+        },
+        "entities": {
+          "characters": [
+            "unknown"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "ACTUALLY, LET ME REPHRASE THAT. HOW TO KILL...MORE ELEGANTLY."
+          ],
+          "summary": "A character in a lab coat contemplates a more elegant method of killing while holding a glass."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_29_panel_1",
+      "input_ref": "page_29_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "WE'VE ARRANGED FOR YOU TO HAVE A SABBATICAL AT FULL PAY, AND DEPOSITED A MILLION DOLLARS IN YOUR ACCOUNT.",
+            "LET ME FINISH SOMETHING, FIRST..."
+          ],
+          "summary": "A character is speaking on a device, discussing a sabbatical and a financial arrangement."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_29_panel_2",
+      "input_ref": "page_29_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "torture",
+            "mood": "intense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "WTASSHH!",
+            "AAARGGHH!!",
+            "FINE. SEND THE CAR."
+          ],
+          "summary": "A woman wields a whip while a bound man reacts in pain."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_29_panel_3",
+      "input_ref": "page_29_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "communication",
+            "mood": "assertive",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "FINE. SEND THE CAR."
+          ],
+          "summary": "A character is speaking into a device, commanding someone to send a car."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_30_panel_1",
+      "input_ref": "page_30_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "working",
+            "mood": "serious",
+            "setting": "laboratory"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "ASPERGERS SYNDROME, 205 IQ, PARENTS TORTURED AND KILLED IN RWANDA, ESCAPED TO THE U.S. WITH SEVERE UNDIAGNOSED PTSD, WARRIOR GENE, HACKER, HELPS THE FBI LOCATE MISSING PERSONS."
+          ],
+          "summary": "A character in a lab coat is seated at a computer, working in a high-tech environment."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_30_panel_2",
+      "input_ref": "page_30_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "uploading",
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "THE ALGORITHM CAN FIND ANYONE, MAKE SURE NOBODY EVER GETS FOUND. READY FOR THE UPLOAD?"
+          ],
+          "summary": "A character is preparing for an upload while holding a device displaying a face."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_30_panel_3",
+      "input_ref": "page_30_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A close-up of a person's hand hovering over a keyboard, suggesting tension or focus."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_30_panel_4",
+      "input_ref": "page_30_panel_4",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": ""
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_30_panel_5",
+      "input_ref": "page_30_panel_5",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "THE APPOINTMENT."
+          ],
+          "summary": "A character is speaking about an appointment."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_30_panel_6",
+      "input_ref": "page_30_panel_6",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "interaction",
+            "mood": "neutral",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "The panel shows a close-up of a hand holding a device, with USB drives visible on a table."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_32_panel_1",
+      "input_ref": "page_32_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "arrival",
+            "mood": "calm",
+            "setting": "outdoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A car is parked near a gate in a scenic outdoor setting with mountains in the background."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_32_panel_2",
+      "input_ref": "page_32_panel_2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [
+            "I GET MY OWN ROOM, RIGHT?",
+            "WHO'S YOUR ARCHITECT? I WANT TO CUT HIS HEAD OFF.",
+            "TELL YOUR FUCKING GUARDS TO STAND DOWN."
+          ],
+          "summary": ""
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_32_panel_3",
+      "input_ref": "page_32_panel_3",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "standoff",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "Three men are positioned in a tense standoff, with one holding a weapon."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_34_panel_1",
+      "input_ref": "page_34_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "neutral",
+            "setting": "neutral"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "Three characters stand side by side, each dressed in distinct styles."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "page_36_panel_1",
+      "input_ref": "page_36_panel_1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "display",
+            "mood": "mysterious",
+            "setting": "symbolic"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "The panel features a detailed coat of arms with various symbols."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "spread_020_021",
+      "input_ref": "spread_020_021",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {}
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": ""
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "spread_026_027",
+      "input_ref": "spread_026_027",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "The scene depicts a tense confrontation between characters in an office setting."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "spread_030_031",
+      "input_ref": "spread_030_031",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "The scene depicts a tense confrontation between characters in a dimly lit room."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "spread_032_033",
+      "input_ref": "spread_032_033",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "tense",
+            "setting": "indoor"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "The scene depicts a tense confrontation between characters in a dimly lit room."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "spread_034_035",
+      "input_ref": "spread_034_035",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "confrontation",
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "The scene depicts a tense confrontation between characters in an office setting."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    },
+    {
+      "artifact_id": "spread_004_005",
+      "input_ref": "spread_004_005",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "mood": "tense",
+            "setting": "office"
+          }
+        },
+        "entities": {
+          "characters": []
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "The scene depicts a tense moment in an office setting."
+        }
+      },
+      "status": "complete",
+      "version": "v1"
+    }
+  ]
+}

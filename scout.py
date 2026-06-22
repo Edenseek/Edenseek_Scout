@@ -43,6 +43,56 @@ def save_memory(memory):
 
     os.replace(temp_file, MEMORY_FILE)
 
+def _default_dataset_track():
+    """Seed for the edenseek_dataset memory track (PROJECT_MEMORY_SCHEMA.md §2.2-2.3)."""
+    return {
+        "active_milestone": None,
+        "next_action": None,
+        "last_verified_commit": None,
+        "quality_score": None,
+        "last_audit": None,
+        "audited_artifact_count": 0,
+        "scores": {
+            "metadata_completeness": None,
+            "character_consistency": None,
+            "dialogue_completeness": None,
+            "retrieval_readiness": None,
+        },
+        "weak_artifacts": {
+            "total_flagged": 0,
+            "by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        },
+        "latest_reports": {},
+        "open_questions": [],
+        "themes": [],
+        "opportunities": [],
+        "risks": [],
+    }
+
+
+def update_dataset_memory(summary):
+    """Persist a Phase 1 audit summary to the edenseek_dataset track only.
+
+    Additive and idempotent: seeds the track if absent, writes the defined audit
+    fields, and leaves all other memory untouched. Atomic + lock-guarded.
+    """
+    with memory_lock:
+        memory = load_memory()
+        projects = memory.setdefault("projects", {})
+        track = projects.get("edenseek_dataset") or _default_dataset_track()
+
+        track["quality_score"] = summary["quality_score"]
+        track["last_audit"] = summary["last_audit"]
+        track["audited_artifact_count"] = summary["artifact_count"]
+        track["scores"] = summary["scores"]
+        track["weak_artifacts"] = summary["weak_artifacts_summary"]
+        track["latest_reports"] = summary["latest_reports"]
+
+        projects["edenseek_dataset"] = track
+        save_memory(memory)
+        logger.info("edenseek_dataset memory track updated")
+
+
 def call_openai_with_retries(prompt, max_attempts=3, timeout=60):
     last_error = None
 
