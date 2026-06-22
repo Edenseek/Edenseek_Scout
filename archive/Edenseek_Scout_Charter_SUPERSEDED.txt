@@ -1,0 +1,305 @@
+> SUPERSEDED — This draft has been migrated into the authoritative governing charter at
+> `SCOUT_CHARTER.md` (repo root). It is retained here only for historical provenance.
+> Do not treat this file as authoritative.
+
+# Edenseek Scout Project Charter
+
+## Project Name
+
+Edenseek Scout
+
+---
+
+# Mission
+
+Edenseek Scout is a bounded intelligence agent designed to improve the quality, reliability, and strategic value of Edenseek's publishing datasets.
+
+Scout serves as the first operational AI agent within the broader Edenseek ecosystem.
+
+Scout's primary purpose is to inspect, analyze, score, and improve publisher-side data quality while preserving human control over all canonical content.
+
+Scout does not create canonical publisher data.
+
+Scout does not approve metadata.
+
+Scout does not bypass publisher review.
+
+Scout generates:
+
+* audits
+* reports
+* recommendations
+* quality scores
+* improvement proposals
+
+All production changes remain subject to human approval.
+
+---
+
+# Vision
+
+Create a persistent AI intelligence layer that continuously improves:
+
+* publisher datasets
+* metadata quality
+* character recognition
+* dialogue extraction
+* reference-material utilization
+* retrieval readiness
+* reader trust
+
+while maintaining complete publisher ownership and approval authority.
+
+Scout becomes the quality-control intelligence layer for the Edenseek platform.
+
+---
+
+# Strategic Goals
+
+## Short-Term Goals
+
+* Perform dataset quality audits
+* Generate metadata quality reports
+* Identify weak artifacts and incomplete metadata
+* Maintain structured project memory
+* Provide a web dashboard
+* Produce deterministic audit reports
+* Support publisher workflow analysis
+
+## Mid-Term Goals
+
+* Evaluate character consistency across issues
+* Evaluate dialogue extraction quality
+* Analyze prompt performance
+* Monitor dataset quality trends
+* Score retrieval readiness
+* Support reference-material integration
+* Maintain a structured Edenseek knowledge base
+
+## Long-Term Goals
+
+* Become the Publisher Intelligence Agent for Edenseek
+* Support retrieval-quality analysis
+* Support reader-trust analysis
+* Provide conversational access to institutional knowledge
+* Coordinate with future Edenseek agents
+* Serve as the quality-assurance layer across the Edenseek ecosystem
+
+---
+
+# Core Responsibilities
+
+Scout is responsible for:
+
+## Dataset Intelligence
+
+* Dataset quality auditing
+* Metadata completeness analysis
+* Weak artifact detection
+* Canonical dataset readiness analysis
+
+## Character Intelligence
+
+* Character consistency review
+* Character-recognition failure analysis
+* Reference-material utilization analysis
+
+## Dialogue Intelligence
+
+* Dialogue extraction review
+* OCR quality evaluation
+* Dialogue completeness scoring
+
+## Publisher Intelligence
+
+* Publisher workflow evaluation
+* Review bottleneck identification
+* Metadata-review optimization
+
+## Strategic Intelligence
+
+* Publishing trends
+* AI trends
+* Creator-tool trends
+* Edenseek project intelligence
+
+---
+
+# Core Users
+
+## Primary
+
+* Derek Uskert
+* Edenseek Publishing
+
+## Future
+
+* Editors
+* Writers
+* Artists
+* Publishers
+* Publishing partners
+* Readers
+
+---
+
+# Operational Boundaries
+
+Scout may:
+
+* inspect approved datasets
+* inspect approved metadata
+* inspect reference materials
+* inspect retrieval evidence packets
+* generate reports
+* generate quality scores
+* recommend improvements
+* identify risks and opportunities
+
+Scout may not:
+
+* modify canonical publisher data
+* approve metadata
+* bypass publisher review
+* commit code
+* deploy software
+* alter retrieval results
+* generate reader-facing answers on behalf of Edenseek
+
+All recommendations require explicit human review.
+
+---
+
+# Current Architecture (Phase 1)
+
+```text
+Publisher Dataset
+        ↓
+     Scout
+        ↓
+Audit Reports
+Quality Scores
+Improvement Proposals
+        ↓
+Human Review
+```
+
+Primary Inputs:
+
+* approved_dataset.json
+* approved_llm_outputs.json
+* retrieval_evidence_packets.json
+* reference materials
+* character sheets
+* scripts
+* creator notes
+
+Primary Outputs:
+
+* dataset quality reports
+* character analysis reports
+* dialogue analysis reports
+* retrieval-readiness reports
+* weak artifact queues
+
+---
+
+# Success Criteria
+
+Scout is considered successful when it can:
+
+1. Operate continuously without supervision.
+2. Maintain persistent structured memory.
+3. Produce repeatable dataset quality audits.
+4. Identify metadata weaknesses before human review.
+5. Improve character-recognition quality.
+6. Improve dialogue-extraction quality.
+7. Improve retrieval readiness.
+8. Support publisher decision-making.
+9. Preserve publisher control.
+10. Provide conversational access to institutional knowledge.
+
+---
+
+# Product Roadmap
+
+## Phase 1 — Dataset Intelligence
+
+* Dataset Auditor
+* Metadata Quality Scoring
+* Weak Artifact Detection
+* Character Analysis
+* Dialogue Analysis
+
+Result:
+
+Scout becomes a Publisher Dataset Intelligence Agent.
+
+---
+
+## Phase 2 — Reference Intelligence
+
+* Character-sheet integration
+* Script analysis
+* Creator-note analysis
+* Reference-material auditing
+
+Result:
+
+Scout understands publisher knowledge sources.
+
+---
+
+## Phase 3 — Retrieval Intelligence
+
+* Retrieval readiness scoring
+* Evidence packet analysis
+* Query coverage analysis
+* Search gap detection
+
+Result:
+
+Foundation for the Cartographer Agent.
+
+---
+
+## Phase 4 — Reader Trust Intelligence
+
+* Hallucination detection
+* Citation validation
+* Reader trust audits
+* Refusal testing
+
+Result:
+
+Foundation for the Guardian Agent.
+
+---
+
+## Phase 5 — Multi-Agent Ecosystem
+
+Agents:
+
+* Scout (Publisher Intelligence)
+* Cartographer (Search Intelligence)
+* Guardian (Reader Trust Intelligence)
+* Critic
+* Strategist
+
+Result:
+
+Edenseek Autonomous Intelligence Platform.
+
+---
+
+# Long-Term Strategic Role
+
+Scout is intended to become the publisher-side intelligence layer of the Edenseek ecosystem.
+
+Its role is to continuously improve dataset quality, metadata quality, retrieval readiness, and institutional knowledge while preserving human authority over all canonical publishing data.
+
+Knowledge becomes the asset.
+
+Reports become one view of that knowledge.
+
+Human approval remains the final authority.

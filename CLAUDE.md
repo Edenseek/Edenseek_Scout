@@ -6,7 +6,7 @@
 >
 > If you are new to the project, read this file first, then:
 >
-> 1. `SCOUT_CHARTER.md` (repo root) — governing identity and boundaries (**Scout is read-and-advise only**)
+> 1. `SCOUT_CHARTER.md` (repo root) — the **sole authoritative governing charter** (identity, mission, boundaries, and phased roadmap; **Scout is read-and-advise only**). Where any other document conflicts with the charter, the charter wins.
 > 2. `docs/architecture/scout_v0.3_synopsis.md`
 > 3. `docs/architecture/scout_status_and_tech_debt.md`
 > 4. `docs/architecture/scout_beta_roadmap.md`
@@ -27,21 +27,28 @@
 
 # 1. Project Overview
 
-Edenseek Scout is an always-on AI research agent for Edenseek Publishing.
+Edenseek Scout is a **bounded Publisher Dataset Intelligence Agent** for Edenseek
+Publishing. Its identity and boundaries are governed by `SCOUT_CHARTER.md` (the sole
+authoritative charter).
 
-Scout continuously monitors developments in:
+Scout inspects publisher-side data artifacts and reports on their quality:
 
-* Artificial Intelligence
-* Publishing
-* Comics
-* Digital media
-* Strategic opportunities relevant to Edenseek
+* Dataset quality and metadata completeness
+* Character recognition and consistency
+* Dialogue extraction quality
+* Retrieval readiness
+* Weak-artifact detection
 
-Scout generates autonomous intelligence reports, maintains persistent memory, and presents results through a web dashboard.
+Scout generates deterministic quality audits, maintains persistent memory, and presents
+results through a web dashboard. Scout is **read-and-advise only**: it inspects, scores,
+reports, and recommends, but never modifies canonical publisher data, approves metadata,
+bypasses publisher review, writes code, commits, or deploys (see `SCOUT_CHARTER.md` §4).
 
 Long-term vision:
 
-> Scout evolves from a report generator into Edenseek's autonomous intelligence and research system.
+> Scout becomes the publisher-side intelligence layer of the Edenseek ecosystem — the
+> quality-control intelligence layer for the platform, with human approval as the final
+> authority.
 
 ---
 

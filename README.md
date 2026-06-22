@@ -1,16 +1,24 @@
 # Edenseek Scout
 
-Edenseek Scout is an always-on AI research agent developed by Edenseek Publishing.
+Edenseek Scout is a **bounded Publisher Dataset Intelligence Agent** developed by Edenseek
+Publishing. Its governing identity and boundaries are defined in the sole authoritative
+charter, [`SCOUT_CHARTER.md`](./SCOUT_CHARTER.md).
 
-Scout continuously monitors developments across:
+Scout inspects publisher-side data artifacts and reports on their quality:
 
-* Artificial Intelligence
-* Publishing
-* Comics
-* Digital Media
-* Strategic opportunities relevant to Edenseek
+* Dataset quality and metadata completeness
+* Character recognition and consistency
+* Dialogue extraction quality
+* Retrieval readiness
+* Weak-artifact detection
 
-The system generates autonomous intelligence reports, maintains persistent memory, and delivers research insights through a web dashboard.
+Scout is **read-and-advise only** — it inspects, scores, reports, and recommends. It never
+modifies canonical publisher data, approves metadata, bypasses publisher review, writes
+code, commits, or deploys. All production changes require human approval (see
+`SCOUT_CHARTER.md` §4).
+
+The system generates deterministic quality audits, maintains persistent memory, and
+delivers findings through a web dashboard.
 
 ## Current Status
 
@@ -26,8 +34,10 @@ Deployment:
 * Persistent storage and memory (atomic, lock-guarded writes)
 
 Reliability hardening is complete (path-traversal containment, OpenAI timeout/retry,
-atomic memory writes). The active milestone is **Memory v0.4**. Scout is **read-and-advise
-only** — it never writes code, commits, or deploys (see `SCOUT_CHARTER.md`).
+atomic memory writes). The active direction is **Phase 1 — Dataset Intelligence**
+(`SCOUT_CHARTER.md` §8); the structured-memory foundation from the prior Memory v0.4 work
+underpins it. Scout is **read-and-advise only** — it never modifies canonical publisher
+data, approves metadata, writes code, commits, or deploys (see `SCOUT_CHARTER.md` §4).
 
 Production URL:
 
@@ -49,25 +59,14 @@ OpenAI API
 
 ## Roadmap
 
-### v0.4 (active)
-
-* Structured memory extraction
-* Knowledge accumulation
-* Memory dashboard
-* Intake Reports (project continuity briefings)
-* Remaining hardening: rate limiting, async generation, lifespan migration
-
-### Future
-
-* Active web research
-* Conversational interface
-* Reflection agent
-* Critic agent
-* Multi-agent orchestration
+Scout's phased roadmap is defined in [`SCOUT_CHARTER.md`](./SCOUT_CHARTER.md) §8. The active
+phase is **Phase 1 — Dataset Intelligence** (dataset auditor, metadata quality scoring,
+weak-artifact detection, character analysis, dialogue analysis). Later phases extend Scout
+toward reference, retrieval, and reader-trust intelligence within a multi-agent ecosystem.
 
 ## Documentation
 
-* SCOUT_CHARTER.md — governing identity and boundaries
+* SCOUT_CHARTER.md — **sole authoritative governing charter** (identity, mission, boundaries, roadmap)
 * docs/architecture/scout_v0.3_synopsis.md
 * docs/architecture/scout_status_and_tech_debt.md
 * docs/architecture/scout_beta_roadmap.md
@@ -79,4 +78,8 @@ OpenAI API
 
 ## Mission
 
-Scout's long-term objective is to become Edenseek's autonomous intelligence and research system, transforming accumulated knowledge into strategic guidance for publishing, AI, and creative projects.
+Scout's long-term objective is to become the **publisher-side intelligence layer** of the
+Edenseek ecosystem — continuously improving dataset quality, metadata quality, retrieval
+readiness, and institutional knowledge while preserving complete human authority over all
+canonical publishing data. Knowledge is the asset; reports are one view of it; human
+approval remains the final authority (see `SCOUT_CHARTER.md`).
