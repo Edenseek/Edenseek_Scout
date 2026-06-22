@@ -1,197 +1,207 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Edenseek Scout</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Edenseek Scout — Dataset Intelligence</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f5f7;
-      color: #1f2933;
-      margin: 0;
-      padding: 0;
-    }
-
-    header {
-      background: #111827;
-      color: white;
-      padding: 24px 40px;
-    }
-
-    main {
-      padding: 32px 40px;
-      max-width: 1100px;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 32px;
-    }
-
-    .subtitle {
-      color: #cbd5e1;
-      margin-top: 8px;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 16px;
-      margin-bottom: 28px;
-    }
-
-    .card {
-      background: white;
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    }
-
-    .card h2 {
-      font-size: 16px;
-      margin: 0 0 10px;
-      color: #4b5563;
-    }
-
-    .metric {
-      font-size: 28px;
-      font-weight: bold;
-    }
-
-    button {
-      background: #2563eb;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 12px 18px;
-      font-size: 15px;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      background: #94a3b8;
-      cursor: not-allowed;
-    }
-
-    .reports {
-      background: white;
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    }
-
-    .report-item {
-      padding: 10px 0;
-      border-bottom: 1px solid #e5e7eb;
-    }
-
-    .report-item a {
-      color: #2563eb;
-      text-decoration: none;
-      font-weight: 600;
-    }
-
-    .status {
-      margin-top: 12px;
-      color: #4b5563;
-    }
+    :root { --ink:#1f2933; --muted:#6b7280; --line:#e5e7eb; --blue:#2563eb; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background:#f4f5f7; color:var(--ink); margin:0; }
+    header { background:#111827; color:#fff; padding:20px 32px; }
+    header h1 { margin:0; font-size:24px; }
+    header .subtitle { color:#cbd5e1; margin-top:4px; font-size:13px; }
+    nav { display:flex; flex-wrap:wrap; gap:6px; background:#1f2937; padding:8px 32px; }
+    nav button { background:transparent; color:#cbd5e1; border:none; padding:10px 14px;
+      border-radius:6px; cursor:pointer; font-size:14px; }
+    nav button.active, nav button:hover { background:#374151; color:#fff; }
+    nav .spacer { flex:1; }
+    nav .run { background:var(--blue); color:#fff; font-weight:600; }
+    main { padding:24px 32px; max-width:1100px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:14px; margin-bottom:20px; }
+    .card { background:#fff; border-radius:10px; padding:18px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+    .card h3 { margin:0 0 8px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    .metric { font-size:26px; font-weight:bold; }
+    .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:13px; font-weight:700; color:#fff; }
+    .badge.ready { background:#16a34a; } .badge.partially_ready { background:#d97706; } .badge.not_ready { background:#dc2626; }
+    .badge.high { background:#dc2626; } .badge.medium { background:#d97706; } .badge.low { background:#6b7280; }
+    table { width:100%; border-collapse:collapse; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+    th, td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); font-size:14px; }
+    th { background:#f9fafb; color:var(--muted); }
+    h2 { font-size:18px; margin:24px 0 10px; }
+    pre.report { background:#fff; padding:16px; border-radius:8px; overflow:auto; font-size:12.5px;
+      line-height:1.45; box-shadow:0 1px 4px rgba(0,0,0,.06); white-space:pre-wrap; }
+    a { color:var(--blue); text-decoration:none; font-weight:600; }
+    .status { color:var(--muted); margin:8px 0; }
+    .hidden { display:none; }
+    code { background:#eef2ff; padding:1px 5px; border-radius:4px; }
   </style>
 </head>
 <body>
   <header>
     <h1>Edenseek Scout</h1>
-    <div class="subtitle">Always-on AI research agent for Edenseek, Phrasmos, and Caelaris</div>
+    <div class="subtitle">Dataset Intelligence Dashboard · read-only, deterministic, advisory</div>
   </header>
 
+  <nav>
+    <button data-screen="digest" class="active" onclick="show('digest')">Daily Digest</button>
+    <button data-screen="review" onclick="show('review')">Review Queue</button>
+    <button data-screen="readiness" onclick="show('readiness')">Retrieval Readiness</button>
+    <button data-screen="failures" onclick="show('failures')">Failure Analysis</button>
+    <button data-screen="reports" onclick="show('reports')">Reports Index</button>
+    <span class="spacer"></span>
+    <button class="run" id="run-btn" onclick="runAudit()">Run Audit</button>
+  </nav>
+
   <main>
-    <div class="grid">
-      <div class="card">
-        <h2>Service Status</h2>
-        <div class="metric" id="service-status">Online</div>
-      </div>
-
-      <div class="card">
-        <h2>Reports Generated</h2>
-        <div class="metric" id="report-count">—</div>
-      </div>
-
-      <div class="card">
-        <h2>Latest Report</h2>
-        <div class="metric" id="latest-report">—</div>
-      </div>
-
-      <div class="card">
-        <h2>Next Scheduled Run</h2>
-        <div class="metric">08:00 UTC</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Manual Scout Run</h2>
-      <button id="run-button" onclick="runScout()">Run Scout</button>
-      <div class="status" id="run-status">Ready.</div>
-    </div>
-
-    <br>
-
-    <section class="reports">
-      <h2>Recent Reports</h2>
-      <div id="reports-list">Loading reports...</div>
-    </section>
+    <div class="status" id="run-status"></div>
+    <div id="screen"></div>
   </main>
 
   <script>
-    async function loadReports() {
-      const response = await fetch("/reports");
-      const data = await response.json();
+    const screenEl = document.getElementById("screen");
+    let current = "digest";
 
-      const reports = data.reports || [];
-      document.getElementById("report-count").innerText = reports.length;
-      document.getElementById("latest-report").innerText = reports[0] || "None";
-
-      const list = document.getElementById("reports-list");
-      list.innerHTML = "";
-
-      if (reports.length === 0) {
-        list.innerHTML = "<p>No reports yet.</p>";
-        return;
-      }
-
-      reports.forEach(report => {
-        const div = document.createElement("div");
-        div.className = "report-item";
-        div.innerHTML = `<a href="/report/${report}" target="_blank">${report}</a>`;
-        list.appendChild(div);
+    function show(name) {
+      current = name;
+      document.querySelectorAll("nav button[data-screen]").forEach(b =>
+        b.classList.toggle("active", b.dataset.screen === name));
+      const loaders = { digest: loadDigest, review: loadReview, readiness: loadReadiness,
+                        failures: loadFailures, reports: loadReports };
+      screenEl.innerHTML = "<p class='status'>Loading…</p>";
+      loaders[name]().catch(err => {
+        screenEl.innerHTML = `<p class='status'>Could not load. ${err.message}. ` +
+          `If no audit has run yet, click <b>Run Audit</b>.</p>`;
       });
     }
 
-    async function runScout() {
-      const button = document.getElementById("run-button");
-      const status = document.getElementById("run-status");
+    async function getJSON(url) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }
+    async function getText(url) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    }
+    const esc = s => String(s == null ? "" : s).replace(/[&<>]/g, c =>
+      ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
 
-      button.disabled = true;
-      status.innerText = "Scout is running...";
+    async function loadDigest() {
+      const d = (await getJSON("/audit/digest")).digest;
+      const hl = d.highest_leverage_failure;
+      const rv = d.review || {};
+      const rd = d.readiness || {};
+      const delta = d.quality_delta == null ? "" : ` (${d.quality_delta >= 0 ? "+" : ""}${d.quality_delta})`;
+      let html = `<div class="grid">
+        <div class="card"><h3>Dataset</h3><div class="metric" style="font-size:18px">${esc(d.dataset_id)}</div></div>
+        <div class="card"><h3>Quality Score</h3><div class="metric">${esc(d.quality_score)}/100${esc(delta)}</div></div>
+        <div class="card"><h3>Retrieval Readiness</h3><div><span class="badge ${esc(rd.verdict)}">${esc(rd.verdict)}</span></div>
+          <div class="status">grounding: ${esc(rd.grounding_status)}</div></div>
+        <div class="card"><h3>Trend Confidence</h3><div class="metric" style="font-size:18px">${esc((d.trend||{}).confidence)}</div></div>
+      </div>`;
+      html += `<h2>Highest-leverage failure</h2>`;
+      html += hl ? `<p><span class="badge ${esc(hl.estimated_impact)}">${esc(hl.estimated_impact)}</span>
+        <b>${esc(hl.failure_type)}</b> (${esc(hl.domain)}) — ${esc(hl.affected_count)} artifacts (${esc(hl.affected_percent)}%)</p>`
+        : `<p class="status">None.</p>`;
+      html += `<h2>Today's review queue (top ${ (rv.top_items||[]).length })</h2>`;
+      html += `<p class="status">Total flagged: ${esc(rv.total)} ·
+        high ${esc((rv.by_impact||{}).high)}, medium ${esc((rv.by_impact||{}).medium)}, low ${esc((rv.by_impact||{}).low)}</p>`;
+      html += rows(["Rank","Artifact","Page","Impact","Weakness"],
+        (rv.top_items||[]).map(q => [q.priority_rank, q.artifact_id,
+          (typeof q.page === "number" ? q.page : "unpaged"), q.estimated_impact, q.primary_weakness]));
+      const ch = d.changes_since_last_audit;
+      html += `<h2>Since previous audit</h2>`;
+      html += ch ? `<p class="status">Quality change: ${ch.quality_change}; new: ${ (ch.new_failures||[]).join(", ")||"none" };
+        resolved: ${ (ch.resolved_failures||[]).join(", ")||"none" }</p>`
+        : `<p class="status">Not enough history yet.</p>`;
+      screenEl.innerHTML = html;
+    }
 
+    async function loadReview() {
+      const txt = await getText("/audit/priority");
+      screenEl.innerHTML = `<h2>Review Priority Queue</h2><pre class="report">${esc(txt)}</pre>`;
+    }
+
+    async function loadReadiness() {
+      const rr = (await getJSON("/audit/retrieval-readiness")).retrieval_readiness;
+      let html = `<h2>Retrieval Readiness</h2>
+        <p><span class="badge ${esc(rr.verdict)}">${esc(rr.verdict)}</span> · score ${esc(rr.readiness_score)}/100</p>
+        <p class="status">${esc(rr.explanation)}</p>`;
+      html += rows(["Dimension","Status","Measured","Evidence"],
+        (rr.dimensions||[]).map(d => [d.dimension, d.status, d.measured_percent + "%", d.evidence]));
+      html += `<p class="status">Strengths: ${ (rr.strengths||[]).join(", ")||"none" } ·
+        Weaknesses: ${ (rr.weaknesses||[]).join(", ")||"none" }</p>`;
+      if (rr.trend) html += `<p class="status">Trend: retrieval_readiness ${esc(rr.trend.retrieval_readiness)}
+        (confidence ${esc(rr.trend.confidence)})</p>`;
+      screenEl.innerHTML = html;
+    }
+
+    async function loadFailures() {
+      const data = await getJSON("/audit/failures");
+      const hl = (data.highest_leverage || {}).highest_leverage_failure;
+      let html = `<h2>Highest-leverage failure</h2>`;
+      html += hl ? `<p><span class="badge ${esc(hl.estimated_impact)}">${esc(hl.estimated_impact)}</span>
+        <b>${esc(hl.failure_type)}</b> (${esc(hl.domain)}) — ${esc(hl.affected_count)} (${esc(hl.affected_percent)}%)</p>`
+        : `<p class="status">None.</p>`;
+      html += `<h2>Root cause taxonomy</h2>`;
+      html += rows(["Failure","Domain","Severity","Impact","Affected","%"],
+        ((data.root_cause||{}).failures||[]).map(f =>
+          [f.failure_type, f.domain, f.severity, f.estimated_impact, f.affected_count, f.affected_percent]));
+      screenEl.innerHTML = html;
+    }
+
+    async function loadReports() {
+      const data = await getJSON("/audit/reports");
+      const reports = data.reports || {};
+      let html = `<h2>Reports Index</h2><p class="status">Click a report to view it.</p><ul>`;
+      for (const [type, path] of Object.entries(reports)) {
+        html += path
+          ? `<li><a href="#" onclick="viewReport('${type}');return false;">${esc(type)}</a></li>`
+          : `<li>${esc(type)} <span class="status">(not generated yet)</span></li>`;
+      }
+      html += `</ul><div id="report-view"></div>`;
+      screenEl.innerHTML = html;
+    }
+
+    async function viewReport(type) {
+      const view = document.getElementById("report-view");
+      view.innerHTML = "<p class='status'>Loading…</p>";
       try {
-        const response = await fetch("/run-scout", {
-          method: "POST"
-        });
-
-        if (!response.ok) {
-          throw new Error("Scout run failed");
-        }
-
-        const data = await response.json();
-        status.innerText = `Scout completed: ${data.report}`;
-        await loadReports();
-
-      } catch (error) {
-        status.innerText = "Scout run failed. Check logs/scout.log.";
-      } finally {
-        button.disabled = false;
+        const txt = await getText("/audit/report/" + type);
+        view.innerHTML = `<pre class="report">${esc(txt)}</pre>`;
+      } catch (e) {
+        view.innerHTML = `<p class='status'>Could not load report (${e.message}).</p>`;
       }
     }
 
-    loadReports();
+    function rows(headers, data) {
+      if (!data.length) return `<p class="status">None.</p>`;
+      const th = headers.map(h => `<th>${esc(h)}</th>`).join("");
+      const tr = data.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`).join("");
+      return `<table><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`;
+    }
+
+    async function runAudit() {
+      const btn = document.getElementById("run-btn");
+      const status = document.getElementById("run-status");
+      btn.disabled = true;
+      status.textContent = "Running audit…";
+      try {
+        const r = await fetch("/run-audit", { method: "POST" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const data = await r.json();
+        status.textContent = `Audit complete: quality ${data.quality_score}/100, ${Object.keys(data.reports).length} reports.`;
+        show(current);
+      } catch (e) {
+        status.textContent = "Audit failed. Check logs/scout.log.";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    show("digest");
   </script>
 </body>
 </html>
