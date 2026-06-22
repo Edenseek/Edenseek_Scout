@@ -1,24 +1,34 @@
 # Edenseek Scout
 
-Edenseek Scout is a **bounded Publisher Dataset Intelligence Agent** developed by Edenseek
-Publishing. Its governing identity and boundaries are defined in the sole authoritative
+Edenseek Scout is the **Dataset Intelligence Layer** for Edenseek Publishing — a bounded,
+read-only, deterministic system that turns publisher-side data into structured quality
+intelligence. Its governing identity and boundaries are defined in the sole authoritative
 charter, [`SCOUT_CHARTER.md`](./SCOUT_CHARTER.md).
+
+Scout serves **two audiences from the same deterministic outputs**:
+
+* **Humans** (Derek, publishers) — what to review, what is wrong, is quality improving.
+* **AI engineering agents** (ChatGPT, Claude Code, future Edenseek agents) — *why* the
+  dataset is failing and which part of the creation/enrichment/approval/retrieval pipeline
+  to improve.
 
 Scout inspects publisher-side data artifacts and reports on their quality:
 
 * Dataset quality and metadata completeness
-* Character recognition and consistency
-* Dialogue extraction quality
+* Character recognition and dialogue coverage
 * Retrieval readiness
-* Weak-artifact detection
+* Weak-artifact detection and review prioritization
+* Dataset failure analysis (why scores are low)
 
 Scout is **read-and-advise only** — it inspects, scores, reports, and recommends. It never
-modifies canonical publisher data, approves metadata, bypasses publisher review, writes
-code, commits, or deploys. All production changes require human approval (see
-`SCOUT_CHARTER.md` §4).
+modifies canonical data, approves/rejects/locks artifacts, rewrites prompts, changes its
+own scoring rules, acts as a retrieval engine, answers reader-facing questions, writes code,
+or deploys. All production changes require human approval (see `SCOUT_CHARTER.md` §4).
 
-The system generates deterministic quality audits, maintains persistent memory, and
-delivers findings through a web dashboard.
+**Cost:** reports are produced by JSON parsing, counting, and structural analysis — **no
+LLM, embedding, vision, or external-service calls** — so they are cheap and safe to run on
+every audit and after pipeline changes. Audit history is logged so trends can be inspected
+later; Scout may read its own history but never self-modifies from it.
 
 ## Current Status
 
@@ -34,10 +44,10 @@ Deployment:
 * Persistent storage and memory (atomic, lock-guarded writes)
 
 Reliability hardening is complete (path-traversal containment, OpenAI timeout/retry,
-atomic memory writes). The active direction is **Phase 1 — Dataset Intelligence**
-(`SCOUT_CHARTER.md` §8); the structured-memory foundation from the prior Memory v0.4 work
-underpins it. Scout is **read-and-advise only** — it never modifies canonical publisher
-data, approves metadata, writes code, commits, or deploys (see `SCOUT_CHARTER.md` §4).
+atomic memory writes). Phase 1 (Dataset Auditor) and Phase 2 (Publisher Intelligence /
+review prioritization) are complete; the active phase is **Phase 3 — Dataset Failure
+Analysis** (`SCOUT_CHARTER.md` §8). Scout is **read-and-advise only** and **deterministic**
+— report generation makes no LLM calls (see `SCOUT_CHARTER.md` §4).
 
 Production URL:
 
@@ -53,16 +63,17 @@ Nginx
 ↓
 FastAPI
 ↓
-Scout Agent
+Scout (Dataset Intelligence Layer)
 ↓
-OpenAI API
+deterministic reports (no LLM calls)
 
 ## Roadmap
 
-Scout's phased roadmap is defined in [`SCOUT_CHARTER.md`](./SCOUT_CHARTER.md) §8. The active
-phase is **Phase 1 — Dataset Intelligence** (dataset auditor, metadata quality scoring,
-weak-artifact detection, character analysis, dialogue analysis). Later phases extend Scout
-toward reference, retrieval, and reader-trust intelligence within a multi-agent ecosystem.
+Scout's phased roadmap is defined in [`SCOUT_CHARTER.md`](./SCOUT_CHARTER.md) §8. Phases 1
+(Dataset Intelligence) and 2 (Publisher Intelligence) are complete; the active phase is
+**Phase 3 — Dataset Failure Analysis** (root-cause aggregation, highest-leverage failure).
+Later phases add historical intelligence, retrieval-readiness, reader-trust, and a
+multi-agent ecosystem.
 
 ## Documentation
 

@@ -9,19 +9,28 @@
 
 ## 1. What Scout Is
 
-Edenseek Scout is a **bounded Publisher Dataset Intelligence Agent** for Edenseek
-Publishing. Scout's purpose is to inspect, analyze, score, and recommend improvements to
-publisher-side data quality while preserving complete human authority over all canonical
-content.
+Edenseek Scout is the **Dataset Intelligence Layer** for Edenseek Publishing — a bounded,
+read-only, deterministic system that inspects publisher-side data and produces structured
+intelligence about its quality. Scout is the **first operational Dataset Intelligence
+System** within the broader Edenseek ecosystem. It is intentionally deterministic and
+non-autonomous: it does not plan, use tools, or take actions.
 
-Scout is the **first operational AI agent** within the broader Edenseek ecosystem.
+Scout serves **two audiences from the same deterministic outputs**:
+
+- **Humans** — Derek and publishers, who need to know what to review, what is wrong, and
+  whether quality is improving.
+- **AI engineering agents** — ChatGPT, Claude Code, and future Edenseek agents, which need
+  structured, machine-readable intelligence on *why* the dataset is failing and which part
+  of the creation / enrichment / approval / retrieval pipeline to improve.
 
 Scout's product is **knowledge and quality intelligence**, not reports. Reports, quality
-scores, and weak-artifact queues are renderings of what Scout knows about the datasets it
-audits.
+scores, queues, and failure analyses are renderings of what Scout knows about the datasets
+it audits.
 
-Scout **does not** create canonical publisher data, approve metadata, or bypass publisher
-review. All production changes remain subject to human approval.
+Scout is **diagnostic, not prescriptive of action**: it identifies and explains problems
+and surfaces where they cluster, but it does not act, approve, or change the system. Scout
+**does not** create canonical data, approve metadata, or bypass publisher review. All
+production changes remain subject to human authority.
 
 ---
 
@@ -69,15 +78,20 @@ Scout MAY:
 Scout MUST NOT:
 
 - modify canonical Edenseek/publisher data
-- approve metadata or bypass publisher review
-- implement or alter search or retrieval results
-- generate reader-facing answers on behalf of Edenseek
-- write, modify, or refactor project code
-- create commits, branches, tags, or pushes
+- approve, reject, or lock metadata or artifacts, or bypass publisher review
+- rewrite prompts, or automatically apply prompt/enrichment/data changes
+- change its own scoring rules, failure taxonomy, or configuration autonomously
+- modify itself or its behavior based on its own history (it may *report* on history,
+  never *self-modify* from it)
+- rely on LLM, embedding, vision, or external network calls to produce its reports —
+  reports are deterministic and offline (JSON parsing, counting, structural analysis)
+- implement or act as a search/retrieval engine, or alter retrieval results
+- generate reader-facing narrative answers on behalf of Edenseek
+- write, modify, or refactor project code; create commits/branches/tags/pushes
 - deploy, restart services, or change infrastructure
 - take any irreversible or outward-facing action autonomously
 
-All recommendations require explicit human review.
+All recommendations and analyses are advisory and require explicit human review.
 
 ---
 
@@ -90,6 +104,14 @@ All recommendations require explicit human review.
 5. **Evolve, don't rewrite.** Grow the three-module foundation incrementally.
 6. **Advise, never act.** See §4. Scout proposes; humans dispose. Human approval is the
    final authority.
+7. **Deterministic and cheap.** Reports are produced by JSON parsing, counting, and
+   structural analysis — no LLM, embedding, vision, or external-service calls — so they are
+   safe to run on every audit and after every pipeline change.
+8. **No autonomous self-modification.** Scout may read its own historical reports and audit
+   history to report trends, but never changes its scoring rules, taxonomy, or
+   configuration on its own.
+9. **Serve humans and agents alike.** Every report pairs a human-readable rendering with a
+   stable, machine-readable structure so AI engineering agents can consume it.
 
 ---
 
@@ -148,13 +170,20 @@ Scout is successful when it can:
 
 | Phase | Focus | Result |
 |-------|-------|--------|
-| **Phase 1 — Dataset Intelligence** | Dataset auditor, metadata quality scoring, weak-artifact detection, character analysis, dialogue analysis | Scout becomes a Publisher Dataset Intelligence Agent |
-| Phase 2 — Reference Intelligence | Character-sheet integration, script analysis, creator-note analysis, reference-material auditing | Scout understands publisher knowledge sources |
-| Phase 3 — Retrieval Intelligence | Retrieval-readiness scoring, evidence-packet analysis, query-coverage analysis, search-gap detection | Foundation for the Cartographer Agent |
-| Phase 4 — Reader Trust Intelligence | Hallucination detection, citation validation, reader-trust audits, refusal testing | Foundation for the Guardian Agent |
-| Phase 5 — Multi-Agent Ecosystem | Scout (Publisher), Cartographer (Search), Guardian (Reader Trust), Critic, Strategist | Edenseek Autonomous Intelligence Platform |
+| Phase 1 — Dataset Intelligence ✅ | Dataset auditor, metadata quality scoring, weak-artifact detection, character/dialogue analysis | Scout audits dataset quality |
+| Phase 2 — Publisher Intelligence ✅ | Review prioritization, page heat map, audit history + trend | Scout knows what to review next |
+| **Phase 3 — Dataset Failure Analysis** | Root-cause aggregation, highest-leverage failure, failure clusters, retrieval blockers | Scout explains *why* the dataset is failing |
+| Phase 4 — Historical Intelligence | Trend, regression, and intervention-effectiveness over audit history | Scout shows what improved and what recurs |
+| Phase 5 — Retrieval Readiness Intelligence | Deeper retrieval-readiness / evidence-packet / coverage analysis | Scout assesses how ready the dataset is for retrieval (never a retrieval engine) |
+| Phase 6 — Reader Trust Intelligence | Hallucination, citation, reader-trust, and refusal analysis | Scout assesses the dataset's reader-trust readiness |
+| Phase 7 — Coordinated Intelligence Ecosystem | Dataset, search-readiness, and reader-trust intelligence coordinated with critique and strategy | An Edenseek dataset-intelligence platform |
 
-The current active phase is **Phase 1**.
+The current active phase is **Phase 3 — Dataset Failure Analysis**.
+
+Future **agent identities** (e.g. specialized search, reader-trust, critic, or strategist
+roles) are **roadmap concepts, not charter commitments**. This charter defines Scout's
+purpose and boundaries only; the evolving agent/system structure lives in
+`docs/architecture/scout_beta_roadmap.md`.
 
 ---
 

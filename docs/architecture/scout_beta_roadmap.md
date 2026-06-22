@@ -2,104 +2,78 @@
 
 > Last verified against commit: fdf0ab8
 >
-> Phase definitions are **authoritative in `SCOUT_CHARTER.md` §8** (Phase 1–5). This
+> Phase definitions are **authoritative in `SCOUT_CHARTER.md` §8** (Phase 1–7). This
 > document tracks execution detail and sequencing under that taxonomy. Where the two
 > differ, the charter wins.
 
-## Active Phase — Phase 1: Dataset Intelligence
+Scout is the **Dataset Intelligence Layer** for Edenseek — read-only, deterministic,
+non-autonomous, serving humans and AI engineering agents. Reports use no LLM/embedding/
+vision calls and are cheap to run on every audit.
 
-Scout's current active work per the charter. Read-and-advise only; deterministic where
-possible (Charter §4–§5).
+## Phase 1 — Dataset Intelligence ✅ Complete
 
-* Dataset Auditor
-* Metadata Quality Scoring
-* Weak Artifact Detection
-* Character Analysis (consistency vs. reference materials)
-* Dialogue Analysis (extraction completeness / OCR quality)
-* Reference-Material Readiness Analysis
+* Dataset Auditor, metadata quality scoring, weak-artifact detection
+* Character analysis (recognition coverage), dialogue analysis (population coverage)
+* Retrieval-readiness scoring
 
-Inputs (read-only; **committed fixtures initially**, configurable local paths later):
-`approved_dataset.json`, `approved_llm_outputs.json`, `retrieval_evidence_packets.json`,
-reference materials, character sheets, scripts, creator notes.
+Result: Scout audits dataset quality. (See `REPORT_SPECIFICATION.md` §4.)
 
-Outputs: dataset quality reports, character analysis reports, dialogue analysis reports,
-retrieval-readiness reports, weak-artifact queues (see `REPORT_SPECIFICATION.md` §4).
-Audit results persist to the `edenseek_dataset` memory track (see
-`PROJECT_MEMORY_SCHEMA.md` §2.3).
-
-Result: Scout becomes the **Publisher Dataset Intelligence Agent**.
-
-## Enabling Foundation (supports Phase 1 — not gating ahead of it)
-
-Reliability, operability, and persistence work that strengthens Phase 1 but does **not**
-block it. These were previously sequenced as standalone milestones; under the charter they
-are supporting tracks for the active phase.
-
-* **Milestone A — Stop The Bleeding ✅ Complete (commit fdf0ab8):** path traversal fixed,
-  OpenAI timeout, retry handling, atomic memory writes.
-* **Memory v0.4:** structured per-project memory, extraction, deduplication, `/memory`
-  endpoint, dashboard panel. Provides the `edenseek_dataset` track that Phase 1 audits
-  write to.
-* **Operability:** FastAPI lifespan migration, scheduler health endpoint, test suite,
-  rate limiting.
-* **Persistence:** SQLite migration, memory tables, report metadata tables.
-
-## Later Phases (charter taxonomy)
-
-### Phase 2 — Publisher Intelligence: Review Prioritization (in progress)
+## Phase 2 — Publisher Intelligence: Review Prioritization ✅ Complete
 
 * Artifact priority ranking (Review Priority Queue)
 * Page rollup / page heat map
 * Audit history persistence + trend
 * `GET /audit/priority`, `GET /audit/history`
 
-Read-only, deterministic, advisory (see `docs/architecture/REVIEW_PRIORITIZATION.md`).
-Reference-material intelligence (character sheets, scripts, creator notes) follows as a
-later Phase 2 increment.
+Result: Scout knows what to review next. (See `REVIEW_PRIORITIZATION.md`.)
 
-Result: Scout understands the publisher review workflow and what to review next.
+## Phase 3 — Dataset Failure Analysis ⬅ active
 
-### Phase 3 — Retrieval Intelligence
+Answers *why* the dataset is failing and where failures cluster, for humans and AI
+engineering agents. Read-only, deterministic, **diagnostic** (not prescriptive of action).
 
-* Retrieval-readiness scoring
-* Evidence-packet analysis
-* Query-coverage analysis
-* Search-gap detection
+* **Phase 3A (first slice):** Root Cause Report + Highest Leverage Failure Report
+* **Phase 3B (later):** Failure Cluster Report + Retrieval Blockers Report
+
+Adds a compact `failure_summary` to each audit-history snapshot. (See
+`REPORT_SPECIFICATION.md` §6 and the planned `FAILURE_ANALYSIS.md`.)
+
+Result: Scout explains why dataset quality is low and which pipeline area is implicated.
+
+## Phase 4 — Historical Intelligence
+
+* What improved / what got worse across audit snapshots
+* Which interventions appear to have helped; are recurring failures shrinking
+* Are new failures appearing
+
+Result: Scout reports dataset-quality trajectory over time (reads history; never
+self-modifies from it).
+
+## Phase 5 — Retrieval Readiness Intelligence
+
+* Deeper retrieval-readiness scoring, evidence-packet analysis, coverage/gap detection
 
 Result: Foundation for the **Cartographer Agent**.
 
-### Phase 4 — Reader Trust Intelligence
+## Phase 6 — Reader Trust Intelligence
 
-* Hallucination detection
-* Citation validation
-* Reader-trust audits
-* Refusal testing
+* Hallucination detection, citation validation, reader-trust audits, refusal testing
 
 Result: Foundation for the **Guardian Agent**.
 
-### Phase 5 — Multi-Agent Ecosystem
+## Phase 7 — Multi-Agent Ecosystem
 
-* Scout (Publisher Intelligence)
-* Cartographer (Search Intelligence)
-* Guardian (Reader Trust Intelligence)
-* Critic
-* Strategist
+* Scout (Dataset/Publisher Intelligence), Cartographer (Search), Guardian (Reader Trust),
+  Critic, Strategist
 
 Result: **Edenseek Autonomous Intelligence Platform**.
 
-## Mapping From Prior Milestone Taxonomy
+## Enabling Foundation (supports the phases above — not gating them)
 
-The earlier A–H milestone lettering is superseded by the charter's Phase 1–5 spine. The
-mapping below preserves the prior content so nothing is lost:
+Reliability/operability/persistence work that strengthens the dataset intelligence layer:
 
-| Prior milestone                       | Charter phase / track                          |
-|---------------------------------------|------------------------------------------------|
-| A — Stop The Bleeding                  | Enabling Foundation (complete)                 |
-| B — Memory v0.4                        | Enabling Foundation                            |
-| C — Operability                        | Enabling Foundation                            |
-| D — Persistence                        | Enabling Foundation                            |
-| E — Publisher Dataset Intelligence     | **Phase 1 — Dataset Intelligence (active)**    |
-| F — Search Intelligence                | Phase 3 — Retrieval Intelligence (Cartographer)|
-| G — Reader Trust Intelligence          | Phase 4 — Reader Trust Intelligence (Guardian) |
-| H — Multi-Agent System                 | Phase 5 — Multi-Agent Ecosystem                |
-| (new — not in prior taxonomy)          | Phase 2 — Reference Intelligence               |
+* **Stop The Bleeding ✅ (commit fdf0ab8):** path traversal fixed, OpenAI timeout/retry,
+  atomic memory writes.
+* **Operability:** FastAPI lifespan migration, scheduler health endpoint, test suite,
+  rate limiting.
+* **Persistence:** SQLite migration, memory tables, report metadata tables.

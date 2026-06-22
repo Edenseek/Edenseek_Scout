@@ -17,12 +17,15 @@
 | Review Priority Queue     | `reports/review_priority/review_priority_queue.md` | Phase 2 |
 | Page Heat Map             | `reports/page_heatmap/page_heat_map.md`    | Phase 2 |
 | Audit History             | `reports/audit_history/audit_history.md`   | Phase 2 |
+| Root Cause Report         | `reports/root_cause/root_cause_report.md`  | planned (Phase 3A) |
+| Highest Leverage Failure Report | `reports/highest_leverage/highest_leverage_failure_report.md` | planned (Phase 3A) |
 
-The Phase 1 report types below derive from `SCOUT_CHARTER.md` §6. All are **read-only and
-advisory**: Scout inspects, scores, and recommends; it never modifies canonical publisher
-data, approves metadata, or bypasses publisher review (Charter §4). Each report pairs a
-human-readable Markdown rendering with a machine-readable JSON block so findings can feed
-memory and downstream tooling deterministically.
+All report types are **read-only, deterministic, and advisory**: Scout inspects, scores,
+explains, and recommends; it never modifies canonical data, approves/rejects/locks
+artifacts, or bypasses publisher review (Charter §4). Reports are generated without LLM,
+embedding, or vision calls. Each report pairs a human-readable Markdown rendering with a
+stable, machine-readable JSON block so both humans and AI engineering agents can consume it
+deterministically.
 
 ## 2. Strategic Report (existing + v0.4 extension)
 
@@ -305,7 +308,49 @@ and deltas (not predictions). JSON block:
 }
 ```
 
-## 6. Formatting Rules
+## 6. Phase 3 — Dataset Failure Analysis Reports (planned)
+
+Deterministic, read-only, **diagnostic** (not prescriptive of engineering action). These
+aggregate the per-artifact `blocking_issues` already produced in Phase 1/2 into a stable
+failure taxonomy, for both humans and AI engineering agents. Detailed schemas are finalized
+at Phase 3A Gate B; the shapes below are indicative.
+
+### 6.1 Root Cause Report
+
+Aggregates failures by type with factual counts/percentages and affected artifacts/pages.
+
+```json
+{
+  "dataset": "society_of_killers/issue_1",
+  "artifact_count": 105,
+  "failures": [
+    {"failure_type": "missing_characters", "domain": "enrichment", "severity": "medium",
+     "affected_count": 90, "affected_percent": 86, "affected_pages": [3, 6, 12],
+     "affected_artifact_ids": ["page_3_panel_4"], "explanation": "..."}
+  ]
+}
+```
+
+### 6.2 Highest Leverage Failure Report
+
+Identifies the **largest failure category** (diagnostic only — it names the dominant
+failure, its scale, and a qualitative impact band, but does **not** prescribe specific
+engineering actions). Impact is a qualitative band (`high|medium|low`); **no numeric
+predicted score increase is ever emitted** — only measured counts and percentages.
+
+```json
+{
+  "highest_leverage_failure": {
+    "failure_type": "missing_characters", "domain": "enrichment",
+    "affected_count": 90, "affected_percent": 86, "estimated_impact": "high",
+    "rationale": "Largest failure category by coverage."
+  },
+  "ranked_failures": [ /* same shape, sorted */ ],
+  "process_backlog": {"not_approved": 104, "unreviewed": 105}
+}
+```
+
+## 7. Formatting Rules
 
 - Markdown for human-facing files; JSON blocks for machine-consumed sections.
 - Timestamps ISO-8601; commit SHAs short form with subject.

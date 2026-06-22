@@ -27,28 +27,38 @@
 
 # 1. Project Overview
 
-Edenseek Scout is a **bounded Publisher Dataset Intelligence Agent** for Edenseek
-Publishing. Its identity and boundaries are governed by `SCOUT_CHARTER.md` (the sole
+Edenseek Scout is the **Dataset Intelligence Layer** for Edenseek Publishing — a bounded,
+read-only, deterministic system (intentionally non-autonomous: no planning, tool use, or
+actions). Its identity and boundaries are governed by `SCOUT_CHARTER.md` (the sole
 authoritative charter).
+
+Scout serves **two audiences from the same deterministic outputs**: humans (Derek,
+publishers) and **AI engineering agents** (ChatGPT, Claude Code, future Edenseek agents)
+that use Scout's structured intelligence to improve dataset creation, enrichment, approval,
+and retrieval quality.
 
 Scout inspects publisher-side data artifacts and reports on their quality:
 
 * Dataset quality and metadata completeness
-* Character recognition and consistency
-* Dialogue extraction quality
+* Character recognition and dialogue coverage
 * Retrieval readiness
-* Weak-artifact detection
+* Weak-artifact detection and review prioritization
+* Dataset failure analysis — *why* scores are low (Phase 3)
 
-Scout generates deterministic quality audits, maintains persistent memory, and presents
-results through a web dashboard. Scout is **read-and-advise only**: it inspects, scores,
-reports, and recommends, but never modifies canonical publisher data, approves metadata,
-bypasses publisher review, writes code, commits, or deploys (see `SCOUT_CHARTER.md` §4).
+Scout generates **deterministic** reports (JSON parsing, counting, structural analysis —
+**no LLM, embedding, vision, or external-service calls**), maintains persistent memory and
+audit history, and presents results through a web dashboard. Reports are cheap and safe to
+run on every audit. Scout is **read-and-advise only / diagnostic**: it inspects, scores,
+explains, and recommends, but never modifies canonical data, approves/rejects/locks
+artifacts, rewrites prompts, changes its own scoring rules, acts as a retrieval engine,
+answers reader-facing questions, or self-modifies from its history (see `SCOUT_CHARTER.md`
+§4).
 
 Long-term vision:
 
-> Scout becomes the publisher-side intelligence layer of the Edenseek ecosystem — the
-> quality-control intelligence layer for the platform, with human approval as the final
-> authority.
+> Scout becomes the dataset intelligence layer of the Edenseek ecosystem — explaining where
+> dataset quality fails and helping humans and AI agents fix the pipeline, with human
+> approval as the final authority.
 
 ---
 
