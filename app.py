@@ -8,7 +8,12 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from scout import generate_report, load_memory
 from scheduler import start_scheduler
-from dataset_auditor import run_dataset_audit, analyze_failures
+from dataset_auditor import (
+    run_dataset_audit,
+    analyze_failures,
+    analyze_clusters,
+    analyze_retrieval_blockers,
+)
 from audit_inputs import AuditInputError
 from audit_reports import REPORT_FILES, REPORTS_ROOT
 from logging_config import logger
@@ -186,4 +191,22 @@ def get_audit_failures(username: str = Depends(require_auth)):
         return analyze_failures()
     except AuditInputError as e:
         logger.warning(f"Failure analysis input error: {e}")
+        raise HTTPException(status_code=422, detail=f"Invalid audit input: {e}")
+
+
+@app.get("/audit/clusters")
+def get_audit_clusters(username: str = Depends(require_auth)):
+    try:
+        return analyze_clusters()
+    except AuditInputError as e:
+        logger.warning(f"Cluster analysis input error: {e}")
+        raise HTTPException(status_code=422, detail=f"Invalid audit input: {e}")
+
+
+@app.get("/audit/retrieval-blockers")
+def get_audit_retrieval_blockers(username: str = Depends(require_auth)):
+    try:
+        return analyze_retrieval_blockers()
+    except AuditInputError as e:
+        logger.warning(f"Retrieval blocker analysis input error: {e}")
         raise HTTPException(status_code=422, detail=f"Invalid audit input: {e}")

@@ -82,6 +82,8 @@ def _analyze_artifacts(outputs, approved_ids):
 
         characters = entities.get("characters", []) or []
         dialogue = narrative.get("dialogue", []) or []
+        summary = narrative.get("summary")
+        summary_length = len(summary) if isinstance(summary, str) else 0
 
         per_artifact.append({
             "artifact_id": aid,
@@ -89,6 +91,7 @@ def _analyze_artifacts(outputs, approved_ids):
             "meta_present": present,
             "meta_total": len(checks),
             "missing_fields": missing,
+            "summary_length": summary_length,
             "has_characters": len(characters) > 0,
             "has_dialogue": len(dialogue) > 0,
             "is_reviewed": out.get("metadata_review_state") == REVIEWED_STATE,
@@ -102,9 +105,13 @@ def _analyze_artifacts(outputs, approved_ids):
 def _score_retrieval(packets, known_ids):
     findings = []
     packet_fractions = []
+    referenced_ids = set()
     for idx, pkt in enumerate(packets):
         pid = f"packet_{idx}"
         pkt_artifacts = pkt.get("artifacts", []) or []
+        for a in pkt_artifacts:
+            if isinstance(a, dict) and a.get("artifact_id") is not None:
+                referenced_ids.add(a.get("artifact_id"))
         checks = {
             "confidence_set": pkt.get("confidence") is not None,
             "matched_fields": bool(pkt.get("matched_fields")),
@@ -129,7 +136,7 @@ def _score_retrieval(packets, known_ids):
                              "severity": "high", "recommendation": "Ensure referenced artifacts are approved before retrieval use."})
 
     score = round(_pct(sum(packet_fractions), len(packet_fractions))) if packet_fractions else 0
-    return score, findings
+    return score, findings, referenced_ids
 
 
 def _weak_reasons(pa):
@@ -197,6 +204,7 @@ def assess_artifact(pa):
         "score": round(_pct(sum(dims), len(dims))),
         # Raw flags (structured signals for failure analysis — Phase 3+).
         "missing_fields": pa["missing_fields"],
+        "summary_length": pa["summary_length"],
         "has_characters": pa["has_characters"],
         "has_dialogue": pa["has_dialogue"],
         "is_reviewed": pa["is_reviewed"],
@@ -248,7 +256,7 @@ def run_audit(inputs):
     metadata_completeness = round(_pct(meta_present, meta_total))
     character_consistency = round(_pct(chars_present, n))
     dialogue_completeness = round(_pct(dialogue_present, n))
-    retrieval_readiness, retrieval_findings = _score_retrieval(packets, approved_ids)
+    retrieval_readiness, retrieval_findings, retrieval_referenced = _score_retrieval(packets, approved_ids)
 
     scores = {
         "metadata_completeness": metadata_completeness,
@@ -333,6 +341,7 @@ def run_audit(inputs):
     retrieval_block = {
         "retrieval_readiness_score": retrieval_readiness,
         "packets_evaluated": len(packets),
+        "artifacts_referenced": len(retrieval_referenced),
         "findings": retrieval_findings,
     }
 

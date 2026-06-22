@@ -11,6 +11,7 @@ import audit_inputs  # noqa: E402
 import audit_scoring  # noqa: E402
 import audit_prioritization  # noqa: E402
 import audit_failure_analysis  # noqa: E402
+import audit_retrieval_blockers  # noqa: E402
 import audit_reports  # noqa: E402
 
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "dataset" / "society_of_killers" / "issue_1"
@@ -26,6 +27,8 @@ REQUIRED_KEYS = {
     "audit_history": {"history", "latest_delta"},
     "root_cause": {"artifact_count", "failures"},
     "highest_leverage": {"highest_leverage_failure", "ranked_failures", "process_backlog"},
+    "failure_clusters": {"artifact_count", "issue_wide_failures", "page_clusters", "unpaged_cluster"},
+    "retrieval_blockers": {"retrieval_readiness_score", "packet_coverage", "packet_blockers", "artifact_blockers"},
 }
 
 _SAMPLE_HISTORY = [{
@@ -53,6 +56,9 @@ class TestAuditReports(unittest.TestCase):
         rc = audit_failure_analysis.build_root_cause(artifacts)
         cls.result["blocks"]["root_cause"] = rc
         cls.result["blocks"]["highest_leverage"] = audit_failure_analysis.build_highest_leverage_failure(rc)
+        cls.result["blocks"]["failure_clusters"] = audit_failure_analysis.build_failure_clusters(artifacts)
+        cls.result["blocks"]["retrieval_blockers"] = audit_retrieval_blockers.build_retrieval_blockers(
+            artifacts, cls.result["blocks"]["retrieval"])
 
     def test_write_all_reports(self):
         with tempfile.TemporaryDirectory() as d:

@@ -14,6 +14,7 @@ import audit_inputs
 import audit_scoring
 import audit_prioritization
 import audit_failure_analysis
+import audit_retrieval_blockers
 import audit_reports
 import scout
 
@@ -52,6 +53,11 @@ def run_dataset_audit(input_dir=None):
     root_cause = audit_failure_analysis.build_root_cause(result["artifacts"])
     result["blocks"]["root_cause"] = root_cause
     result["blocks"]["highest_leverage"] = audit_failure_analysis.build_highest_leverage_failure(root_cause)
+
+    # ---- Phase 3B: failure clusters + retrieval blockers ----
+    result["blocks"]["failure_clusters"] = audit_failure_analysis.build_failure_clusters(result["artifacts"])
+    result["blocks"]["retrieval_blockers"] = audit_retrieval_blockers.build_retrieval_blockers(
+        result["artifacts"], result["blocks"]["retrieval"])
 
     # ---- Phase 2: append audit-history snapshot, then build the history block ----
     snapshot = {
@@ -100,17 +106,39 @@ def run_dataset_audit(input_dir=None):
     }
 
 
+def _load_and_score(input_dir):
+    inputs = audit_inputs.load_inputs(_resolve_input_dir(input_dir))
+    return audit_scoring.run_audit(inputs)
+
+
 def analyze_failures(input_dir=None):
     """Compute failure analysis without writing reports or memory (read-only).
 
     Pure and deterministic; used by the agent-facing `/audit/failures` endpoint.
     """
-    input_dir = _resolve_input_dir(input_dir)
-    inputs = audit_inputs.load_inputs(input_dir)
-    result = audit_scoring.run_audit(inputs)
+    result = _load_and_score(input_dir)
     root_cause = audit_failure_analysis.build_root_cause(result["artifacts"])
     return {
         "dataset_id": result["dataset_id"],
         "root_cause": root_cause,
         "highest_leverage": audit_failure_analysis.build_highest_leverage_failure(root_cause),
+    }
+
+
+def analyze_clusters(input_dir=None):
+    """Compute failure clusters without writing reports or memory (read-only)."""
+    result = _load_and_score(input_dir)
+    return {
+        "dataset_id": result["dataset_id"],
+        "failure_clusters": audit_failure_analysis.build_failure_clusters(result["artifacts"]),
+    }
+
+
+def analyze_retrieval_blockers(input_dir=None):
+    """Compute retrieval blockers without writing reports or memory (read-only)."""
+    result = _load_and_score(input_dir)
+    return {
+        "dataset_id": result["dataset_id"],
+        "retrieval_blockers": audit_retrieval_blockers.build_retrieval_blockers(
+            result["artifacts"], result["blocks"]["retrieval"]),
     }

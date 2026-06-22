@@ -32,11 +32,11 @@ Result: Scout knows what to review next. (See `REVIEW_PRIORITIZATION.md`.)
 Answers *why* the dataset is failing and where failures cluster, for humans and AI
 engineering agents. Read-only, deterministic, **diagnostic** (not prescriptive of action).
 
-* **Phase 3A (first slice):** Root Cause Report + Highest Leverage Failure Report
-* **Phase 3B (later):** Failure Cluster Report + Retrieval Blockers Report
+* **Phase 3A ✅:** Root Cause Report + Highest Leverage Failure Report
+* **Phase 3B ✅:** Failure Cluster Report + Retrieval Blockers Report
 
 Adds a compact `failure_summary` to each audit-history snapshot. (See
-`REPORT_SPECIFICATION.md` §6 and the planned `FAILURE_ANALYSIS.md`.)
+`REPORT_SPECIFICATION.md` §6, `FAILURE_ANALYSIS.md`, and `RETRIEVAL_READINESS.md`.)
 
 Result: Scout explains why dataset quality is low and which pipeline area is implicated.
 

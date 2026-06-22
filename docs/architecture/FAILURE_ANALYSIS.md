@@ -69,3 +69,21 @@ self-modifies from it.
 - Deterministic: identical inputs → identical taxonomy counts, ranking, and summary.
 - Read-only: no input mutation; outputs only to `reports/**` and `data/memory.json`.
 - Diagnostic and advisory: no actions, no approvals, no numeric predictions, no self-modification.
+
+## 8. Failure Clusters (Phase 3B)
+
+`build_failure_clusters(artifacts)` locates *where* the same taxonomy failures concentrate,
+so an AI engineering agent can tell a **systemic** problem (fix the pipeline/prompt) from a
+**localized** one (fix specific pages/artifacts). Authored thresholds:
+
+- **Issue-wide** (systemic): overall coverage ≥ `ISSUE_WIDE_THRESHOLD_PCT` (80%).
+- **Page cluster** (localized): for non-issue-wide failures, a page where the failure
+  affects ≥ `PAGE_CLUSTER_MIN_FRACTION` (50%) of the page's artifacts and ≥
+  `PAGE_CLUSTER_MIN_COUNT` (2) artifacts.
+- **Unpaged cluster**: failures concentrated among artifacts with no page linkage
+  (artifact-identity / page-mapping issues).
+
+Every cluster carries `category` (`content` from enrichment/ingestion domains, or
+`workflow` from `approval_workflow`). **Workflow failures are shown and tagged, never
+hidden** — they are legitimate dataset failure patterns, kept clearly separated from
+content failures (`DOMAIN_CATEGORY`). Impact is the coverage band (§3); no numeric prediction.

@@ -17,8 +17,10 @@
 | Review Priority Queue     | `reports/review_priority/review_priority_queue.md` | Phase 2 |
 | Page Heat Map             | `reports/page_heatmap/page_heat_map.md`    | Phase 2 |
 | Audit History             | `reports/audit_history/audit_history.md`   | Phase 2 |
-| Root Cause Report         | `reports/root_cause/root_cause_report.md`  | planned (Phase 3A) |
-| Highest Leverage Failure Report | `reports/highest_leverage/highest_leverage_failure_report.md` | planned (Phase 3A) |
+| Root Cause Report         | `reports/root_cause/root_cause_report.md`  | Phase 3A |
+| Highest Leverage Failure Report | `reports/highest_leverage/highest_leverage_failure_report.md` | Phase 3A |
+| Failure Cluster Report    | `reports/failure_clusters/failure_cluster_report.md` | Phase 3B |
+| Retrieval Blockers Report | `reports/retrieval_blockers/retrieval_blockers_report.md` | Phase 3B |
 
 All report types are **read-only, deterministic, and advisory**: Scout inspects, scores,
 explains, and recommends; it never modifies canonical data, approves/rejects/locks
@@ -347,6 +349,37 @@ predicted score increase is ever emitted** — only measured counts and percenta
   },
   "ranked_failures": [ /* same shape, sorted */ ],
   "process_backlog": {"not_approved": 104, "unreviewed": 105}
+}
+```
+
+### 6.3 Failure Cluster Report (Phase 3B)
+
+Locates where failures concentrate: issue-wide (systemic), per-page (localized), or in the
+unpaged bucket. Workflow failures are **shown and tagged** `category: "workflow"` —
+separated from `content`, never hidden. Thresholds: issue-wide ≥ 80%, page cluster ≥ 50% of
+a page's artifacts (min 2). See `FAILURE_ANALYSIS.md` §8.
+
+```json
+{
+  "artifact_count": 105,
+  "thresholds": {"issue_wide_percent": 80, "page_fraction": 0.5, "min_count": 2},
+  "issue_wide_failures": [ {"failure_type","domain","category","severity","affected_count","affected_percent","estimated_impact"} ],
+  "page_clusters":       [ {"page","failure_type","domain","category","affected_count","page_artifact_count","concentration_percent","severity","estimated_impact"} ],
+  "unpaged_cluster":      {"artifact_count","failures":[ ... ]}
+}
+```
+
+### 6.4 Retrieval Blockers Report (Phase 3B)
+
+Assesses dataset **readiness** for grounded retrieval/QA — never performs or implements
+retrieval (Charter §4). See `RETRIEVAL_READINESS.md`.
+
+```json
+{
+  "retrieval_readiness_score": 25,
+  "packet_coverage": {"packets_evaluated":1,"artifacts_referenced":1,"artifact_count":105,"coverage_percent":1},
+  "packet_blockers":   [ {"blocker","severity","affected_packets","detail"} ],
+  "artifact_blockers": [ {"blocker_type","severity","affected_count","affected_percent","estimated_impact"} ]
 }
 ```
 

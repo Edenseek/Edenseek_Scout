@@ -17,4 +17,6 @@ reports/page_heatmap/
 reports/audit_history/
 reports/root_cause/
 reports/highest_leverage/
+reports/failure_clusters/
+reports/retrieval_blockers/
 claude_scout.bat

@@ -22,6 +22,8 @@ REPORT_FILES = {
     "audit_history": ("audit_history", "audit_history.md"),
     "root_cause": ("root_cause", "root_cause_report.md"),
     "highest_leverage": ("highest_leverage", "highest_leverage_failure_report.md"),
+    "failure_clusters": ("failure_clusters", "failure_cluster_report.md"),
+    "retrieval_blockers": ("retrieval_blockers", "retrieval_blockers_report.md"),
 }
 
 _ADVISORY = (
@@ -366,6 +368,101 @@ def _render_highest_leverage(block, generated_at):
     return "\n".join(lines) + "\n" + _json_block(b)
 
 
+def _render_failure_clusters(block, generated_at):
+    b = block
+    t = b["thresholds"]
+    lines = [
+        "# Failure Cluster Report",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        _ADVISORY,
+        "",
+        "## Summary",
+        f"- Artifacts: {b['artifact_count']}",
+        f"- Thresholds: issue-wide ≥ {t['issue_wide_percent']}%, page cluster ≥ "
+        f"{int(t['page_fraction'] * 100)}% of page (min {t['min_count']})",
+        "",
+        "_Diagnostic only: locates where failures concentrate. Workflow failures are shown "
+        "and tagged separately from content failures._",
+        "",
+        "## Issue-wide failures (systemic)",
+        "",
+        "| Failure | Category | Domain | Severity | Affected | % | Impact |",
+        "|---------|----------|--------|----------|----------|---|--------|",
+    ]
+    for f in b["issue_wide_failures"]:
+        lines.append(
+            f"| {f['failure_type']} | {f['category']} | {f['domain']} | {f['severity']} | "
+            f"{f['affected_count']} | {f['affected_percent']} | {f['estimated_impact']} |"
+        )
+    lines += ["", "## Page clusters (localized)"]
+    if b["page_clusters"]:
+        lines += [
+            "",
+            "| Page | Failure | Category | Affected | Page total | Concentration | Impact |",
+            "|------|---------|----------|----------|------------|---------------|--------|",
+        ]
+        for c in b["page_clusters"]:
+            lines.append(
+                f"| {c['page']} | {c['failure_type']} | {c['category']} | {c['affected_count']} | "
+                f"{c['page_artifact_count']} | {c['concentration_percent']}% | {c['estimated_impact']} |"
+            )
+    else:
+        lines.append("- None (failures are systemic, not page-localized).")
+    lines += ["", "## Unpaged bucket (artifact identity / page-mapping)"]
+    if b["unpaged_cluster"]:
+        uc = b["unpaged_cluster"]
+        lines.append(f"- Unpaged artifacts: {uc['artifact_count']}")
+        for f in uc["failures"]:
+            lines.append(f"  - {f['failure_type']} ({f['category']}): {f['affected_count']}")
+    else:
+        lines.append("- None")
+    lines.append("")
+    return "\n".join(lines) + "\n" + _json_block(b)
+
+
+def _render_retrieval_blockers(block, generated_at):
+    b = block
+    pc = b["packet_coverage"]
+    lines = [
+        "# Retrieval Blockers Report",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        _ADVISORY,
+        "",
+        "## Summary",
+        f"- Retrieval readiness score: {b['retrieval_readiness_score']}/100",
+        f"- Packet coverage: {pc['artifacts_referenced']} / {pc['artifact_count']} artifacts "
+        f"({pc['coverage_percent']}%), {pc['packets_evaluated']} packet(s)",
+        "",
+        "_Scout assesses readiness only; it never performs or implements retrieval (Charter §4)._",
+        "",
+        "## Packet blockers",
+    ]
+    if b["packet_blockers"]:
+        for pb in b["packet_blockers"]:
+            detail = f" — {pb['detail']}" if pb.get("detail") else ""
+            lines.append(f"- **[{pb['severity']}]** {pb['blocker']} (packets: {pb['affected_packets']}){detail}")
+    else:
+        lines.append("- None")
+    lines += [
+        "",
+        "## Artifact blockers (dataset readiness for grounding)",
+        "",
+        "| Blocker | Severity | Affected | % | Impact |",
+        "|---------|----------|----------|---|--------|",
+    ]
+    for ab in b["artifact_blockers"]:
+        lines.append(
+            f"| {ab['blocker_type']} | {ab['severity']} | {ab['affected_count']} | "
+            f"{ab['affected_percent']} | {ab['estimated_impact']} |"
+        )
+    lines.append("")
+    return "\n".join(lines) + "\n" + _json_block(b)
+
+
 _RENDERERS = {
     "dataset": _render_dataset,
     "character": _render_character,
@@ -377,6 +474,8 @@ _RENDERERS = {
     "audit_history": _render_audit_history,
     "root_cause": _render_root_cause,
     "highest_leverage": _render_highest_leverage,
+    "failure_clusters": _render_failure_clusters,
+    "retrieval_blockers": _render_retrieval_blockers,
 }
 
 

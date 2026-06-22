@@ -37,6 +37,19 @@ FAILURE_DEFS = [
 CONTENT_DOMAINS = {"enrichment", "enrichment_pipeline", "ingestion"}
 PROCESS_DOMAINS = {"approval_workflow"}
 
+# Category each failure belongs to, for separated-but-visible clustering.
+DOMAIN_CATEGORY = {
+    "enrichment": "content",
+    "enrichment_pipeline": "content",
+    "ingestion": "content",
+    "approval_workflow": "workflow",
+}
+
+# Failure Cluster thresholds (authored, static).
+ISSUE_WIDE_THRESHOLD_PCT = 80      # overall coverage at/above which a failure is systemic
+PAGE_CLUSTER_MIN_FRACTION = 0.50   # page affected-fraction at/above which it is a cluster
+PAGE_CLUSTER_MIN_COUNT = 2         # minimum affected artifacts on a page to be a cluster
+
 # Coverage-based impact band thresholds (authored). Impact reflects leverage —
 # how widespread the failure is — not a predicted score change.
 _IMPACT_HIGH_PCT = 50
@@ -142,3 +155,91 @@ def build_highest_leverage_failure(root_cause):
 def failure_summary(root_cause):
     """Compact {failure_type: affected_count} for history snapshots."""
     return {f["failure_type"]: f["affected_count"] for f in root_cause["failures"]}
+
+
+def _category(domain):
+    return DOMAIN_CATEGORY.get(domain, "content")
+
+
+def build_failure_clusters(artifacts):
+    """Locate where failures concentrate: issue-wide, per-page, or in the unpaged bucket.
+
+    Workflow (approval_workflow) failures remain visible and are tagged
+    ``category: "workflow"`` so they are clearly separated from content failures
+    rather than hidden. Pure and deterministic.
+    """
+    n = len(artifacts)
+    page_totals = {}
+    for a in artifacts:
+        if isinstance(a["page"], int):
+            page_totals[a["page"]] = page_totals.get(a["page"], 0) + 1
+
+    issue_wide = []
+    page_clusters = []
+    unpaged_failures = []
+    unpaged_total = sum(1 for a in artifacts if a["page"] is None)
+
+    for defn in FAILURE_DEFS:
+        affected = [a for a in artifacts if defn["predicate"](a)]
+        count = len(affected)
+        if not count:
+            continue
+        percent = round(100 * count / n) if n else 0
+        category = _category(defn["domain"])
+        base = {
+            "failure_type": defn["failure_type"],
+            "domain": defn["domain"],
+            "category": category,
+            "severity": defn["severity"],
+        }
+
+        if percent >= ISSUE_WIDE_THRESHOLD_PCT:
+            issue_wide.append({**base, "affected_count": count, "affected_percent": percent,
+                               "estimated_impact": _impact_band(percent)})
+            continue
+
+        # Localized page clusters (paged artifacts only).
+        per_page = {}
+        for a in affected:
+            if isinstance(a["page"], int):
+                per_page[a["page"]] = per_page.get(a["page"], 0) + 1
+        for page, page_affected in per_page.items():
+            page_total = page_totals.get(page, 0)
+            if page_affected >= PAGE_CLUSTER_MIN_COUNT and page_total and \
+                    page_affected / page_total >= PAGE_CLUSTER_MIN_FRACTION:
+                conc = round(100 * page_affected / page_total)
+                page_clusters.append({**base, "page": page, "affected_count": page_affected,
+                                      "page_artifact_count": page_total,
+                                      "concentration_percent": conc,
+                                      "estimated_impact": _impact_band(conc)})
+
+    # Unpaged bucket: failures concentrated among artifacts with no page linkage.
+    unpaged_cluster = None
+    if unpaged_total:
+        unpaged_set = [a for a in artifacts if a["page"] is None]
+        for defn in FAILURE_DEFS:
+            c = sum(1 for a in unpaged_set if defn["predicate"](a))
+            if c >= PAGE_CLUSTER_MIN_COUNT:
+                unpaged_failures.append({
+                    "failure_type": defn["failure_type"], "domain": defn["domain"],
+                    "category": _category(defn["domain"]), "severity": defn["severity"],
+                    "affected_count": c,
+                })
+        unpaged_failures.sort(key=lambda f: (-f["affected_count"],
+                                             -SEVERITY_RANK.get(f["severity"], 0),
+                                             f["failure_type"]))
+        unpaged_cluster = {"artifact_count": unpaged_total, "failures": unpaged_failures}
+
+    issue_wide.sort(key=lambda f: (-f["affected_count"], -SEVERITY_RANK.get(f["severity"], 0),
+                                   f["failure_type"]))
+    page_clusters.sort(key=lambda c: (c["page"], -c["concentration_percent"], c["failure_type"]))
+
+    return {
+        "artifact_count": n,
+        "thresholds": {"issue_wide_percent": ISSUE_WIDE_THRESHOLD_PCT,
+                       "page_fraction": PAGE_CLUSTER_MIN_FRACTION,
+                       "min_count": PAGE_CLUSTER_MIN_COUNT},
+        "issue_wide_failures": issue_wide,
+        "page_clusters": page_clusters,
+        "unpaged_cluster": unpaged_cluster,
+    }
