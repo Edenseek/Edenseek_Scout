@@ -17,6 +17,7 @@ from dataset_auditor import (
     analyze_retrieval_blockers,
     analyze_retrieval_readiness,
     analyze_trends,
+    analyze_digest,
 )
 from audit_inputs import AuditInputError
 from audit_reports import REPORT_FILES, REPORTS_ROOT
@@ -228,4 +229,13 @@ def get_audit_retrieval_readiness(username: str = Depends(require_auth)):
         return analyze_retrieval_readiness()
     except AuditInputError as e:
         logger.warning(f"Retrieval readiness input error: {e}")
+        raise HTTPException(status_code=422, detail=f"Invalid audit input: {e}")
+
+
+@app.get("/audit/digest")
+def get_audit_digest(username: str = Depends(require_auth)):
+    try:
+        return analyze_digest()
+    except AuditInputError as e:
+        logger.warning(f"Digest input error: {e}")
         raise HTTPException(status_code=422, detail=f"Invalid audit input: {e}")

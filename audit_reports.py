@@ -26,6 +26,7 @@ REPORT_FILES = {
     "retrieval_blockers": ("retrieval_blockers", "retrieval_blockers_report.md"),
     "historical": ("historical", "historical_intelligence_report.md"),
     "retrieval_readiness": ("retrieval_readiness", "retrieval_readiness_intel.md"),
+    "digest": ("digest", "daily_digest.md"),
 }
 
 _ADVISORY = (
@@ -583,6 +584,76 @@ def _render_retrieval_readiness(block, generated_at):
     return "\n".join(lines) + "\n" + _json_block(b)
 
 
+def _render_digest(block, generated_at):
+    b = block
+    lines = [
+        "# Scout Daily Digest",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        _ADVISORY,
+        "",
+        "## Headline",
+        f"- Dataset: {b['dataset_id']}",
+        f"- Quality score: {b['quality_score']}/100"
+        + (f" ({b['quality_delta']:+d} since last audit)" if b["quality_delta"] is not None else ""),
+        f"- Trend confidence: {b['trend']['confidence']}",
+        "",
+        "## Retrieval readiness",
+        f"- Verdict: **{b['readiness']['verdict']}** (score {b['readiness']['score']}/100)",
+        f"- Grounding (hard-stop): {b['readiness']['grounding_status']}",
+        f"- Weak dimensions: {', '.join(b['readiness']['weaknesses']) or 'none'}",
+        "",
+        "## Highest-leverage failure",
+    ]
+    hl = b["highest_leverage_failure"]
+    if hl:
+        lines.append(f"- **{hl['failure_type']}** ({hl['domain']}) — {hl['affected_count']} "
+                     f"artifacts ({hl['affected_percent']}%), impact {hl['estimated_impact']}")
+    else:
+        lines.append("- None")
+
+    rv = b["review"]
+    lines += [
+        "",
+        "## Today's review queue",
+        f"- Total flagged: {rv['total']} (high {rv['by_impact'].get('high', 0)}, "
+        f"medium {rv['by_impact'].get('medium', 0)}, low {rv['by_impact'].get('low', 0)})",
+    ]
+    if rv["top_items"]:
+        lines += ["", "| Rank | Artifact | Page | Impact | Weakness |",
+                  "|------|----------|------|--------|----------|"]
+        for q in rv["top_items"]:
+            page = "unpaged" if not isinstance(q["page"], int) else q["page"]
+            lines.append(f"| {q['priority_rank']} | `{q['artifact_id']}` | {page} | "
+                         f"{q['estimated_impact']} | {q['primary_weakness']} |")
+    else:
+        lines.append("- None")
+
+    lines += ["", "## Since previous audit"]
+    ch = b["changes_since_last_audit"]
+    if ch:
+        lines += [
+            f"- Quality change: {ch['quality_change']:+d}" if ch["quality_change"] is not None else "- Quality change: n/a",
+            f"- New failures: {', '.join(ch['new_failures']) or 'none'}",
+            f"- Resolved failures: {', '.join(ch['resolved_failures']) or 'none'}",
+        ]
+    else:
+        lines.append("- Not enough history yet.")
+
+    lines += [
+        "",
+        f"## Stagnant pipeline areas\n- {', '.join(b['stagnant_domains']) or 'none'}",
+        "",
+        "## Deep reports",
+    ]
+    for rtype, path in b["report_links"].items():
+        if rtype != "digest":
+            lines.append(f"- {rtype}: `reports/{path}`")
+    lines.append("")
+    return "\n".join(lines) + "\n" + _json_block(b)
+
+
 _RENDERERS = {
     "dataset": _render_dataset,
     "character": _render_character,
@@ -598,6 +669,7 @@ _RENDERERS = {
     "retrieval_blockers": _render_retrieval_blockers,
     "historical": _render_historical,
     "retrieval_readiness": _render_retrieval_readiness,
+    "digest": _render_digest,
 }
 
 

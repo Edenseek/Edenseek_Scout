@@ -17,6 +17,7 @@ import audit_failure_analysis
 import audit_retrieval_blockers
 import audit_retrieval_readiness
 import audit_history_analysis
+import audit_digest
 import audit_reports
 import scout
 
@@ -46,6 +47,24 @@ def _retrieval_trend(historical):
     return {"retrieval_readiness": metric["direction"], "confidence": historical.get("confidence")}
 
 
+def _derive_core_blocks(result):
+    """Compute the history-independent derived blocks (Phase 2/3A/3B). Returns root_cause.
+
+    Pure; mutates ``result['blocks']`` in place. Shared by the audit run and the
+    read-only digest endpoint so the pipeline is defined once.
+    """
+    artifacts = result["artifacts"]
+    result["blocks"]["review_priority"] = audit_prioritization.prioritize(artifacts)
+    result["blocks"]["page_heatmap"] = audit_prioritization.build_page_heatmap(artifacts)
+    root_cause = audit_failure_analysis.build_root_cause(artifacts)
+    result["blocks"]["root_cause"] = root_cause
+    result["blocks"]["highest_leverage"] = audit_failure_analysis.build_highest_leverage_failure(root_cause)
+    result["blocks"]["failure_clusters"] = audit_failure_analysis.build_failure_clusters(artifacts)
+    result["blocks"]["retrieval_blockers"] = audit_retrieval_blockers.build_retrieval_blockers(
+        artifacts, result["blocks"]["retrieval"])
+    return root_cause
+
+
 def run_dataset_audit(input_dir=None):
     """Run a full dataset audit and return a summary dict of the outcome."""
     input_dir = _resolve_input_dir(input_dir)
@@ -57,19 +76,8 @@ def run_dataset_audit(input_dir=None):
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     weak = result["blocks"]["weak_artifacts"]
 
-    # ---- Phase 2: prioritization + page rollup ----
-    result["blocks"]["review_priority"] = audit_prioritization.prioritize(result["artifacts"])
-    result["blocks"]["page_heatmap"] = audit_prioritization.build_page_heatmap(result["artifacts"])
-
-    # ---- Phase 3A: dataset failure analysis ----
-    root_cause = audit_failure_analysis.build_root_cause(result["artifacts"])
-    result["blocks"]["root_cause"] = root_cause
-    result["blocks"]["highest_leverage"] = audit_failure_analysis.build_highest_leverage_failure(root_cause)
-
-    # ---- Phase 3B: failure clusters + retrieval blockers ----
-    result["blocks"]["failure_clusters"] = audit_failure_analysis.build_failure_clusters(result["artifacts"])
-    result["blocks"]["retrieval_blockers"] = audit_retrieval_blockers.build_retrieval_blockers(
-        result["artifacts"], result["blocks"]["retrieval"])
+    # ---- Phase 2/3A/3B derived blocks ----
+    root_cause = _derive_core_blocks(result)
 
     # ---- Phase 2: append audit-history snapshot, then build the history block ----
     snapshot = {
@@ -90,6 +98,9 @@ def run_dataset_audit(input_dir=None):
     result["blocks"]["retrieval_readiness"] = audit_retrieval_readiness.build_retrieval_readiness(
         result["blocks"]["retrieval"], result["blocks"]["retrieval_blockers"],
         _retrieval_trend(result["blocks"]["historical"]), result["dataset_id"])
+
+    # ---- Phase D1: consolidated daily digest (pure projection over the blocks above) ----
+    result["blocks"]["digest"] = audit_digest.build_digest(result["blocks"])
 
     latest_reports = audit_reports.write_reports(result, REPORTS_ROOT, generated_at)
 
@@ -184,3 +195,19 @@ def analyze_retrieval_readiness(input_dir=None):
         "retrieval_readiness": audit_retrieval_readiness.build_retrieval_readiness(
             retrieval_block, blockers, trend, result["dataset_id"]),
     }
+
+
+def analyze_digest(input_dir=None):
+    """Consolidated daily digest (read-only; writes no reports or memory).
+
+    Re-scores the dataset and projects the derived blocks plus the recorded
+    history into the digest. Does not append a new history snapshot.
+    """
+    result = _load_and_score(input_dir)
+    _derive_core_blocks(result)
+    historical = analyze_trends()  # recorded history, most-recent dataset
+    result["blocks"]["historical"] = historical
+    result["blocks"]["retrieval_readiness"] = audit_retrieval_readiness.build_retrieval_readiness(
+        result["blocks"]["retrieval"], result["blocks"]["retrieval_blockers"],
+        _retrieval_trend(historical), result["dataset_id"])
+    return {"dataset_id": result["dataset_id"], "digest": audit_digest.build_digest(result["blocks"])}

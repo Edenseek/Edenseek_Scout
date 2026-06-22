@@ -21,4 +21,5 @@ reports/failure_clusters/
 reports/retrieval_blockers/
 reports/historical/
 reports/retrieval_readiness/
+reports/digest/
 claude_scout.bat

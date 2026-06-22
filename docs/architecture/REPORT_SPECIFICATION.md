@@ -23,6 +23,7 @@
 | Retrieval Blockers Report | `reports/retrieval_blockers/retrieval_blockers_report.md` | Phase 3B |
 | Historical Intelligence Report | `reports/historical/historical_intelligence_report.md` | Phase 4 |
 | Retrieval Readiness Intelligence Report | `reports/retrieval_readiness/retrieval_readiness_intel.md` | Phase 5 |
+| Scout Daily Digest | `reports/digest/daily_digest.md` | Phase D1 |
 
 All report types are **read-only, deterministic, and advisory**: Scout inspects, scores,
 explains, and recommends; it never modifies canonical data, approves/rejects/locks
@@ -426,6 +427,26 @@ never performs retrieval; no recommendations, no predictions. See `RETRIEVAL_REA
   "weaknesses": ["coverage", "grounding_quality", "traceability"],
   "trend": {"retrieval_readiness": "stable", "confidence": "trend"},
   "explanation": "...", "note": "Assesses readiness only ..."
+}
+```
+
+### 6.7 Scout Daily Digest (Phase D1)
+
+A **pure projection** over the Phase 1–5 blocks — a consolidated, de-duplicated front-door
+summary. **No new intelligence computation, no schema change.** Selects: headline quality
+(+ delta), readiness verdict, the highest-leverage failure, today's top review items,
+since-previous-audit changes, stagnant domains, and links to the deep reports. Served at
+`GET /audit/digest`.
+
+```json
+{
+  "dataset_id": "society_of_killers/issue_1",
+  "quality_score": 53, "quality_delta": 0, "trend": {"confidence": "trend"},
+  "readiness": {"verdict": "not_ready", "score": 25, "grounding_status": "weak", "weaknesses": []},
+  "highest_leverage_failure": { ... },
+  "review": {"total": 105, "by_impact": {}, "top_items": [ ... ]},
+  "changes_since_last_audit": {"quality_change": 0, "new_failures": [], "resolved_failures": []},
+  "stagnant_domains": [], "report_links": { ... }, "note": "Consolidated read-only summary ..."
 }
 ```
 

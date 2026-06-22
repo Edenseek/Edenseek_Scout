@@ -14,6 +14,7 @@ import audit_failure_analysis  # noqa: E402
 import audit_retrieval_blockers  # noqa: E402
 import audit_retrieval_readiness  # noqa: E402
 import audit_history_analysis  # noqa: E402
+import audit_digest  # noqa: E402
 import audit_reports  # noqa: E402
 
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "dataset" / "society_of_killers" / "issue_1"
@@ -33,6 +34,7 @@ REQUIRED_KEYS = {
     "retrieval_blockers": {"retrieval_readiness_score", "packet_coverage", "packet_blockers", "artifact_blockers"},
     "historical": {"dataset_id", "snapshots_analyzed", "confidence", "metrics", "failure_trends"},
     "retrieval_readiness": {"verdict", "readiness_score", "dimensions", "strengths", "weaknesses"},
+    "digest": {"dataset_id", "quality_score", "readiness", "review", "report_links"},
 }
 
 _HIST_SNAPS = [
@@ -77,6 +79,7 @@ class TestAuditReports(unittest.TestCase):
         cls.result["blocks"]["historical"] = audit_history_analysis.build_historical_intelligence(_HIST_SNAPS)
         cls.result["blocks"]["retrieval_readiness"] = audit_retrieval_readiness.build_retrieval_readiness(
             cls.result["blocks"]["retrieval"], cls.result["blocks"]["retrieval_blockers"], None, "d")
+        cls.result["blocks"]["digest"] = audit_digest.build_digest(cls.result["blocks"])
 
     def test_write_all_reports(self):
         with tempfile.TemporaryDirectory() as d:
