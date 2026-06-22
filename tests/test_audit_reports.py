@@ -9,6 +9,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import audit_inputs  # noqa: E402
 import audit_scoring  # noqa: E402
+import audit_prioritization  # noqa: E402
 import audit_reports  # noqa: E402
 
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "dataset" / "society_of_killers" / "issue_1"
@@ -19,7 +20,17 @@ REQUIRED_KEYS = {
     "dialogue": {"dialogue_completeness_score", "findings"},
     "retrieval": {"retrieval_readiness_score", "findings"},
     "weak_artifacts": {"total_flagged", "by_severity", "queue"},
+    "review_priority": {"total", "by_impact", "queue"},
+    "page_heatmap": {"pages", "unpaged_count"},
+    "audit_history": {"history", "latest_delta"},
 }
+
+_SAMPLE_HISTORY = [{
+    "timestamp": "2026-06-22T00:00:00Z", "dataset_id": "d", "quality_score": 53,
+    "scores": {"metadata_completeness": 87, "character_consistency": 14,
+               "dialogue_completeness": 73, "retrieval_readiness": 25},
+    "artifact_count": 105, "weak_total_flagged": 105,
+}]
 
 
 def _extract_json_block(text):
@@ -32,6 +43,10 @@ class TestAuditReports(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.result = audit_scoring.run_audit(audit_inputs.load_inputs(FIXTURE_DIR))
+        artifacts = cls.result["artifacts"]
+        cls.result["blocks"]["review_priority"] = audit_prioritization.prioritize(artifacts)
+        cls.result["blocks"]["page_heatmap"] = audit_prioritization.build_page_heatmap(artifacts)
+        cls.result["blocks"]["audit_history"] = {"history": _SAMPLE_HISTORY, "latest_delta": None}
 
     def test_write_all_reports(self):
         with tempfile.TemporaryDirectory() as d:

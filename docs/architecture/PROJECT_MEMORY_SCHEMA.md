@@ -56,6 +56,7 @@ Memory becomes **per-project and structured**, with provenance and dedup keys.
         "by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 0 }
       },
       "latest_reports": {},
+      "audit_history": [],
       "open_questions": [],
       "themes": [],
       "opportunities": [],
@@ -130,6 +131,7 @@ dataset audits (see `REPORT_SPECIFICATION.md` §4). These are present only on th
 | `scores`                 | object          | Per-report-type sub-scores (0–100 \| null): `metadata_completeness`, `character_consistency`, `dialogue_completeness`, `retrieval_readiness`. |
 | `weak_artifacts`         | object          | Summary of the weak-artifact queue: `total_flagged` and `by_severity` counts (`critical/high/medium/low`). The full queue lives in the report file, not memory. |
 | `latest_reports`         | object          | Map of report type → most recent report path (e.g. `{"dataset": "reports/dataset/<ts>.md"}`). |
+| `audit_history`          | array           | Append-only, chronological (newest last) list of audit snapshots, capped at 30 (Phase 2). Each snapshot: `{timestamp, dataset_id, quality_score, scores, artifact_count, weak_total_flagged}`. Powers the Audit History trend report. |
 
 **Findings are not themes.** Dataset audit findings (metadata gaps, weak artifacts,
 recognition or dialogue failures, readiness gaps) are persisted via the audit fields above

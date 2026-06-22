@@ -63,6 +63,7 @@ def _default_dataset_track():
             "by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0},
         },
         "latest_reports": {},
+        "audit_history": [],
         "open_questions": [],
         "themes": [],
         "opportunities": [],
@@ -91,6 +92,32 @@ def update_dataset_memory(summary):
         projects["edenseek_dataset"] = track
         save_memory(memory)
         logger.info("edenseek_dataset memory track updated")
+
+
+MAX_AUDIT_HISTORY = 30
+
+
+def record_audit_history(snapshot):
+    """Append an audit snapshot to the edenseek_dataset history (append-only).
+
+    Capped at MAX_AUDIT_HISTORY (oldest dropped), chronological (newest last).
+    Atomic + lock-guarded. Returns the resulting history list.
+    """
+    with memory_lock:
+        memory = load_memory()
+        projects = memory.setdefault("projects", {})
+        track = projects.get("edenseek_dataset") or _default_dataset_track()
+
+        history = track.get("audit_history") or []
+        history.append(snapshot)
+        if len(history) > MAX_AUDIT_HISTORY:
+            history = history[-MAX_AUDIT_HISTORY:]
+        track["audit_history"] = history
+
+        projects["edenseek_dataset"] = track
+        save_memory(memory)
+        logger.info(f"edenseek_dataset audit history recorded ({len(history)} snapshots)")
+        return history
 
 
 def call_openai_with_retries(prompt, max_attempts=3, timeout=60):

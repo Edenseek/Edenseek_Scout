@@ -64,6 +64,31 @@ class TestDatasetMemory(unittest.TestCase):
         second = scout.load_memory()
         self.assertEqual(first, second)
 
+    def _snapshot(self, quality):
+        return {
+            "timestamp": f"2026-06-22T00:00:{quality:02d}Z",
+            "dataset_id": "d",
+            "quality_score": quality,
+            "scores": SAMPLE_SUMMARY["scores"],
+            "artifact_count": 105,
+            "weak_total_flagged": 105,
+        }
+
+    def test_history_appends(self):
+        h = scout.record_audit_history(self._snapshot(50))
+        self.assertEqual(len(h), 1)
+        h = scout.record_audit_history(self._snapshot(51))
+        self.assertEqual(len(h), 2)
+        self.assertEqual(scout.load_memory()["projects"]["edenseek_dataset"]["audit_history"], h)
+
+    def test_history_capped_at_30(self):
+        for q in range(35):
+            scout.record_audit_history(self._snapshot(q))
+        history = scout.load_memory()["projects"]["edenseek_dataset"]["audit_history"]
+        self.assertEqual(len(history), scout.MAX_AUDIT_HISTORY)
+        self.assertEqual(history[-1]["quality_score"], 34)   # newest retained
+        self.assertEqual(history[0]["quality_score"], 5)     # oldest dropped (35 - 30)
+
 
 if __name__ == "__main__":
     unittest.main()

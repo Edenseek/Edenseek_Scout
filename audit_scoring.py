@@ -5,8 +5,13 @@ inputs always yield identical outputs (Charter §5). ``characters`` and
 ``dialogue`` are treated as opaque lists and scored on presence only, until
 populated data exists (see ``docs/architecture/DATASET_INPUT_CONTRACT.md`` §5).
 """
+import re
 
 SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+
+# Artifact ids of the form ``page_<N>_panel_<M>`` encode their page; other id
+# styles (colon-style, spreads) are bucketed as "unpaged" (no silent drop).
+PAGE_RE = re.compile(r"^page_(\d+)_panel_\d+$")
 
 # Sub-score weights for the overall quality score (sum to 1.0).
 WEIGHTS = {
@@ -45,6 +50,11 @@ def _max_severity(severities):
     return max(severities, key=lambda s: SEVERITY_RANK.get(s, 0))
 
 
+def _derive_page(artifact_id):
+    m = PAGE_RE.match(str(artifact_id))
+    return int(m.group(1)) if m else None
+
+
 def _metadata_field_checks(artifact_id, output):
     tags = (output.get("classification", {}) or {}).get("tags", {}) or {}
     narrative = output.get("narrative", {}) or {}
@@ -75,6 +85,7 @@ def _analyze_artifacts(outputs, approved_ids):
 
         per_artifact.append({
             "artifact_id": aid,
+            "page": _derive_page(aid),
             "meta_present": present,
             "meta_total": len(checks),
             "missing_fields": missing,
@@ -157,32 +168,51 @@ def _suggested_action(weakness):
     return _ACTION_BY_WEAKNESS.get(weakness, "Review this artifact.")
 
 
-def _build_weak_queue(per_artifact):
+def assess_artifact(pa):
+    """Full per-artifact assessment shared by the weak queue and prioritization.
+
+    Pure and deterministic. ``weak`` is True when any blocking issue exists.
+    """
+    reasons = _weak_reasons(pa)
+    blocking = [text for text, _ in reasons]
+    severity = _max_severity([s for _, s in reasons]) if reasons else None
+    # Primary weakness = first reason at the max severity (stable order).
+    weakness = next((text for text, s in reasons if s == severity), None) if reasons else None
+    dims = [
+        pa["meta_present"] / pa["meta_total"],
+        1.0 if pa["has_characters"] else 0.0,
+        1.0 if pa["has_dialogue"] else 0.0,
+        1.0 if pa["is_reviewed"] else 0.0,
+        1.0 if pa["is_approved"] else 0.0,
+    ]
+    return {
+        "artifact_id": pa["artifact_id"],
+        "page": pa["page"],
+        "weak": bool(reasons),
+        "severity": severity,
+        "primary_weakness": weakness,
+        "blocking_issues": blocking,
+        "effort": len(blocking),
+        "suggested_action": _suggested_action(weakness) if weakness else None,
+        "score": round(_pct(sum(dims), len(dims))),
+    }
+
+
+def _build_weak_queue(assessments):
     queue = []
     by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    for pa in per_artifact:
-        reasons = _weak_reasons(pa)
-        if not reasons:
+    for a in assessments:
+        if not a["weak"]:
             continue
-        severity = _max_severity([s for _, s in reasons])
-        # Primary weakness = the first reason at the max severity (stable order).
-        weakness = next(text for text, s in reasons if s == severity)
-        dims = [
-            pa["meta_present"] / pa["meta_total"],
-            1.0 if pa["has_characters"] else 0.0,
-            1.0 if pa["has_dialogue"] else 0.0,
-            1.0 if pa["is_reviewed"] else 0.0,
-            1.0 if pa["is_approved"] else 0.0,
-        ]
         queue.append({
-            "artifact_id": pa["artifact_id"],
-            "score": round(_pct(sum(dims), len(dims))),
-            "weakness": weakness,
-            "severity": severity,
-            "suggested_action": _suggested_action(weakness),
+            "artifact_id": a["artifact_id"],
+            "score": a["score"],
+            "weakness": a["primary_weakness"],
+            "severity": a["severity"],
+            "suggested_action": a["suggested_action"],
         })
-        if severity in by_severity:
-            by_severity[severity] += 1
+        if a["severity"] in by_severity:
+            by_severity[a["severity"]] += 1
 
     queue.sort(key=lambda q: (-SEVERITY_RANK.get(q["severity"], 0), q["score"], str(q["artifact_id"])))
     return queue, by_severity
@@ -298,8 +328,11 @@ def run_audit(inputs):
         "findings": retrieval_findings,
     }
 
+    # ---- Per-artifact assessments (shared by weak queue + Phase 2) ----
+    assessments = [assess_artifact(pa) for pa in per_artifact]
+
     # ---- Weak Artifact Queue block ----
-    queue, by_severity = _build_weak_queue(per_artifact)
+    queue, by_severity = _build_weak_queue(assessments)
     weak_block = {
         "total_flagged": len(queue),
         "by_severity": by_severity,
@@ -311,6 +344,7 @@ def run_audit(inputs):
         "artifact_count": n,
         "scores": scores,
         "quality_score": quality_score,
+        "artifacts": assessments,
         "blocks": {
             "dataset": dataset_block,
             "character": character_block,

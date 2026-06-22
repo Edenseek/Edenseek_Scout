@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import PlainTextResponse, FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from scout import generate_report
+from scout import generate_report, load_memory
 from scheduler import start_scheduler
 from dataset_auditor import run_dataset_audit
 from audit_inputs import AuditInputError
@@ -162,3 +162,19 @@ def get_audit_report(report_type: str, username: str = Depends(require_auth)):
         raise HTTPException(status_code=404, detail="Report not generated yet")
 
     return report_path.read_text(encoding="utf-8")
+
+
+@app.get("/audit/priority", response_class=PlainTextResponse)
+def get_audit_priority(username: str = Depends(require_auth)):
+    subdir, filename = REPORT_FILES["review_priority"]
+    report_path = REPORTS_ROOT / subdir / filename
+    if not report_path.is_file():
+        raise HTTPException(status_code=404, detail="Priority queue not generated yet")
+    return report_path.read_text(encoding="utf-8")
+
+
+@app.get("/audit/history")
+def get_audit_history(username: str = Depends(require_auth)):
+    memory = load_memory()
+    track = memory.get("projects", {}).get("edenseek_dataset", {})
+    return {"audit_history": track.get("audit_history", [])}

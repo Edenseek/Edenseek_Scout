@@ -17,6 +17,9 @@ REPORT_FILES = {
     "dialogue": ("dialogue", "dialogue_analysis_report.md"),
     "retrieval": ("retrieval", "retrieval_readiness_report.md"),
     "weak_artifacts": ("weak_artifacts", "weak_artifact_queue.md"),
+    "review_priority": ("review_priority", "review_priority_queue.md"),
+    "page_heatmap": ("page_heatmap", "page_heat_map.md"),
+    "audit_history": ("audit_history", "audit_history.md"),
 }
 
 _ADVISORY = (
@@ -175,12 +178,113 @@ def _render_weak(block, generated_at):
     return "\n".join(lines) + "\n" + _json_block(b)
 
 
+def _page_label(page):
+    return "unpaged" if not isinstance(page, int) else str(page)
+
+
+def _render_review_priority(block, generated_at):
+    b = block
+    bi = b["by_impact"]
+    lines = [
+        "# Review Priority Queue",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        _ADVISORY,
+        "",
+        "## Summary",
+        f"- Total ranked: {b['total']}",
+        f"- By estimated impact: high {bi['high']}, medium {bi['medium']}, low {bi['low']}",
+        "",
+        "## Queue (ranked; review top-down)",
+    ]
+    if b["queue"]:
+        lines.append("")
+        lines.append("| Rank | Artifact | Page | Impact | Severity | Effort | Primary weakness | Suggested action |")
+        lines.append("|------|----------|------|--------|----------|--------|------------------|------------------|")
+        for q in b["queue"]:
+            lines.append(
+                f"| {q['priority_rank']} | `{q['artifact_id']}` | {_page_label(q['page'])} | "
+                f"{q['estimated_impact']} | {q['severity']} | {q['effort']} | "
+                f"{q['primary_weakness']} | {q['suggested_action']} |"
+            )
+    else:
+        lines.append("- None")
+    lines.append("")
+    return "\n".join(lines) + "\n" + _json_block(b)
+
+
+def _render_page_heatmap(block, generated_at):
+    b = block
+    lines = [
+        "# Page Heat Map",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        _ADVISORY,
+        "",
+        "## Summary",
+        f"- Pages covered: {len(b['pages'])}",
+        f"- Unpaged artifacts: {b['unpaged_count']}",
+        "",
+        "## Pages (worst first)",
+        "",
+        "| Page | Artifacts | Weak | Impact | critical | high | medium | low |",
+        "|------|-----------|------|--------|----------|------|--------|-----|",
+    ]
+    for p in b["pages"]:
+        s = p["by_severity"]
+        lines.append(
+            f"| {_page_label(p['page'])} | {p['artifact_count']} | {p['weak_count']} | "
+            f"{p['page_impact']} | {s['critical']} | {s['high']} | {s['medium']} | {s['low']} |"
+        )
+    lines.append("")
+    return "\n".join(lines) + "\n" + _json_block(b)
+
+
+def _render_audit_history(block, generated_at):
+    b = block
+    delta = b.get("latest_delta")
+    lines = [
+        "# Audit History",
+        "",
+        f"Generated: {generated_at}",
+        "",
+        _ADVISORY,
+        "",
+        "## Trend",
+    ]
+    if delta:
+        lines.append(f"- Latest quality change: {delta['quality_score_change']:+d} ({delta['direction']})")
+    else:
+        lines.append("- Not enough history yet for a trend (need at least two audits).")
+    lines += [
+        "",
+        "## Snapshots (oldest → newest)",
+        "",
+        "| Timestamp | Quality | Metadata | Character | Dialogue | Retrieval | Weak flagged |",
+        "|-----------|---------|----------|-----------|----------|-----------|--------------|",
+    ]
+    for h in b["history"]:
+        sc = h["scores"]
+        lines.append(
+            f"| {h['timestamp']} | {h['quality_score']} | {sc['metadata_completeness']} | "
+            f"{sc['character_consistency']} | {sc['dialogue_completeness']} | "
+            f"{sc['retrieval_readiness']} | {h['weak_total_flagged']} |"
+        )
+    lines.append("")
+    return "\n".join(lines) + "\n" + _json_block(b)
+
+
 _RENDERERS = {
     "dataset": _render_dataset,
     "character": _render_character,
     "dialogue": _render_dialogue,
     "retrieval": _render_retrieval,
     "weak_artifacts": _render_weak,
+    "review_priority": _render_review_priority,
+    "page_heatmap": _render_page_heatmap,
+    "audit_history": _render_audit_history,
 }
 
 

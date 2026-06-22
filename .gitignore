@@ -12,4 +12,7 @@ reports/character/
 reports/dialogue/
 reports/retrieval/
 reports/weak_artifacts/
+reports/review_priority/
+reports/page_heatmap/
+reports/audit_history/
 claude_scout.bat

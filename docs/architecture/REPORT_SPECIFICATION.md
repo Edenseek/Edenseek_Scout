@@ -13,7 +13,10 @@
 | Character Analysis Report | `reports/character/<timestamp>.md`         | planned (Phase 1) |
 | Dialogue Analysis Report  | `reports/dialogue/<timestamp>.md`          | planned (Phase 1) |
 | Retrieval Readiness Report| `reports/retrieval/<timestamp>.md`         | planned (Phase 1) |
-| Weak Artifact Queue       | `reports/weak_artifacts/<timestamp>.md`    | planned (Phase 1) |
+| Weak Artifact Queue       | `reports/weak_artifacts/weak_artifact_queue.md` | Phase 1 |
+| Review Priority Queue     | `reports/review_priority/review_priority_queue.md` | Phase 2 |
+| Page Heat Map             | `reports/page_heatmap/page_heat_map.md`    | Phase 2 |
+| Audit History             | `reports/audit_history/audit_history.md`   | Phase 2 |
 
 The Phase 1 report types below derive from `SCOUT_CHARTER.md` §6. All are **read-only and
 advisory**: Scout inspects, scores, and recommends; it never modifies canonical publisher
@@ -249,7 +252,60 @@ attention. This is an advisory worklist, never an instruction Scout executes.
 }
 ```
 
-## 5. Formatting Rules
+## 5. Phase 2 — Publisher Intelligence Reports
+
+Deterministic, read-only, advisory. Filenames are fixed (deterministic). Impact is a
+qualitative band (`high|medium|low`) — never a numeric prediction. See
+`docs/architecture/REVIEW_PRIORITIZATION.md` for the ranking model.
+
+### 5.1 Review Priority Queue
+
+Ranked advisory worklist. Ordering: severity desc → page asc (unpaged last) → effort asc →
+artifact_id. JSON block:
+
+```json
+{
+  "total": 0,
+  "by_impact": {"high": 0, "medium": 0, "low": 0},
+  "queue": [
+    {"priority_rank": 1, "artifact_id": "", "page": null, "severity": "",
+     "estimated_impact": "high", "effort": 0, "blocking_issues": [],
+     "primary_weakness": "", "suggested_action": ""}
+  ]
+}
+```
+
+### 5.2 Page Heat Map
+
+Per-page rollup of weak signals; non-page ids bucketed as `unpaged`. JSON block:
+
+```json
+{
+  "pages": [
+    {"page": 2, "artifact_count": 0, "weak_count": 0,
+     "by_severity": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+     "page_impact": "high"}
+  ],
+  "unpaged_count": 0
+}
+```
+
+### 5.3 Audit History
+
+Trend over recorded audit snapshots (capped at 30). Reports *measured* historical scores
+and deltas (not predictions). JSON block:
+
+```json
+{
+  "history": [
+    {"timestamp": "", "dataset_id": "", "quality_score": 0,
+     "scores": {}, "artifact_count": 0, "weak_total_flagged": 0}
+  ],
+  "latest_delta": {"quality_score_change": 0, "direction": "unchanged"}
+}
+```
+
+## 6. Formatting Rules
 
 - Markdown for human-facing files; JSON blocks for machine-consumed sections.
 - Timestamps ISO-8601; commit SHAs short form with subject.

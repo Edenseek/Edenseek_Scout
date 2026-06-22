@@ -46,14 +46,18 @@ are supporting tracks for the active phase.
 
 ## Later Phases (charter taxonomy)
 
-### Phase 2 — Reference Intelligence
+### Phase 2 — Publisher Intelligence: Review Prioritization (in progress)
 
-* Character-sheet integration
-* Script analysis
-* Creator-note analysis
-* Reference-material auditing
+* Artifact priority ranking (Review Priority Queue)
+* Page rollup / page heat map
+* Audit history persistence + trend
+* `GET /audit/priority`, `GET /audit/history`
 
-Result: Scout understands publisher knowledge sources.
+Read-only, deterministic, advisory (see `docs/architecture/REVIEW_PRIORITIZATION.md`).
+Reference-material intelligence (character sheets, scripts, creator notes) follows as a
+later Phase 2 increment.
+
+Result: Scout understands the publisher review workflow and what to review next.
 
 ### Phase 3 — Retrieval Intelligence
 
