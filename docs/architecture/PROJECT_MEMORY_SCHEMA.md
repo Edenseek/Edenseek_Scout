@@ -51,6 +51,18 @@ Memory becomes **per-project and structured**, with provenance and dedup keys.
         "dialogue_completeness": null,
         "retrieval_readiness": null
       },
+    "edenseek_repository": {
+      "active_milestone": null,
+      "next_action": null,
+      "last_verified_commit": null,
+      "repository_health": null,
+      "issues_indexed": 0,
+      "publishers_indexed": 0,
+      "open_questions": [],
+      "themes": [],
+      "opportunities": [],
+      "risks": []
+    },
       "weak_artifacts": {
         "total_flagged": 0,
         "by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 0 }

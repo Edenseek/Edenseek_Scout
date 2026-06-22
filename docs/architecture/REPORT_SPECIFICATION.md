@@ -449,6 +449,77 @@ since-previous-audit changes, stagnant domains, and links to the deep reports. S
   "stagnant_domains": [], "report_links": { ... }, "note": "Consolidated read-only summary ..."
 }
 ```
+### Future — Repository Intelligence Reports
+
+These reports are not yet implemented.
+
+They are planned for Repository Intelligence and operate on the
+Edenseek Publishing Repository rather than a single dataset.
+
+#### Repository Health Report
+
+Location:
+
+```text
+reports/repository/repository_health.md
+```
+
+Purpose:
+
+Assess repository-wide health.
+
+Examples:
+
+- missing assets
+- missing metadata
+- orphaned records
+- invalid hierarchy placement
+- incomplete issues
+
+#### Publisher Readiness Report
+
+Location:
+
+```text
+reports/publisher_readiness/publisher_readiness.md
+```
+
+Purpose:
+
+Assess whether a publisher's content is ready for publication.
+
+Examples:
+
+- approval coverage
+- metadata completeness
+- retrieval readiness
+- issue certification status
+
+#### Dataset Registry Report
+
+Location:
+
+```text
+reports/registry/dataset_registry_report.md
+```
+
+Purpose:
+
+Summarize repository contents.
+
+Examples:
+
+- publishers indexed
+- series indexed
+- issues indexed
+- approved issues
+- issues awaiting review
+
+Note:
+
+These reports operate on repository-level information rather than
+individual issue datasets and are intended for a future Repository
+Intelligence phase.
 
 ## 7. Formatting Rules
 

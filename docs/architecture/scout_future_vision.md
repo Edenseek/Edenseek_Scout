@@ -253,3 +253,30 @@ Characteristics:
 Goal:
 
 Generate, critique, refine, and distribute strategic intelligence with minimal human intervention.
+
+## Repository Intelligence
+
+Scout serves as the intelligence layer over the Edenseek Publishing Repository.
+
+Scout observes:
+
+- publisher assets
+- scripts
+- character references
+- environment references
+- processing artifacts
+- approved datasets
+- audit history
+
+Scout never modifies repository content.
+
+Scout's role is to determine:
+
+- dataset quality
+- metadata quality
+- approval readiness
+- retrieval readiness
+- publication readiness
+- repository health
+
+This capability becomes the foundation for future Cartographer and Guardian agents.

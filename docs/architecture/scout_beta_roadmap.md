@@ -67,13 +67,32 @@ recommendations, no predictions, no schema change. See `RETRIEVAL_READINESS.md` 
 
 Result: Foundation for the **Cartographer Agent**.
 
-## Phase 6 — Reader Trust Intelligence
+## Phase 6 — Repository Intelligence
+
+Purpose:
+
+Allow Scout to operate directly against the Edenseek Publishing Repository.
+
+Capabilities:
+
+- dataset registry inspection
+- repository health audits
+- missing asset detection
+- orphaned metadata detection
+- approval-state validation
+- publisher readiness reporting
+
+Result:
+
+Scout becomes repository-aware.
+
+## Phase 7 — Reader Trust Intelligence
 
 * Hallucination detection, citation validation, reader-trust audits, refusal testing
 
 Result: Foundation for the **Guardian Agent**.
 
-## Phase 7 — Multi-Agent Ecosystem
+## Phase 8 — Multi-Agent Ecosystem
 
 * Scout (Dataset/Publisher Intelligence), Cartographer (Search), Guardian (Reader Trust),
   Critic, Strategist

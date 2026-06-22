@@ -102,3 +102,21 @@ phase. This is the only assumption Scout makes about the contract.
 Additional dataset-level coverage tracked in the Dataset Quality Report: approval coverage
 (`approved_dataset` vs population), review coverage (`metadata_review_state`), lock coverage
 (`metadata_locked`).
+
+## Future Repository Location
+
+In repository-backed deployments these files are expected under:
+
+publishers/
+  publisher_id/
+    title_groups/
+      title_group_id/
+        series/
+          series_id/
+            issues/
+              issue_id/
+                approved/
+
+The schema remains unchanged.
+
+Only the storage location changes.

@@ -248,3 +248,34 @@ Before Beta, the following must be completed.
 - Endpoint smoke tests
 
 Beta is achieved when Scout can run continuously without operator supervision and without risk of data corruption.
+
+## Repository Integration (Week 9)
+
+Scout currently audits fixture datasets stored inside the repository.
+
+Future architecture replaces fixture-only inputs with repository-backed datasets.
+
+Target flow:
+
+Publisher App
+→ Edenseek Publishing Repository
+→ Scout
+→ Reader App
+
+Scout will continue operating as a read-only intelligence layer.
+
+Scout will never modify:
+
+- publisher uploads
+- processing artifacts
+- approved datasets
+
+Scout may only:
+
+- inspect
+- score
+- audit
+- classify
+- report
+
+Repository integration does not change Scout's authority boundaries.
