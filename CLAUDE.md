@@ -50,8 +50,10 @@ Scout inspects publisher-side data artifacts and reports on their quality:
 * Weak-artifact detection and review prioritization
 * Dataset failure analysis — *why* scores are low (Phase 3)
 
-Scout generates **deterministic** reports (JSON parsing, counting, structural analysis —
-**no LLM, embedding, vision, or external-service calls**), maintains persistent memory and
+Scout generates **deterministic dataset-audit** reports (JSON parsing, counting, structural
+analysis — **no LLM, embedding, vision, or external-service calls**); its separate
+**strategic / narrative** reports are LLM-generated and do not participate in the
+Publisher-workflow audit. Scout maintains persistent memory and
 audit history, and presents results through a web dashboard. Reports are cheap and safe to
 run on every audit. Scout is **read-and-advise only / diagnostic**: it inspects, scores,
 explains, and recommends, but never modifies canonical data, approves/rejects/locks

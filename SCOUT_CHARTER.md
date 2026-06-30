@@ -98,8 +98,9 @@ Scout MUST NOT:
 - change its own scoring rules, failure taxonomy, or configuration autonomously
 - modify itself or its behavior based on its own history (it may *report* on history,
   never *self-modify* from it)
-- rely on LLM, embedding, vision, or external network calls to produce its reports —
-  reports are deterministic and offline (JSON parsing, counting, structural analysis)
+- rely on LLM, embedding, vision, or external network calls to produce its dataset-audit
+  reports — those reports are deterministic and offline (JSON parsing, counting, structural
+  analysis) and never interpret raw comic images (see "Two report families" below)
 - implement or act as a search/retrieval engine, or alter retrieval results
 - generate reader-facing narrative answers on behalf of Edenseek
 - write, modify, or refactor project code; create commits/branches/tags/pushes
@@ -107,6 +108,17 @@ Scout MUST NOT:
 - take any irreversible or outward-facing action autonomously
 
 All recommendations and analyses are advisory and require explicit human review.
+
+**Two report families (a documentation distinction — no behavior change).** Scout's
+**dataset-audit reports** (dataset quality, character/dialogue analysis, retrieval-readiness,
+weak-artifact queues, failure analysis) are the deterministic, offline reports the boundaries
+above govern — JSON parsing, counting, and structural analysis, with **no LLM, embedding,
+vision, or raw-comic-image interpretation**. These are the reports that participate in the
+Publisher-workflow audit. Scout's separate **strategic / narrative reports** (the scheduled
+market/strategic intelligence narrative) are LLM-generated; they never read the canonical
+repository's comics, never mutate canonical data, never approve a phase, and do not
+participate in the Publisher-workflow audit. The deterministic, no-LLM guarantee applies to
+the dataset-audit reports.
 
 ---
 
@@ -119,9 +131,10 @@ All recommendations and analyses are advisory and require explicit human review.
 5. **Evolve, don't rewrite.** Grow the three-module foundation incrementally.
 6. **Advise, never act.** See §4. Scout proposes; humans dispose. Human approval is the
    final authority.
-7. **Deterministic and cheap.** Reports are produced by JSON parsing, counting, and
-   structural analysis — no LLM, embedding, vision, or external-service calls — so they are
-   safe to run on every audit and after every pipeline change.
+7. **Deterministic and cheap.** Dataset-audit reports are produced by JSON parsing, counting,
+   and structural analysis — no LLM, embedding, vision, or external-service calls — so they are
+   safe to run on every audit and after every pipeline change. (Scout's separate strategic /
+   narrative reports are LLM-generated and do not participate in the Publisher-workflow audit.)
 8. **No autonomous self-modification.** Scout may read its own historical reports and audit
    history to report trends, but never changes its scoring rules, taxonomy, or
    configuration on its own.
@@ -145,6 +158,13 @@ Audit Reports / Quality Scores / Improvement Proposals (written only to Scout's 
         v
 Publisher workflow + Human Review (decide corrections)
 ```
+
+The canonical end-to-end Publisher workflow that emits these artifacts is defined in the
+Edenseek repository at `docs/architecture/publisher_workflow.mmd` (the approved source of
+truth); Scout audits the artifacts that workflow produces and never alters it. Scout's audit
+reports and findings constitute the **Audit / Correction Ledger** referenced by that Publisher
+Architecture — written only to Scout's report space and returned to the Publisher workflow for
+human correction.
 
 Primary inputs (read-only, by phase — per the Scout Data Access Contract):
 

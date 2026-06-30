@@ -31,10 +31,12 @@ modifies canonical data, approves/rejects/locks artifacts, rewrites prompts, cha
 own scoring rules, acts as a retrieval engine, answers reader-facing questions, writes code,
 or deploys. All production changes require human approval (see `SCOUT_CHARTER.md` §4).
 
-**Cost:** reports are produced by JSON parsing, counting, and structural analysis — **no
-LLM, embedding, vision, or external-service calls** — so they are cheap and safe to run on
-every audit and after pipeline changes. Audit history is logged so trends can be inspected
-later; Scout may read its own history but never self-modifies from it.
+**Cost:** Scout's **dataset-audit** reports are produced by JSON parsing, counting, and
+structural analysis — **no LLM, embedding, vision, or external-service calls** — so they are
+cheap and safe to run on every audit and after pipeline changes. (Scout's separate
+**strategic / narrative** reports are LLM-generated and do not participate in the
+Publisher-workflow audit.) Audit history is logged so trends can be inspected later; Scout may
+read its own history but never self-modifies from it.
 
 ## Current Status
 
@@ -71,7 +73,7 @@ FastAPI
 ↓
 Scout (Dataset Intelligence Layer)
 ↓
-deterministic reports (no LLM calls)
+deterministic dataset-audit reports (no LLM calls)
 
 ## Roadmap
 

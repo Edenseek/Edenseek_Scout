@@ -10,8 +10,10 @@
 ## 0. Lifecycle phases and Scout-readable inputs
 
 The Publisher lifecycle is: Comic → Intake → Processing → Metadata Generation → Human Review
-→ Approved Dataset → Canonical Repository → Reader. Per the Scout Data Access Contract, the
-permitted Scout-readable repository artifacts per phase are:
+→ Approved Dataset → Canonical Repository → Reader. The canonical end-to-end Publisher workflow
+is defined in the Edenseek repository at `docs/architecture/publisher_workflow.mmd` (the
+approved source of truth). Per the Scout Data Access Contract, the permitted Scout-readable
+repository artifacts per phase are:
 
 | Phase | Repository stage | Scout-readable inputs | Activation |
 |---|---|---|---|
@@ -26,7 +28,7 @@ permitted Scout-readable repository artifacts per phase are:
 Pre-approval phases are **observation-only and advisory**: Scout reads them to diagnose and
 report; findings return to the Publisher workflow for human correction. Scout never approves,
 gates, or mutates any phase artifact or its state. Phases are activated incrementally as each
-phase's comparisons and reports are validated (Week 11 Publisher Lifecycle Audit Protocol).
+phase's comparisons and reports are validated during the Week 11 Publisher Workflow implementation & validation (the per-phase Scout audit is its audit component).
 
 The remainder of this document specifies the **Approved Dataset** phase schema in detail (the
 phase active today). Other phases reuse the same identity and artifact shapes; their detailed
