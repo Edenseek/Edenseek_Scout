@@ -27,10 +27,15 @@
 
 # 1. Project Overview
 
-Edenseek Scout is the **Dataset Intelligence Layer** for Edenseek Publishing — a bounded,
-read-only, deterministic system (intentionally non-autonomous: no planning, tool use, or
-actions). Its identity and boundaries are governed by `SCOUT_CHARTER.md` (the sole
-authoritative charter).
+Edenseek Scout is the **Dataset Intelligence Layer** for Edenseek Publishing, operating as a
+**Publisher Lifecycle Audit Sidecar** — a bounded, read-only, deterministic system
+(intentionally non-autonomous: no planning, tool use, or actions). Each Publisher lifecycle
+phase emits repository artifacts; Scout reads only the permitted artifacts for that phase (per
+the Scout Data Access Contract), performs phase-appropriate comparisons, and writes only Scout
+reports. Publisher owns creation, humans own approval, the Repository owns storage, and Scout
+owns observation, comparison, diagnostics, and reporting; Scout never modifies Publisher data,
+approves content, becomes the source of truth, or bypasses human approval. Its identity and
+boundaries are governed by `SCOUT_CHARTER.md` (the sole authoritative charter).
 
 Scout serves **two audiences from the same deterministic outputs**: humans (Derek,
 publishers) and **AI engineering agents** (ChatGPT, Claude Code, future Edenseek agents)

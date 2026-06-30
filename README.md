@@ -1,9 +1,15 @@
 # Edenseek Scout
 
-Edenseek Scout is the **Dataset Intelligence Layer** for Edenseek Publishing — a bounded,
-read-only, deterministic system that turns publisher-side data into structured quality
-intelligence. Its governing identity and boundaries are defined in the sole authoritative
-charter, [`SCOUT_CHARTER.md`](./SCOUT_CHARTER.md).
+Edenseek Scout is the **Dataset Intelligence Layer** for Edenseek Publishing, operating as a
+**Publisher Lifecycle Audit Sidecar** — a bounded, read-only, deterministic system that
+observes the permitted repository artifacts emitted by each Publisher lifecycle phase and
+turns them into structured quality intelligence. Each phase emits repository artifacts; Scout
+reads only the permitted artifacts for that phase, performs phase-appropriate comparisons, and
+writes only Scout reports. Publisher owns creation, humans own approval, the Repository owns
+storage, and Scout owns observation, comparison, diagnostics, and reporting; Scout never
+modifies Publisher data, approves content, becomes the source of truth, or bypasses human
+approval. Its governing identity and boundaries are defined in the sole authoritative charter,
+[`SCOUT_CHARTER.md`](./SCOUT_CHARTER.md).
 
 Scout serves **two audiences from the same deterministic outputs**:
 

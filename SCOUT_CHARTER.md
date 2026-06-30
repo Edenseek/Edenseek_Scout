@@ -9,11 +9,20 @@
 
 ## 1. What Scout Is
 
-Edenseek Scout is the **Dataset Intelligence Layer** for Edenseek Publishing — a bounded,
-read-only, deterministic system that inspects publisher-side data and produces structured
-intelligence about its quality. Scout is the **first operational Dataset Intelligence
-System** within the broader Edenseek ecosystem. It is intentionally deterministic and
-non-autonomous: it does not plan, use tools, or take actions.
+Edenseek Scout is the **Dataset Intelligence Layer** for Edenseek Publishing, operating as a
+**Publisher Lifecycle Audit Sidecar** — a bounded, read-only, deterministic system that
+observes the permitted repository artifacts emitted by each Publisher lifecycle phase and
+produces structured intelligence about their quality. Each Publisher lifecycle phase emits
+repository artifacts; Scout reads only the permitted artifacts for that phase, performs
+comparisons appropriate to that phase, and writes only Scout reports. It is the **first
+operational Dataset Intelligence System** within the broader Edenseek ecosystem, intentionally
+deterministic and non-autonomous: it does not plan, use tools, or take actions.
+
+Ownership is fixed: **Publisher** owns creation, **humans** own approval, the **Repository**
+owns storage, and **Scout** owns observation, comparison, diagnostics, and reporting. Scout
+never modifies Publisher data, never approves content, never becomes the source of truth, and
+never bypasses human approval. Per-phase reads are observation-only and advisory; findings
+return to the Publisher workflow for human correction.
 
 Scout serves **two audiences from the same deterministic outputs**:
 
@@ -69,7 +78,11 @@ more. Execution is always a human-initiated decision.
 
 Scout MAY:
 
-- inspect approved datasets, approved metadata, and reference materials
+- inspect the permitted repository artifacts of each Publisher lifecycle phase (per the Scout
+  Data Access Contract): intake artifacts, processing artifacts, metadata-generation drafts,
+  human-review/approval **state summaries** (read, never set), the approved dataset, approved
+  metadata, reference materials, and Dataset Registry records — phase reads are
+  observation-only and advisory
 - inspect retrieval evidence packets (to assess readiness, never to perform retrieval)
 - read its own memory and call its LLM provider
 - write its own reports, quality scores, and memory files
@@ -77,8 +90,10 @@ Scout MAY:
 
 Scout MUST NOT:
 
-- modify canonical Edenseek/publisher data
+- modify canonical Edenseek/publisher data, at any lifecycle phase
 - approve, reject, or lock metadata or artifacts, or bypass publisher review
+- act as or become a phase approval gate, an approval authority, or the source of truth at any
+  lifecycle phase (Scout reports on review/approval state; it never sets it)
 - rewrite prompts, or automatically apply prompt/enrichment/data changes
 - change its own scoring rules, failure taxonomy, or configuration autonomously
 - modify itself or its behavior based on its own history (it may *report* on history,
@@ -115,29 +130,32 @@ All recommendations and analyses are advisory and require explicit human review.
 
 ---
 
-## 6. Phase 1 Architecture
+## 6. Lifecycle Audit Architecture
 
 ```text
-Publisher Dataset (read-only)
-        ↓
-     Scout
-        ↓
-Audit Reports
-Quality Scores
-Improvement Proposals
-        ↓
-Human Review
+Each Publisher lifecycle phase emits repository artifacts (read-only):
+  Intake -> Processing -> Metadata Generation -> Human Review -> Approved Dataset -> Canonical Repository
+        |  (Scout reads only the permitted artifacts for each phase)
+        v
+     Scout (observation, comparison, diagnostics)
+        |
+        v
+Audit Reports / Quality Scores / Improvement Proposals (written only to Scout's report space)
+        |
+        v
+Publisher workflow + Human Review (decide corrections)
 ```
 
-Primary inputs (read-only):
+Primary inputs (read-only, by phase — per the Scout Data Access Contract):
 
-- `approved_dataset.json`
-- `approved_llm_outputs.json`
-- `retrieval_evidence_packets.json`
-- reference materials
-- character sheets
-- scripts
-- creator notes
+- intake artifacts; processing artifacts; metadata-generation drafts
+- human-review / approval **state summaries** (read, never set)
+- the approved dataset: `approved_dataset.json`, `approved_llm_outputs.json`, `retrieval_evidence_packets.json`
+- reference materials (scripts, character sheets, creator notes); Dataset Registry records
+
+The **Approved Dataset** phase is active today; pre-approval phases are defined in the Scout
+Data Access Contract and activated incrementally as each phase's comparisons and reports are
+validated.
 
 Primary outputs (written only to Scout's own report/memory space):
 
