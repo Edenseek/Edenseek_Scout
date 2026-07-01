@@ -20,6 +20,7 @@ import audit_history_analysis
 import audit_digest
 import audit_reports
 import audit_s3_source
+import scout_report_publisher
 import scout
 
 REPORTS_ROOT = Path("reports")
@@ -128,6 +129,18 @@ def run_dataset_audit(input_dir=None):
         "last_audit": generated_at,
     }
     scout.update_dataset_memory(summary)
+
+    # Operational transport (Week 10 Day 15): the deterministic audit is complete
+    # and the report set is generated, so publish that same set to the Scout
+    # Repository at the frozen R1 keys. Reuses the already-produced report blocks
+    # (no re-computation). Runs only when the write target is configured — a
+    # deployment switch, not an error-fallback; when configured, any publication
+    # failure raises out of here (fail-loud, no local fallback).
+    if scout_report_publisher.is_configured():
+        published = scout_report_publisher.publish_reports(result, generated_at)
+        logger.info(f"Scout Repository publication complete: {len(published)} report(s)")
+    else:
+        logger.info("Scout Repository write target not configured; skipping publication.")
 
     priority = result["blocks"]["review_priority"]
     logger.info(
