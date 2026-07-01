@@ -9,6 +9,13 @@ sys.path.insert(0, str(REPO_ROOT))
 # Configure auth before importing app (credentials are read at import time).
 os.environ["SCOUT_USERNAME"] = "scout"
 os.environ["SCOUT_PASSWORD"] = "testpass"
+# Provide an explicit local dataset source: since Week 10 Day 14 the auditor has
+# no silent fixture fallback (it requires an explicit source or the canonical S3
+# contract, and otherwise fails loud). This offline endpoint test opts into the
+# committed fixtures explicitly via SCOUT_DATASET_DIR.
+os.environ["SCOUT_DATASET_DIR"] = str(
+    REPO_ROOT / "fixtures" / "dataset" / "society_of_killers" / "issue_1"
+)
 
 from fastapi.testclient import TestClient  # noqa: E402
 import app as scout_app  # noqa: E402

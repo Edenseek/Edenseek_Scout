@@ -19,14 +19,26 @@ import audit_retrieval_readiness
 import audit_history_analysis
 import audit_digest
 import audit_reports
+import audit_s3_source
 import scout
 
-DEFAULT_INPUT_DIR = "fixtures/dataset/society_of_killers/issue_1"
 REPORTS_ROOT = Path("reports")
 
 
 def _resolve_input_dir(input_dir):
-    return input_dir or os.getenv("SCOUT_DATASET_DIR", DEFAULT_INPUT_DIR)
+    """Resolve the audit input directory.
+
+    Precedence: an explicit caller-provided path (tests / local dev), then an
+    explicit ``SCOUT_DATASET_DIR`` override, then the canonical Approved-Dataset
+    contract fetched read-only from S3 (Week 10 Day 14). There is no silent
+    fixture fallback: when no explicit path is given, an explicit canonical S3
+    source is required, and its absence or unavailability fails loudly via
+    ``audit_s3_source.materialize_approved_contract`` (raises ``ScoutS3SourceError``).
+    """
+    explicit = input_dir or os.getenv("SCOUT_DATASET_DIR")
+    if explicit:
+        return explicit
+    return audit_s3_source.materialize_approved_contract()
 
 
 def _latest_delta(history):
