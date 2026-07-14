@@ -21,21 +21,35 @@ WEIGHTS = {
     "retrieval_readiness": 0.20,
 }
 
-REVIEWED_STATE = "reviewed"
+# Certified metadata_review_state vocabulary that counts as reviewed coverage.
+# The frozen Publisher contract emits "approved" (metadata reviewed and approved);
+# "reviewed" is retained for forward/backward compatibility.
+REVIEWED_STATES = frozenset({"reviewed", "approved"})
 APPROVED_STATE = "creator_approved"
 
 # Required metadata fields checked per artifact (dotted = nested in output).
+# ``classification.tags`` is heterogeneous in the certified contract (see
+# ``_nonempty_tags``); it is scored on presence, not on a fixed sub-field set.
 _METADATA_FIELDS = [
     "artifact_id",
-    "classification.tags.action",
-    "classification.tags.mood",
-    "classification.tags.setting",
+    "classification.tags",
     "narrative.summary",
 ]
 
 
 def _nonempty_str(v):
     return isinstance(v, str) and v.strip() != ""
+
+
+def _nonempty_tags(v):
+    """True when ``classification.tags`` is populated, across certified shapes.
+
+    The frozen Publisher contract carries ``classification.tags`` in two coexisting
+    forms within the same revision: a flat list of string tags (enrichment v1.1)
+    and a legacy ``{action, mood, setting}`` object (enrichment v1). Either counts
+    as present when non-empty; Scout scores tag *presence*, not sub-field shape.
+    """
+    return isinstance(v, (list, dict)) and len(v) > 0
 
 
 def _pct(numer, denom):
@@ -56,13 +70,11 @@ def _derive_page(artifact_id):
 
 
 def _metadata_field_checks(artifact_id, output):
-    tags = (output.get("classification", {}) or {}).get("tags", {}) or {}
+    classification = output.get("classification", {}) or {}
     narrative = output.get("narrative", {}) or {}
     return {
         "artifact_id": _nonempty_str(artifact_id),
-        "classification.tags.action": _nonempty_str(tags.get("action")),
-        "classification.tags.mood": _nonempty_str(tags.get("mood")),
-        "classification.tags.setting": _nonempty_str(tags.get("setting")),
+        "classification.tags": _nonempty_tags(classification.get("tags")),
         "narrative.summary": _nonempty_str(narrative.get("summary")),
     }
 
@@ -94,7 +106,7 @@ def _analyze_artifacts(outputs, approved_ids):
             "summary_length": summary_length,
             "has_characters": len(characters) > 0,
             "has_dialogue": len(dialogue) > 0,
-            "is_reviewed": out.get("metadata_review_state") == REVIEWED_STATE,
+            "is_reviewed": out.get("metadata_review_state") in REVIEWED_STATES,
             "is_locked": bool(out.get("metadata_locked")),
             "is_approved": aid in approved_ids,
             "status": out.get("status"),

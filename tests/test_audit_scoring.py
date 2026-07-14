@@ -32,12 +32,12 @@ class TestAuditScoring(unittest.TestCase):
     def test_known_scores_regression(self):
         # Locked against the committed Society of Killers issue-1 fixture.
         self.assertEqual(self.result["scores"], {
-            "metadata_completeness": 87,
+            "metadata_completeness": 93,
             "character_consistency": 14,
             "dialogue_completeness": 73,
             "retrieval_readiness": 25,
         })
-        self.assertEqual(self.result["quality_score"], 53)
+        self.assertEqual(self.result["quality_score"], 55)
 
     def test_coverage_cross_check(self):
         # Recompute presence coverage independently from the loaded data.
@@ -78,6 +78,16 @@ class TestAuditScoring(unittest.TestCase):
         audit_scoring.run_audit(audit_inputs.load_inputs(FIXTURE_DIR))
         after = {p.name: _sha(p) for p in FIXTURE_DIR.iterdir() if p.is_file()}
         self.assertEqual(before, after)
+
+    def test_tags_presence_across_certified_shapes(self):
+        # The frozen contract carries classification.tags in two coexisting forms;
+        # both count as present when non-empty, and empty forms as missing.
+        present = lambda out: audit_scoring._metadata_field_checks("a", out)["classification.tags"]
+        self.assertTrue(present({"classification": {"tags": ["Astrid", "smoking"]}}))  # v1.1 list
+        self.assertTrue(present({"classification": {"tags": {"action": "run"}}}))       # v1 legacy dict
+        self.assertFalse(present({"classification": {"tags": []}}))                     # empty list
+        self.assertFalse(present({"classification": {"tags": {}}}))                     # empty dict
+        self.assertFalse(present({"classification": {}}))                              # absent
 
 
 if __name__ == "__main__":

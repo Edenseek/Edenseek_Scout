@@ -1,21 +1,44 @@
-"""Read-only S3 source for the canonical Approved-Dataset contract (Week 10 Day 14).
+"""Read-only S3 source for the canonical Approved-Dataset contract.
 
-Fetches the three Approved-Dataset contract files from the canonical Publishing
-Repository ``approved/`` surface (S3) into a local transient directory, which the
-existing deterministic loader (``audit_inputs.load_inputs``) then reads unchanged.
+Scout consumes the frozen Publisher Repository contract as a pure reader. The
+certified model ("Option B", Week 10 Day 18) is a **content-addressed processing
+revision**, not three loose files under ``approved/``:
+
+  1. ``approved/published.json`` is a small **mutable pointer** carrying
+     ``revision_id`` (a ``rev_<sha256>`` content hash) and ``revision_key``
+     (the full S3 key of the immutable snapshot for that revision).
+  2. That ``revision_key`` resolves to ``processing/workspace/<rev>/
+     processing_snapshot.json`` — an immutable snapshot whose ``artifacts`` list
+     embeds every issue file as ``{path, content_b64, sha256, size}``.
+  3. The three Approved-Dataset contract files
+     (``approved_dataset.json``, ``approved_llm_outputs.json``,
+     ``retrieval_evidence_packets.json``) are embedded artifacts inside that
+     snapshot; Scout extracts them and hands the reconstructed directory to the
+     existing deterministic loader (``audit_inputs.load_inputs``) unchanged.
+
+Invariants (enforced here):
+  * **Resolve the pointer every run** — the revision id is never pinned in config;
+    a new approval simply moves the pointer and Scout follows it.
+  * **Version-pin each S3 read** — the S3 ``VersionId`` returned for the pointer
+    and the snapshot is captured and logged as run provenance so the audit records
+    exactly which object versions it consumed.
+  * **Verify content integrity** — ``sha256(snapshot_bytes)`` must equal the
+    pointer's ``revision_id``; each extracted file must match its embedded
+    ``sha256``. Any mismatch fails loud.
+  * **Fail loud, no fixture fallback** — if the canonical source is unconfigured
+    or any object cannot be reached, this raises ``ScoutS3SourceError``.
 
 Boundaries (Charter §4; Repository Ownership Principle):
-  * Scout is read-only on canonical data: this module performs S3 ``GetObject``
-    only — never ``PutObject``/``DeleteObject``, and never writes to the
-    Publishing Repository.
-  * Scout only reads inside the configured ``approved/`` prefix; a prefix that is
-    not an ``approved/`` surface is refused.
+  * Scout is read-only on canonical data: ``GetObject`` only — never
+    ``PutObject``/``DeleteObject``. Scout writes only to its own report space.
+  * Scout enters only through a configured ``approved/`` surface; the
+    ``processing/`` snapshot it follows is named by the pointer the Publisher
+    published, never guessed.
   * No LLM / vision / external-service calls; deterministic over a frozen source.
-
-Fail-loud: if the canonical source is not configured, the prefix is not an
-approved surface, or any contract file cannot be reached, this raises
-``ScoutS3SourceError`` rather than falling back to local fixtures.
 """
+import base64
+import hashlib
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -25,12 +48,16 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from logging_config import logger
 
-# The three files that constitute the active Approved-Dataset contract.
+# The three files that constitute the active Approved-Dataset contract, embedded
+# by ``path`` inside the certified processing snapshot's ``artifacts`` list.
 CONTRACT_FILES = (
     "approved_dataset.json",
     "approved_llm_outputs.json",
     "retrieval_evidence_packets.json",
 )
+
+# The mutable pointer object that lives on the ``approved/`` surface.
+POINTER_FILE = "published.json"
 
 # Explicit canonical S3 source configuration (no defaults that point at fixtures).
 BUCKET_ENV = "SCOUT_APPROVED_S3_BUCKET"
@@ -57,8 +84,8 @@ def _s3_client(region):
 def _require_approved_prefix(prefix):
     """Enforce that the configured prefix is an ``approved/`` surface.
 
-    Guarantees Scout never reads outside the approved contract surface. Returns
-    the normalized path segments.
+    Guarantees Scout enters the contract only through the approved surface it is
+    scoped to. Returns the normalized path segments.
     """
     segments = prefix.strip().strip("/").split("/")
     if not segments or segments[-1] != "approved":
@@ -84,13 +111,131 @@ def _derive_identity_tail(segments):
     return series_id, issue_id
 
 
-def materialize_approved_contract(dest_root=None):
-    """Download the three contract files from the canonical ``approved/`` surface.
+def _get_object(client, bucket, key):
+    """Read one object (GET only) and return ``(body_bytes, version_id)``.
 
-    Returns the local directory ``<dest_root>/<series_id>/<issue_id>`` containing
-    the three files, suitable for ``audit_inputs.load_inputs``. Read-only on S3
-    (``GetObject`` only). Raises ``ScoutS3SourceError`` (fail-loud) when the source
-    is unconfigured or any file cannot be retrieved. Never falls back to fixtures.
+    Version-pin provenance: the S3 ``VersionId`` is captured so the run records
+    exactly which object version it consumed. Fail-loud on any transport error.
+    """
+    try:
+        obj = client.get_object(Bucket=bucket, Key=key)
+        body = obj["Body"].read()
+    except (ClientError, BotoCoreError) as e:
+        raise ScoutS3SourceError(
+            f"Unable to read canonical object s3://{bucket}/{key}: {e}"
+        ) from e
+    return body, obj.get("VersionId")
+
+
+def _resolve_published_pointer(client, bucket, approved_prefix):
+    """Resolve the mutable ``approved/published.json`` pointer for this run.
+
+    Returns a dict with ``revision_id``, ``revision_key``, and the pointer's own
+    S3 ``version_id``. Fail-loud if the pointer is missing, unparseable, or does
+    not carry both fields.
+    """
+    key = f"{approved_prefix}/{POINTER_FILE}"
+    body, version_id = _get_object(client, bucket, key)
+    try:
+        pointer = json.loads(body)
+    except json.JSONDecodeError as e:
+        raise ScoutS3SourceError(
+            f"Published pointer is not valid JSON (s3://{bucket}/{key}): {e}"
+        ) from e
+    revision_id = pointer.get("revision_id")
+    revision_key = pointer.get("revision_key")
+    if not revision_id or not revision_key:
+        raise ScoutS3SourceError(
+            "Published pointer missing 'revision_id'/'revision_key' "
+            f"(s3://{bucket}/{key})"
+        )
+    return {
+        "key": key,
+        "version_id": version_id,
+        "revision_id": revision_id,
+        "revision_key": revision_key,
+    }
+
+
+def _verify_revision_hash(snapshot_bytes, revision_id):
+    """Assert the snapshot's content hash equals the pointer's ``revision_id``.
+
+    The revision id is content-addressed: ``rev_<sha256(snapshot_bytes)>``. A
+    mismatch means the pointer and the snapshot disagree — fail loud.
+    """
+    computed = f"rev_{hashlib.sha256(snapshot_bytes).hexdigest()}"
+    if computed != revision_id:
+        raise ScoutS3SourceError(
+            "Snapshot content hash does not match the published pointer: "
+            f"computed {computed} != revision_id {revision_id}"
+        )
+
+
+def _extract_contract_files(snapshot_bytes, revision_id):
+    """Extract the three embedded contract files from the certified snapshot.
+
+    Each snapshot ``artifacts`` entry is ``{path, content_b64, sha256, size}``.
+    Returns ``{filename: raw_bytes}`` for the three contract files, verifying each
+    file's embedded ``sha256``. Fail-loud if a required file is absent or its
+    content is corrupt.
+    """
+    try:
+        snapshot = json.loads(snapshot_bytes)
+    except json.JSONDecodeError as e:
+        raise ScoutS3SourceError(
+            f"processing_snapshot.json is not valid JSON for {revision_id}: {e}"
+        ) from e
+
+    artifacts = snapshot.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise ScoutS3SourceError(
+            f"Certified revision {revision_id} snapshot has no 'artifacts' list"
+        )
+    by_path = {a.get("path"): a for a in artifacts if isinstance(a, dict)}
+
+    extracted = {}
+    for name in CONTRACT_FILES:
+        entry = by_path.get(name)
+        if entry is None:
+            raise ScoutS3SourceError(
+                f"Certified revision {revision_id} does not embed required "
+                f"contract file {name!r}"
+            )
+        content_b64 = entry.get("content_b64")
+        if content_b64 is None:
+            raise ScoutS3SourceError(
+                f"Embedded contract file {name!r} has no 'content_b64' "
+                f"in revision {revision_id}"
+            )
+        try:
+            raw = base64.b64decode(content_b64, validate=True)
+        except (ValueError, TypeError) as e:
+            raise ScoutS3SourceError(
+                f"Embedded contract file {name!r} is not valid base64 "
+                f"in revision {revision_id}: {e}"
+            ) from e
+        expected_sha = entry.get("sha256")
+        if expected_sha is not None:
+            actual_sha = hashlib.sha256(raw).hexdigest()
+            if actual_sha != expected_sha:
+                raise ScoutS3SourceError(
+                    f"Embedded contract file {name!r} sha256 mismatch in "
+                    f"revision {revision_id}: {actual_sha} != {expected_sha}"
+                )
+        extracted[name] = raw
+    return extracted
+
+
+def materialize_approved_contract(dest_root=None):
+    """Reconstruct the certified Approved-Dataset contract from S3, read-only.
+
+    Resolves the published pointer, fetches the immutable content-addressed
+    revision snapshot, verifies its content hash, extracts the three embedded
+    contract files, and writes them to ``<dest_root>/<series_id>/<issue_id>`` —
+    a directory ``audit_inputs.load_inputs`` consumes unchanged. ``GetObject``
+    only; never writes to the Publishing Repository. Raises ``ScoutS3SourceError``
+    (fail-loud) when the source is unconfigured, the pointer/snapshot is
+    unreachable, or content integrity fails. Never falls back to fixtures.
     """
     bucket = os.getenv(BUCKET_ENV)
     prefix = os.getenv(PREFIX_ENV)
@@ -105,24 +250,31 @@ def materialize_approved_contract(dest_root=None):
     normalized_prefix = "/".join(segments)
     series_id, issue_id = _derive_identity_tail(segments)
 
+    client = _s3_client(region)
+
+    # 1. Resolve the mutable pointer dynamically — never pin a revision id.
+    pointer = _resolve_published_pointer(client, bucket, normalized_prefix)
+
+    # 2. Fetch the immutable, content-addressed revision snapshot the pointer names.
+    snapshot_bytes, snapshot_version = _get_object(client, bucket, pointer["revision_key"])
+
+    # 3. Verify the snapshot's content hash equals the pointer's revision_id.
+    _verify_revision_hash(snapshot_bytes, pointer["revision_id"])
+
+    # 4. Extract (and per-file verify) the three embedded contract files.
+    extracted = _extract_contract_files(snapshot_bytes, pointer["revision_id"])
+
     dest_root = Path(dest_root) if dest_root else Path(tempfile.mkdtemp(prefix="scout_approved_"))
     dest_dir = dest_root / series_id / issue_id
     dest_dir.mkdir(parents=True, exist_ok=True)
-
-    client = _s3_client(region)
-    for name in CONTRACT_FILES:
-        key = f"{normalized_prefix}/{name}"
-        try:
-            obj = client.get_object(Bucket=bucket, Key=key)
-            body = obj["Body"].read()
-        except (ClientError, BotoCoreError) as e:
-            raise ScoutS3SourceError(
-                f"Unable to read canonical contract object s3://{bucket}/{key}: {e}"
-            ) from e
-        (dest_dir / name).write_bytes(body)
+    for name, raw in extracted.items():
+        # Write the certified bytes verbatim so the on-disk copy stays hash-verifiable.
+        (dest_dir / name).write_bytes(raw)
 
     logger.info(
-        "Materialized canonical Approved-Dataset contract from "
-        f"s3://{bucket}/{normalized_prefix}/ -> {dest_dir}"
+        "Reconstructed canonical Approved-Dataset contract "
+        f"revision={pointer['revision_id']} from s3://{bucket}/{normalized_prefix}/ "
+        f"(pointer VersionId={pointer['version_id']}, "
+        f"snapshot VersionId={snapshot_version}) -> {dest_dir}"
     )
     return str(dest_dir)

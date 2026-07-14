@@ -31,13 +31,28 @@ def _read_json(path):
             raise AuditInputError(f"Invalid JSON in {path.name}: {e}") from e
 
 
-def _require_list(obj, key, source):
-    if not isinstance(obj, dict) or key not in obj:
-        raise AuditInputError(f"{source}: expected top-level key '{key}'")
-    value = obj[key]
-    if not isinstance(value, list):
-        raise AuditInputError(f"{source}: '{key}' must be a list")
-    return value
+def _coerce_list(obj, key, source):
+    """Return the element list from either certified contract shape.
+
+    The frozen Publisher contract is not uniformly wrapped: ``approved_dataset.json``
+    and ``retrieval_evidence_packets.json`` are **bare JSON lists**, while
+    ``approved_llm_outputs.json`` wraps its list under ``key``. Accept either — a
+    bare list is used as-is; a wrapped object must carry ``key`` as a list.
+    """
+    if isinstance(obj, list):
+        return obj
+    if isinstance(obj, dict):
+        if key not in obj:
+            raise AuditInputError(
+                f"{source}: expected a bare JSON list or top-level key '{key}'"
+            )
+        value = obj[key]
+        if not isinstance(value, list):
+            raise AuditInputError(f"{source}: '{key}' must be a list")
+        return value
+    raise AuditInputError(
+        f"{source}: expected a bare JSON list or an object with '{key}'"
+    )
 
 
 def _derive_dataset_id(input_dir):
@@ -61,9 +76,9 @@ def load_inputs(input_dir):
     llm_raw = _read_json(input_dir / LLM_OUTPUTS_FILE)
     packets_raw = _read_json(input_dir / PACKETS_FILE)
 
-    approved = _require_list(dataset_raw, DATASET_KEY, DATASET_FILE)
-    outputs = _require_list(llm_raw, LLM_OUTPUTS_KEY, LLM_OUTPUTS_FILE)
-    packets = _require_list(packets_raw, PACKETS_KEY, PACKETS_FILE)
+    approved = _coerce_list(dataset_raw, DATASET_KEY, DATASET_FILE)
+    outputs = _coerce_list(llm_raw, LLM_OUTPUTS_KEY, LLM_OUTPUTS_FILE)
+    packets = _coerce_list(packets_raw, PACKETS_KEY, PACKETS_FILE)
 
     return {
         "dataset_id": _derive_dataset_id(input_dir),

@@ -12,7 +12,7 @@ THIN_DESCRIPTION_CHARS = 40
 
 
 def _missing_tag(a):
-    return any(str(f).startswith("classification.tags.") for f in a["missing_fields"])
+    return any(str(f).startswith("classification.tags") for f in a["missing_fields"])
 
 
 # Artifact-level retrieval blockers: (blocker_type, severity, predicate over an assessment).
