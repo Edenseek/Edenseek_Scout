@@ -59,6 +59,12 @@ CONTRACT_FILES = (
 # The mutable pointer object that lives on the ``approved/`` surface.
 POINTER_FILE = "published.json"
 
+# Scout-internal provenance sidecar written into the materialized directory. It
+# records exactly which Publisher Approved Dataset revision (and S3 object
+# versions) this run consumed, so the persisted Scout Report can cite the source.
+# Named with a leading underscore so it never collides with a contract file.
+PROVENANCE_FILE = "_scout_source.json"
+
 # Explicit canonical S3 source configuration (no defaults that point at fixtures).
 BUCKET_ENV = "SCOUT_APPROVED_S3_BUCKET"
 PREFIX_ENV = "SCOUT_APPROVED_S3_PREFIX"
@@ -271,6 +277,21 @@ def materialize_approved_contract(dest_root=None):
         # Write the certified bytes verbatim so the on-disk copy stays hash-verifiable.
         (dest_dir / name).write_bytes(raw)
 
+    # Record run provenance alongside the contract files so the Scout Report can
+    # tie its findings to the exact Publisher Approved Dataset revision analyzed.
+    provenance = {
+        "source": "publisher_approved_dataset_s3",
+        "source_bucket": bucket,
+        "publisher_pointer_key": pointer["key"],
+        "publisher_pointer_version_id": pointer["version_id"],
+        "publisher_revision_id": pointer["revision_id"],
+        "publisher_revision_key": pointer["revision_key"],
+        "publisher_snapshot_version_id": snapshot_version,
+    }
+    (dest_dir / PROVENANCE_FILE).write_text(
+        json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
     logger.info(
         "Reconstructed canonical Approved-Dataset contract "
         f"revision={pointer['revision_id']} from s3://{bucket}/{normalized_prefix}/ "
@@ -278,3 +299,19 @@ def materialize_approved_contract(dest_root=None):
         f"snapshot VersionId={snapshot_version}) -> {dest_dir}"
     )
     return str(dest_dir)
+
+
+def load_source_provenance(input_dir):
+    """Return the read-path provenance for ``input_dir``, or ``None`` if absent.
+
+    Present only for directories materialized from the Publisher Approved Dataset
+    S3 source (see ``PROVENANCE_FILE``); an explicit ``SCOUT_DATASET_DIR`` / local
+    fixture directory has no revision provenance and yields ``None``.
+    """
+    path = Path(input_dir) / PROVENANCE_FILE
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None

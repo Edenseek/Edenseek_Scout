@@ -138,7 +138,16 @@ def run_dataset_audit(input_dir=None):
     # failure raises out of here (fail-loud, no local fallback).
     if scout_report_publisher.is_configured():
         published = scout_report_publisher.publish_reports(result, generated_at)
-        logger.info(f"Scout Repository publication complete: {len(published)} report(s)")
+        # Canonical consolidated Scout Report, tied to the exact Publisher Approved
+        # Dataset revision analyzed (provenance from the read path), written and
+        # then verified by read-back. This is the primary artifact the future
+        # Edenseek review/governance workflow consumes.
+        provenance = audit_s3_source.load_source_provenance(input_dir)
+        scout_report = scout_report_publisher.publish_scout_report(
+            result, generated_at, provenance)
+        logger.info(
+            f"Scout Repository publication complete: {len(published)} per-type report(s) "
+            f"+ consolidated {scout_report['report_id']} (read-back verified)")
     else:
         logger.info("Scout Repository write target not configured; skipping publication.")
 

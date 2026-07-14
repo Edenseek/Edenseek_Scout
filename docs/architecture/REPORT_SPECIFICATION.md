@@ -521,7 +521,74 @@ These reports operate on repository-level information rather than
 individual issue datasets and are intended for a future Repository
 Intelligence phase.
 
-## 7. Formatting Rules
+## 7. Consolidated Scout Report — the Scout → Edenseek governance contract
+
+The **consolidated Scout Report** is the canonical, primary Scout artifact and the beginning of
+the long-term **governance/reporting contract** between Scout and Edenseek. It is written to the
+Scout Repository (`edenseek-scout`) by `scout_report_publisher.publish_scout_report` and tied to
+the exact Publisher **Approved Dataset revision** analyzed. Today it carries deterministic audit
+results, provenance, findings, recommendations, and evidence references; later phases expand it
+with trends and richer evidence consumed by the Edenseek review layer. The Edenseek review UI and
+recommendation agent are **out of scope here** — a separate, later phase builds on this contract.
+
+**Feedback loop:**
+
+```text
+Publisher Repository
+  -> Approved Dataset revision (immutable; named by approved/published.json pointer)
+  -> Scout (read-only external consumer; deterministic audit)
+  -> Versioned Scout Report in the Scout Repository (edenseek-scout)
+  -> Edenseek report review / recommendation workflow   (later phase)
+  -> Human approval                                      (later phase)
+  -> A separately governed engineering change, when warranted
+```
+
+**Object keys (R1 Object-Key Contract):**
+
+```text
+{issue}/reports/scout_report.json          # latest-state, machine-readable (canonical)
+{issue}/reports/scout_report.md            # latest-state, human-readable rendering
+{issue}/history/scout_report_{run_seq}.json  # immutable, append-only snapshot (+ .md)
+```
+
+**Envelope (`scout_report.json`, schema `report_version: v1`):**
+
+```jsonc
+{
+  "report_version": "v1",
+  "report_type": "scout_report",
+  "report_id": "scout::{issue_id}::{publisher_revision_id}::run{run_seq}",  // ties to the exact revision
+  "scout_version": "0.4.0",
+  "created_at": "<ISO-8601>",
+  "dataset_id": "society_of_killers/issue_001",
+  "issue_id": "issue_001",
+  "run_seq": 1,
+  "provenance": {
+    "source": "publisher_approved_dataset_s3",
+    "source_bucket": "edenseek-publishing",
+    "publisher_pointer_key": ".../approved/published.json",   // the mutable pointer
+    "publisher_pointer_version_id": "<s3 VersionId>",
+    "publisher_revision_id": "rev_<sha256>",                  // the immutable Approved Dataset revision
+    "publisher_revision_key": ".../processing/workspace/<rev>/processing_snapshot.json",
+    "publisher_snapshot_version_id": "<s3 VersionId>"
+  },
+  "audit_results": { "quality_score", "scores", "artifact_count", "coverage", "completeness" },
+  "findings": [ { "source", "artifact_id"|"packet_id", "issue", "severity", "recommendation" } ],
+  "recommendations": [ "<distinct, order-preserving recommendation strings>" ],
+  "evidence_references": { "retrieval_packets_evaluated", "retrieval_artifacts_referenced",
+                            "retrieval_coverage_percent", "retrieval_readiness_score",
+                            "highest_leverage_failure" }
+}
+```
+
+**Guarantees.** Deterministic (JSON `sort_keys`; only `created_at`/`run_seq` version the artifact);
+**read-back verified** (each persisted object is re-fetched and compared byte-for-byte to the
+locally produced report — a mismatch fails loud); **boundary-preserving** (read-only on the
+Publisher Repository; writes only under the `edenseek-scout` issue chain; no Publisher code or
+contract change). This envelope is the **input contract** a future Edenseek review/governance
+service consumes.
+
+## 8. Formatting Rules
 
 - Markdown for human-facing files; JSON blocks for machine-consumed sections.
 - Timestamps ISO-8601; commit SHAs short form with subject.

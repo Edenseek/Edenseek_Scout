@@ -46,6 +46,22 @@ DEFAULT_REGION = "us-west-2"
 # Zero-padded width for the history run_seq token (e.g. 000001).
 RUN_SEQ_WIDTH = 6
 
+# Scout software version stamped into the Scout Report provenance.
+SCOUT_VERSION = "0.4.0"
+# Consolidated Scout Report envelope schema version and artifact name. This
+# envelope is the canonical, primary Scout Report artifact — the beginning of the
+# Scout -> Edenseek governance/reporting contract (see REPORT_SPECIFICATION.md).
+SCOUT_REPORT_VERSION = "v1"
+SCOUT_REPORT_TYPE = "scout_report"
+
+# Report-family blocks whose ``findings`` roll up into the consolidated report.
+_FINDING_SOURCES = ("dataset", "character", "dialogue", "retrieval")
+
+_ADVISORY = (
+    "> Read-only advisory report. Scout inspects, scores, and recommends only; it does not "
+    "modify canonical data, approve metadata, or bypass publisher review (Charter §4)."
+)
+
 
 class ScoutReportPublishError(Exception):
     """Raised when the Scout Repository write target is unconfigured or a write fails."""
@@ -209,3 +225,215 @@ def publish_reports(result, generated_at, report_types=None, client=None):
         "(latest-state reports/ + immutable history/ per R1 Object-Key Contract)"
     )
     return published
+
+
+# --------------------------------------------------------------------------- #
+# Consolidated Scout Report (Week 10 Day 18) — the canonical, provenance-bearing
+# artifact tied to the exact Publisher Approved Dataset revision analyzed.
+# --------------------------------------------------------------------------- #
+
+def _dumps(obj):
+    """Deterministic UTF-8 JSON bytes (stable across runs for identical content)."""
+    return json.dumps(obj, indent=2, ensure_ascii=False, sort_keys=True).encode("utf-8") + b"\n"
+
+
+def _aggregate_findings(blocks):
+    """Roll up per-report findings into one consolidated, source-tagged list."""
+    findings = []
+    for source in _FINDING_SOURCES:
+        for f in blocks.get(source, {}).get("findings", []):
+            findings.append({
+                "source": source,
+                "artifact_id": f.get("artifact_id"),
+                "packet_id": f.get("packet_id"),
+                "issue": f.get("issue") or f.get("gap"),
+                "severity": f.get("severity"),
+                "recommendation": f.get("recommendation"),
+            })
+    return findings
+
+
+def _distinct_recommendations(findings):
+    """Order-preserving distinct recommendation strings from the findings."""
+    recs, seen = [], set()
+    for f in findings:
+        rec = f.get("recommendation")
+        if rec and rec not in seen:
+            seen.add(rec)
+            recs.append(rec)
+    return recs
+
+
+def _evidence_references(blocks):
+    """Retrieval-evidence summary the review layer consumes as supporting evidence."""
+    retrieval = blocks.get("retrieval", {})
+    coverage = blocks.get("retrieval_blockers", {}).get("packet_coverage", {})
+    return {
+        "retrieval_packets_evaluated": retrieval.get("packets_evaluated", 0),
+        "retrieval_artifacts_referenced": retrieval.get("artifacts_referenced", 0),
+        "retrieval_coverage_percent": coverage.get("coverage_percent"),
+        "retrieval_readiness_score": retrieval.get("retrieval_readiness_score"),
+        "highest_leverage_failure": blocks.get("highest_leverage", {}).get("highest_leverage_failure"),
+    }
+
+
+def build_scout_report(result, generated_at, provenance, issue_id, run_seq):
+    """Assemble the consolidated Scout Report envelope (pure projection over blocks).
+
+    Ties the deterministic audit to the exact Publisher Approved Dataset revision
+    via ``provenance``. Deterministic for identical inputs (aside from
+    ``created_at``/``run_seq``, which version the artifact).
+    """
+    blocks = result["blocks"]
+    dataset_block = blocks.get("dataset", {})
+    revision_id = (provenance or {}).get("publisher_revision_id") or "local"
+    report_id = f"scout::{issue_id}::{revision_id}::run{run_seq:0{RUN_SEQ_WIDTH}d}"
+    findings = _aggregate_findings(blocks)
+    return {
+        "report_version": SCOUT_REPORT_VERSION,
+        "report_type": SCOUT_REPORT_TYPE,
+        "report_id": report_id,
+        "scout_version": SCOUT_VERSION,
+        "created_at": generated_at,
+        "dataset_id": result["dataset_id"],
+        "issue_id": issue_id,
+        "run_seq": run_seq,
+        "provenance": provenance or {"source": "local_or_explicit_dir"},
+        "audit_results": {
+            "quality_score": result["quality_score"],
+            "scores": result["scores"],
+            "artifact_count": result["artifact_count"],
+            "coverage": dataset_block.get("coverage", {}),
+            "completeness": dataset_block.get("completeness", {}),
+        },
+        "findings": findings,
+        "recommendations": _distinct_recommendations(findings),
+        "evidence_references": _evidence_references(blocks),
+    }
+
+
+def render_scout_report_md(report):
+    """Human-readable Markdown rendering of the consolidated Scout Report."""
+    prov = report.get("provenance", {})
+    ar = report["audit_results"]
+    lines = [
+        f"# Scout Report — {report['dataset_id']}",
+        "",
+        _ADVISORY,
+        "",
+        f"- Report ID: `{report['report_id']}`",
+        f"- Scout version: {report['scout_version']}",
+        f"- Created: {report['created_at']}",
+        "",
+        "## Source (Publisher Approved Dataset revision)",
+        f"- Pointer key: `{prov.get('publisher_pointer_key')}`",
+        f"- Revision ID: `{prov.get('publisher_revision_id')}`",
+        f"- Revision key: `{prov.get('publisher_revision_key')}`",
+        "",
+        "## Audit Results",
+        f"- Overall quality score: {ar['quality_score']}/100",
+        f"- Artifacts: {ar['artifact_count']}",
+    ]
+    for k, v in ar.get("scores", {}).items():
+        lines.append(f"- {k}: {v}")
+    cov = ar.get("coverage", {})
+    if cov:
+        lines.append(
+            f"- Coverage — approved {cov.get('approved')}/{cov.get('total')}, "
+            f"reviewed {cov.get('reviewed')}/{cov.get('total')}, "
+            f"locked {cov.get('locked')}/{cov.get('total')}"
+        )
+    lines += ["", f"## Findings ({len(report['findings'])})"]
+    if report["findings"]:
+        for f in report["findings"]:
+            ref = f.get("artifact_id") or f.get("packet_id")
+            prefix = f"`{ref}` — " if ref else ""
+            lines.append(f"- **[{f.get('severity')}]** ({f.get('source')}) {prefix}{f.get('issue')}")
+    else:
+        lines.append("- None")
+    lines += ["", "## Recommendations"]
+    lines += [f"- {r}" for r in report["recommendations"]] or ["- None"]
+    lines += ["", "```json", json.dumps(report, indent=2, ensure_ascii=False), "```", ""]
+    return "\n".join(lines)
+
+
+def _put(client, bucket, key, body, content_type):
+    try:
+        client.put_object(Bucket=bucket, Key=key, Body=body, ContentType=content_type)
+    except (ClientError, BotoCoreError) as e:
+        raise ScoutReportPublishError(
+            f"Unable to publish Scout Report object s3://{bucket}/{key}: {e}"
+        ) from e
+
+
+def _verify_readback(client, bucket, key, expected_body):
+    """Read the just-written object back and assert it matches byte-for-byte."""
+    try:
+        got = client.get_object(Bucket=bucket, Key=key)["Body"].read()
+    except (ClientError, BotoCoreError) as e:
+        raise ScoutReportPublishError(
+            f"Unable to read back persisted Scout Report s3://{bucket}/{key}: {e}"
+        ) from e
+    if got != expected_body:
+        raise ScoutReportPublishError(
+            f"Persisted Scout Report at s3://{bucket}/{key} does not match the "
+            "locally produced deterministic report (round-trip mismatch)."
+        )
+
+
+def publish_scout_report(result, generated_at, provenance=None, client=None):
+    """Persist the consolidated Scout Report to the Scout Repository and verify it.
+
+    Writes the canonical machine-readable ``scout_report.json`` (latest + immutable
+    history) and a human-readable ``scout_report.md`` alongside it, at the frozen R1
+    keys, then reads each object back and asserts it matches the locally produced
+    bytes. Write-only within the configured ``edenseek-scout`` issue chain; never
+    touches the Publisher Repository. Fail-loud when unconfigured, a write fails, or
+    a read-back mismatches. Returns the report id and the keys written.
+    """
+    bucket = os.getenv(BUCKET_ENV)
+    prefix = os.getenv(PREFIX_ENV)
+    if not bucket or not prefix:
+        raise ScoutReportPublishError(
+            "Scout Repository write target is not configured: set "
+            f"{BUCKET_ENV} and {PREFIX_ENV} (there is no local fallback)."
+        )
+
+    region = os.getenv(REGION_ENV, DEFAULT_REGION)
+    issue_prefix, issue_id = _require_issue_prefix(prefix)
+    client = client or _s3_client(region)
+    reports_prefix = f"{issue_prefix}/reports"
+    history_prefix = f"{issue_prefix}/history"
+
+    run_seq = _next_run_seq(client, bucket, history_prefix, SCOUT_REPORT_TYPE)
+    seq_token = f"{run_seq:0{RUN_SEQ_WIDTH}d}"
+
+    report = build_scout_report(result, generated_at, provenance, issue_id, run_seq)
+    json_body = _dumps(report)
+    md_body = (render_scout_report_md(report)).encode("utf-8")
+
+    keys = {
+        "latest_json": f"{reports_prefix}/{SCOUT_REPORT_TYPE}.json",
+        "history_json": f"{history_prefix}/{SCOUT_REPORT_TYPE}_{seq_token}.json",
+        "latest_md": f"{reports_prefix}/{SCOUT_REPORT_TYPE}.md",
+        "history_md": f"{history_prefix}/{SCOUT_REPORT_TYPE}_{seq_token}.md",
+    }
+
+    # Immutable history first (fresh run_seq key — never overwrites), then latest.
+    _put(client, bucket, keys["history_json"], json_body, "application/json")
+    _put(client, bucket, keys["history_md"], md_body, "text/markdown")
+    _put(client, bucket, keys["latest_json"], json_body, "application/json")
+    _put(client, bucket, keys["latest_md"], md_body, "text/markdown")
+
+    # Verify each persisted object reads back identical to what we produced.
+    _verify_readback(client, bucket, keys["history_json"], json_body)
+    _verify_readback(client, bucket, keys["history_md"], md_body)
+    _verify_readback(client, bucket, keys["latest_json"], json_body)
+    _verify_readback(client, bucket, keys["latest_md"], md_body)
+
+    logger.info(
+        f"Published + verified consolidated Scout Report {report['report_id']} to "
+        f"s3://{bucket}/{issue_prefix}/ (revision "
+        f"{(provenance or {}).get('publisher_revision_id')})"
+    )
+    return {"report_id": report["report_id"], "run_seq": run_seq, "keys": keys}
