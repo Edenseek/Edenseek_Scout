@@ -381,6 +381,47 @@ def _verify_readback(client, bucket, key, expected_body):
         )
 
 
+def last_published_revision_id(client=None):
+    """Return the Publisher revision id of the latest persisted Scout Report.
+
+    Reads ``{issue}/reports/scout_report.json`` from the Scout Repository and
+    returns its ``provenance.publisher_revision_id``. Returns ``None`` when no
+    Scout Report exists yet (the issue was never audited) — that absence is a
+    normal "audit now" signal, not an error. Read-only; fail-loud on any error
+    other than a missing object.
+    """
+    bucket = os.getenv(BUCKET_ENV)
+    prefix = os.getenv(PREFIX_ENV)
+    if not bucket or not prefix:
+        raise ScoutReportPublishError(
+            "Scout Repository target is not configured: set "
+            f"{BUCKET_ENV} and {PREFIX_ENV}."
+        )
+    region = os.getenv(REGION_ENV, DEFAULT_REGION)
+    issue_prefix, _issue_id = _require_issue_prefix(prefix)
+    client = client or _s3_client(region)
+    key = f"{issue_prefix}/reports/{SCOUT_REPORT_TYPE}.json"
+    try:
+        body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "NotFound"):
+            return None
+        raise ScoutReportPublishError(
+            f"Unable to read latest Scout Report s3://{bucket}/{key}: {e}"
+        ) from e
+    except BotoCoreError as e:
+        raise ScoutReportPublishError(
+            f"Unable to read latest Scout Report s3://{bucket}/{key}: {e}"
+        ) from e
+    try:
+        report = json.loads(body)
+    except json.JSONDecodeError as e:
+        raise ScoutReportPublishError(
+            f"Latest Scout Report is not valid JSON (s3://{bucket}/{key}): {e}"
+        ) from e
+    return (report.get("provenance") or {}).get("publisher_revision_id")
+
+
 def publish_scout_report(result, generated_at, provenance=None, client=None):
     """Persist the consolidated Scout Report to the Scout Repository and verify it.
 

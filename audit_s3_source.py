@@ -301,6 +301,29 @@ def materialize_approved_contract(dest_root=None):
     return str(dest_dir)
 
 
+def resolve_current_revision(client=None):
+    """Resolve the current Approved Dataset revision from the pointer only.
+
+    A cheap, read-only ``GetObject`` on ``approved/published.json`` (the mutable
+    pointer) — it does **not** download the immutable revision snapshot. Used by the
+    revision watcher to detect change without materializing or auditing anything.
+    Returns the pointer dict (``key``, ``version_id``, ``revision_id``,
+    ``revision_key``). Fail-loud (``ScoutS3SourceError``) when unconfigured or
+    unreachable; no fixture fallback.
+    """
+    bucket = os.getenv(BUCKET_ENV)
+    prefix = os.getenv(PREFIX_ENV)
+    if not bucket or not prefix:
+        raise ScoutS3SourceError(
+            "Canonical Approved-Dataset S3 source is not configured: set "
+            f"{BUCKET_ENV} and {PREFIX_ENV} (there is no fixture fallback)."
+        )
+    region = os.getenv(REGION_ENV, DEFAULT_REGION)
+    normalized_prefix = "/".join(_require_approved_prefix(prefix))
+    client = client or _s3_client(region)
+    return _resolve_published_pointer(client, bucket, normalized_prefix)
+
+
 def load_source_provenance(input_dir):
     """Return the read-path provenance for ``input_dir``, or ``None`` if absent.
 
