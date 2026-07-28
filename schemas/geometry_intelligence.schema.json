@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Geometry Intelligence projection (v1)",
+  "type": "object",
+  "required": ["contract_version", "task", "generated_at", "scope", "sample_sizes",
+               "segments", "recurring_failure_modes", "version_correlated_improvements",
+               "recommendations", "governance"],
+  "properties": {
+    "contract_version": {"type": "string"},
+    "task": {"enum": ["geometry"]},
+    "generated_at": {"type": ["string", "null"]},
+    "scope": {"type": "object"},
+    "sample_sizes": {"type": "object", "required": ["reports"]},
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["comparability_key", "axes", "sample_sizes", "metrics"],
+        "properties": {
+          "comparability_key": {"type": "string"},
+          "axes": {"type": ["object", "null"]},
+          "sample_sizes": {"type": "object", "required": ["reports"]},
+          "metrics": {"type": "object"}
+        }
+      }
+    },
+    "recurring_failure_modes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["comparability_key", "modes"],
+        "properties": {
+          "comparability_key": {"type": "string"},
+          "modes": {
+            "type": "array",
+            "items": {"type": "object",
+                      "required": ["mode", "count", "rate", "numerator", "denominator"]}
+          }
+        }
+      }
+    },
+    "version_correlated_improvements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "changed_axes", "metric_deltas"],
+        "properties": {
+          "from": {"type": "string"}, "to": {"type": "string"},
+          "changed_axes": {"type": "array", "items": {"type": "string"}},
+          "metric_deltas": {"type": "object"}
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {"type": "object", "required": ["code", "advice", "evidence"]}
+    },
+    "governance": {"type": "object", "required": ["advisory_only", "note"]}
+  }
+}

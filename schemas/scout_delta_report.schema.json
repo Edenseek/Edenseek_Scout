@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scout delta report — immutable persisted envelope (v1)",
+  "type": "object",
+  "required": ["artifact_type", "report_id", "run_id", "run_seq", "completed_at",
+               "report_version", "algorithm_version", "comparability", "provenance",
+               "delta_report", "evidence_summary"],
+  "properties": {
+    "artifact_type": {"enum": ["scout_delta_report"]},
+    "report_id": {"type": "string"}, "run_id": {"type": "string"},
+    "run_seq": {"type": "integer"}, "completed_at": {"type": ["string", "null"]},
+    "report_version": {"type": "string"}, "algorithm_version": {"type": "string"},
+    "schema_version": {"type": "string"}, "evaluation_version": {"type": "string"},
+    "event_time": {"type": ["string", "null"]}, "certified_at": {"type": ["string", "null"]},
+    "comparability": {
+      "type": "object", "required": ["geometry", "metadata", "geometry_axes", "metadata_axes"],
+      "properties": {"geometry": {"type": "string"}, "metadata": {"type": "string"}}
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["review_id", "published_revision_id", "generated_snapshot_revision_id"]
+    },
+    "delta_report": {
+      "type": "object",
+      "required": ["geometry_delta", "metadata_delta", "metadata_benchmark", "correction_ledger",
+                   "publisher_certified_state"]
+    },
+    "evidence_summary": {"type": "object", "required": ["objects"]},
+    "persisted_key": {"type": "object"}, "report_sha256": {"type": ["string", "null"]}
+  }
+}

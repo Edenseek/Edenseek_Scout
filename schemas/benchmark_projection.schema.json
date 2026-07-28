@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scout benchmark projection (v1)",
+  "type": "object",
+  "required": ["benchmark_projection_version", "scope", "measurement_generated_at",
+               "sample_sizes", "geometry", "metadata"],
+  "properties": {
+    "benchmark_projection_version": {"type": "string"},
+    "scope": {"type": "object", "required": ["level"]},
+    "measurement_generated_at": {"type": ["string", "null"]},
+    "sample_sizes": {"type": "object",
+                     "required": ["reports", "issues", "series", "publishers"]},
+    "geometry": {
+      "type": "object", "required": ["segments", "points"],
+      "properties": {
+        "segments": {"type": "object"},
+        "points": {"type": "array", "items": {
+          "type": "object",
+          "required": ["run_seq", "event_time", "measurement_time", "comparability_key",
+                       "metrics", "sample_sizes"],
+          "properties": {
+            "event_time": {"type": ["string", "null"]},
+            "measurement_time": {"type": ["string", "null"]},
+            "comparability_key": {"type": ["string", "null"]},
+            "metrics": {"type": "object"},
+            "sample_sizes": {"type": "object", "required": ["reports"]}
+          }
+        }}
+      }
+    },
+    "metadata": {
+      "type": "object", "required": ["segments", "points"],
+      "properties": {
+        "segments": {"type": "object"},
+        "points": {"type": "array", "items": {
+          "type": "object",
+          "required": ["run_seq", "event_time", "measurement_time", "comparability_key",
+                       "metrics", "sample_sizes"]
+        }}
+      }
+    }
+  }
+}

@@ -34,6 +34,7 @@ from logging_config import logger
 import audit_s3_source
 import scout_report_publisher
 import dataset_auditor
+import scout_delta_audit
 
 # Polling cadence is configuration, never hard-coded: local dev may poll every
 # minute, production every 5–10 minutes. Read from the environment; the invoking
@@ -68,6 +69,33 @@ def check_and_audit():
     return {"status": "published", "revision_id": current_rev, "audit": result}
 
 
+def check_and_delta_audit():
+    """Event-trigger for the synchronization/delta audit via THE canonical agent entry point.
+
+    Idempotent + ledger-guarded, so it is safe to call every cycle: it audits only when the current
+    revision is eligible and not yet processed under the current methodology context. Kept separate
+    from ``check_and_audit`` so the existing dataset audit is unchanged.
+    """
+    return scout_delta_audit.audit_current_revision(trigger="event")
+
+
+def run_cycle():
+    """One watcher cycle: the existing dataset audit (unchanged), then the delta agent. Each is
+    guarded so a failure in one never blocks the other."""
+    results = {}
+    try:
+        results["dataset"] = check_and_audit()
+    except Exception as e:  # noqa: BLE001 — logged; delta agent still runs
+        logger.exception("Scout watch: dataset audit cycle failed: %s", e)
+        results["dataset"] = {"status": "error", "error": str(e)}
+    try:
+        results["delta"] = check_and_delta_audit()
+    except Exception as e:  # noqa: BLE001 — logged; fail-loud handled inside the agent/ledger
+        logger.exception("Scout watch: delta audit cycle failed: %s", e)
+        results["delta"] = {"status": "error", "error": str(e)}
+    return results
+
+
 def _interval_seconds():
     raw = os.getenv(WATCH_INTERVAL_ENV)
     if not raw:
@@ -86,23 +114,27 @@ def _interval_seconds():
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
     if "--loop" not in argv:
-        # Single-shot: for the systemd timer / cron / future event source.
+        # Single-shot: for the systemd timer / cron / future event source. The dataset audit keeps
+        # its original fail-loud contract (a config/pointer error exits 1); the delta agent runs on
+        # the same cycle as a best-effort step that records its own outcome to the ledger and never
+        # changes the dataset audit's exit code.
         try:
-            check_and_audit()
-            return 0
+            check_and_audit()              # dataset audit — unchanged, fail-loud
         except Exception as e:
             logger.exception(f"Scout watch: check failed: {e}")
             return 1
+        try:
+            check_and_delta_audit()        # delta agent — best-effort, self-recording
+        except Exception as e:
+            logger.exception(f"Scout watch: delta cycle failed (continuing): {e}")
+        return 0
 
     # Loop mode (local development). Resilient: a failed cycle is logged and the
     # watcher continues to the next tick rather than exiting.
     interval = _interval_seconds()
     logger.info(f"Scout watch: loop mode, polling every {interval}s.")
     while True:
-        try:
-            check_and_audit()
-        except Exception as e:
-            logger.exception(f"Scout watch: cycle failed (continuing): {e}")
+        run_cycle()
         time.sleep(interval)
 
 

@@ -21,6 +21,13 @@ from dataset_auditor import (
 )
 from audit_inputs import AuditInputError
 from audit_reports import REPORT_FILES, REPORTS_ROOT
+from audit_review import build_evidence_manifest, build_audit_review, AuditReviewError
+import scout_report_index
+import scout_benchmark
+import scout_archive
+import scout_intelligence
+import scout_schema
+import scout_report_publisher
 from logging_config import logger
 
 app = FastAPI(title="Edenseek Scout")
@@ -239,3 +246,162 @@ def get_audit_digest(username: str = Depends(require_auth)):
     except AuditInputError as e:
         logger.warning(f"Digest input error: {e}")
         raise HTTPException(status_code=422, detail=f"Invalid audit input: {e}")
+
+
+@app.get("/audit-review/evidence")
+def get_audit_review_evidence(username: str = Depends(require_auth)):
+    """Read-only Consumed-Evidence Manifest for the configured issue + current certified revision.
+
+    Reports every Publisher object Scout consumed (key/status/size/sha256/version/revision/schema)
+    plus permanent audit metadata + a health summary. GetObject-only; writes nothing.
+    """
+    try:
+        return build_evidence_manifest()
+    except AuditReviewError as e:
+        logger.warning(f"Audit-review evidence error: {e}")
+        raise HTTPException(status_code=503, detail=f"Audit-review evidence unavailable: {e}")
+
+
+@app.get("/audit-review/audit")
+def get_audit_review_audit(username: str = Depends(require_auth)):
+    """Read-only full audit-review view: evidence manifest + live delta + Publisher/Scout state
+    side by side + PASS/WARNING/FAIL/INFO findings + the delta report. Computes/persists nothing.
+    """
+    try:
+        return build_audit_review()
+    except AuditReviewError as e:
+        logger.warning(f"Audit-review audit error: {e}")
+        raise HTTPException(status_code=503, detail=f"Audit-review unavailable: {e}")
+
+
+@app.get("/audit-review/reports")
+def get_audit_review_reports(username: str = Depends(require_auth)):
+    """Read-only report index: the newest-first archive of persisted Scout delta reports with the
+    latest pointer + per-report searchable metadata. Reads the persisted projection only; it does
+    not run or recompute audits. (Search/filter + metric graphs are the next slice.)
+    """
+    try:
+        return scout_report_index.load_index()
+    except scout_report_index.ScoutReportIndexError as e:
+        logger.warning(f"Report index error: {e}")
+        raise HTTPException(status_code=503, detail=f"Report index unavailable: {e}")
+
+
+@app.get("/audit-review/archive")
+def get_audit_review_archive(username: str = Depends(require_auth)):
+    """Read-only Reports Archive (newest first): successful reports + failed runs, with latest/
+    historical/failed marks and methodology boundaries. Reads persisted index + ledger only."""
+    try:
+        return scout_archive.build_archive()
+    except (scout_report_index.ScoutReportIndexError, Exception) as e:  # noqa: BLE001
+        logger.warning(f"Archive error: {e}")
+        raise HTTPException(status_code=503, detail=f"Archive unavailable: {e}")
+
+
+@app.get("/audit-review/search")
+def get_audit_review_search(q: str = "", username: str = Depends(require_auth)):
+    """Server-side search over persisted archive metadata (e.g. `precision<0.80`,
+    `finding:geometry.false_panels`, `severity:WARNING`, `publisher:<id> issue:<id>`). The browser
+    passes the query; all filtering happens here."""
+    try:
+        archive = scout_archive.build_archive()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Search error: {e}")
+        raise HTTPException(status_code=503, detail=f"Search unavailable: {e}")
+    return scout_archive.search_archive(archive, q)
+
+
+@app.get("/intelligence/geometry")
+def get_geometry_intelligence(username: str = Depends(require_auth)):
+    """Read-only Geometry Intelligence projection — recurring panel failure modes + version-correlated
+    improvements, consuming the persisted report index. Advisory only; mutates nothing."""
+    try:
+        return scout_intelligence.build_geometry_intelligence()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Geometry intelligence error: {e}")
+        raise HTTPException(status_code=503, detail=f"Geometry intelligence unavailable: {e}")
+
+
+@app.get("/intelligence/metadata")
+def get_metadata_intelligence(username: str = Depends(require_auth)):
+    """Read-only Metadata Intelligence projection — weak fields, edit classes, prompt/model/schema
+    correlations, consuming the persisted index + immutable reports. Advisory only; mutates nothing."""
+    try:
+        return scout_intelligence.build_metadata_intelligence()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Metadata intelligence error: {e}")
+        raise HTTPException(status_code=503, detail=f"Metadata intelligence unavailable: {e}")
+
+
+@app.get("/reports/latest")
+def get_latest_report(username: str = Depends(require_auth)):
+    """The current/latest persisted immutable Scout delta report (read-only)."""
+    try:
+        index = scout_report_index.load_index()
+        latest = (index.get("latest") or {})
+        key = (latest.get("persisted_key") or {}).get("history")
+        if not key:
+            raise HTTPException(status_code=404, detail="No persisted report yet")
+        import json as _json
+        return _json.loads(scout_report_publisher.read_object(
+            scout_report_publisher._s3_client(os.getenv("SCOUT_REPO_S3_REGION", "us-west-2")), key))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Latest report error: {e}")
+        raise HTTPException(status_code=503, detail=f"Latest report unavailable: {e}")
+
+
+@app.get("/reports/{report_id}")
+def get_report(report_id: str, username: str = Depends(require_auth)):
+    """One immutable persisted Scout delta report by report_id (read-only)."""
+    try:
+        index = scout_report_index.load_index()
+        entry = next((e for e in index.get("entries", []) if e.get("report_id") == report_id), None)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Unknown report_id")
+        import json as _json
+        return _json.loads(scout_report_publisher.read_object(
+            scout_report_publisher._s3_client(os.getenv("SCOUT_REPO_S3_REGION", "us-west-2")),
+            (entry.get("persisted_key") or {}).get("history")))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Report fetch error: {e}")
+        raise HTTPException(status_code=503, detail=f"Report unavailable: {e}")
+
+
+@app.get("/schemas")
+def list_schemas(username: str = Depends(require_auth)):
+    """List the versioned machine-readable contract schemas the UI + intelligence consumers share."""
+    return {"schemas": sorted(p.name.replace(".schema.json", "")
+                              for p in scout_schema.SCHEMA_DIR.glob("*.schema.json"))}
+
+
+@app.get("/schemas/{name}")
+def get_schema(name: str, username: str = Depends(require_auth)):
+    """Serve one versioned JSON Schema contract (read-only)."""
+    try:
+        return scout_schema.load_schema(name)
+    except scout_schema.SchemaError:
+        raise HTTPException(status_code=404, detail="Unknown schema")
+
+
+@app.get("/benchmark/{level}")
+def get_benchmark(level: str, username: str = Depends(require_auth)):
+    """Read-only benchmark projection for a level (platform | publisher | series | issue). Reads the
+    persisted, weighted projection; the browser renders it and never recomputes. Points carry counts
+    + both timestamps; segments are per methodology (comparability) boundary.
+    """
+    keys = {"platform": "benchmark/platform.json"}
+    if level not in keys:
+        raise HTTPException(status_code=400,
+                            detail="level must be one of: platform (publisher/series/issue: pass scope next slice)")
+    try:
+        projection = scout_benchmark.load_projection(keys[level])
+    except scout_benchmark.ScoutBenchmarkError as e:
+        logger.warning(f"Benchmark projection error: {e}")
+        raise HTTPException(status_code=503, detail=f"Benchmark unavailable: {e}")
+    if projection is None:
+        raise HTTPException(status_code=404, detail="Benchmark projection not generated yet")
+    return projection

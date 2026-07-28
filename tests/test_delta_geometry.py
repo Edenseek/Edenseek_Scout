@@ -1,0 +1,80 @@
+"""Geometry delta tests (Scout 6.3, Phase A) — real shapes; spreads + bounds."""
+import sys
+import unittest
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE))
+
+import _delta_fixtures as fx  # noqa: E402
+from review_contract_adapter import adapt_review  # noqa: E402
+from delta_geometry import compute_geometry_delta  # noqa: E402
+
+
+def _mk_review(gen_bounds_by_key, approved_geom):
+    """Minimal generated-publication review with given generated bounds + approved geometry."""
+    return {
+        "review_report_version": "v1", "issue_identity": fx.IDENTITY, "review_id": "rev_t",
+        "generated_geometry": {"property_id": "x", "issue_number": 1, "total_pages": 1,
+                               "total_story_pages": 1, "total_panels": len(gen_bounds_by_key),
+                               "panels": [{"panel_key": k, "page_number": 1, "order": 1,
+                                           "bbox": [0, 0, 1, 1], "bounds": b, "coordinate_space": "page"}
+                                          for k, b in gen_bounds_by_key.items()]},
+        "generated_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+        "approved_geometry": approved_geom,
+        "approved_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+        "provenance": {"published_revision_id": "rev_taaaa",
+                       "generated_vs_approved": {"state": "generated_publication",
+                                                 "generated_snapshot_revision_id": "rev_g"}},
+    }
+
+
+class TestGeometryDelta(unittest.TestCase):
+    def test_real_fixture_matches_missing_and_spread(self):
+        d = compute_geometry_delta(adapt_review(fx.review_generated()))
+        self.assertTrue(d["applicable"])
+        self.assertEqual(d["precision"], 1.0)                 # all 3 generated matched
+        self.assertEqual(d["recall"], 0.6)                    # 3 matched of 5 (3 page + NEW + spread)
+        self.assertIn("11::NEW::1", d["missing_page_artifact_ids"])
+        self.assertEqual(d["spread_missing_artifact_ids"], ["spread_12_13::p1"])
+        self.assertIn("spread_12_13::p1", d["missing_artifact_ids"])
+        self.assertEqual(d["false_count"], 0)
+
+    def test_split(self):
+        r = _mk_review({"g1": {"x": 0, "y": 0, "width": 1, "height": 1},
+                        "g2": {"x": 0, "y": 0, "width": 0.9, "height": 1}},
+                       {"a1": {"x": 0, "y": 0, "width": 1, "height": 1}})
+        d = compute_geometry_delta(adapt_review(r))
+        self.assertEqual(d["split_artifact_ids"], ["a1"])
+        self.assertEqual(d["merge_artifact_ids"], [])
+
+    def test_merge(self):
+        r = _mk_review({"g1": {"x": 0, "y": 0, "width": 1, "height": 1}},
+                       {"a1": {"x": 0, "y": 0, "width": 0.5, "height": 1},
+                        "a2": {"x": 0.5, "y": 0, "width": 0.5, "height": 1}})
+        d = compute_geometry_delta(adapt_review(r))
+        self.assertEqual(d["merge_artifact_ids"], ["g1"])
+
+    def test_false_panel(self):
+        r = _mk_review({"g1": {"x": 0, "y": 0, "width": 0.1, "height": 0.1}},
+                       {"a1": {"x": 0.9, "y": 0.9, "width": 0.1, "height": 0.1}})
+        d = compute_geometry_delta(adapt_review(r))
+        self.assertEqual(d["false_artifact_ids"], ["g1"])
+        self.assertIn("a1", d["missing_page_artifact_ids"])
+
+    def test_deleted_approved_excluded(self):
+        r = fx.review_generated()
+        r["approved_geometry"]["society_of_killers_1_3::p1"]["deleted"] = True
+        d = compute_geometry_delta(adapt_review(r))
+        # one fewer panel in the benchmark set (was 5 incl spread; now 4)
+        self.assertEqual(d["approved_panel_count"], 4)
+
+    def test_manual_not_applicable(self):
+        d = compute_geometry_delta(adapt_review(fx.review_manual()))
+        self.assertFalse(d["applicable"])
+        self.assertEqual(d["reason"], "manual_publication")
+
+
+if __name__ == "__main__":
+    unittest.main()

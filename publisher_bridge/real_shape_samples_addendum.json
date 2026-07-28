@@ -1,0 +1,180 @@
+{
+  "_note": "Addendum answering Scout Q1-Q4 with REAL bytes (Society of Killers Issue 1). Ground fixtures on these.",
+  "Q1_metadata_content_map": {
+    "comparable_content_fields (ONLY these 4)": {
+      "output.classification.tags": "list<str> (flat list; NOT tags.{action,mood,setting})",
+      "output.entities.characters": "list<str>",
+      "output.narrative.dialogue": "list<str>",
+      "output.narrative.summary": "str"
+    },
+    "output_subtree_keys": {
+      "output.*": [
+        "classification",
+        "entities",
+        "narrative"
+      ],
+      "classification.*": [
+        "tags"
+      ],
+      "entities.*": [
+        "characters"
+      ],
+      "narrative.*": [
+        "dialogue",
+        "summary"
+      ]
+    },
+    "EXCLUDE_provenance": [
+      "context_source",
+      "geometry_source (changes on geometry re-approval)"
+    ],
+    "EXCLUDE_plumbing": [
+      "artifact_id",
+      "input_ref",
+      "version",
+      "metadata_locked",
+      "metadata_review_state",
+      "status"
+    ],
+    "real_approved_output_example": {
+      "artifact_id": "1::NEW::2",
+      "context_source": [
+        {
+          "material_type": "character_registry",
+          "revision_id": "rev_c5675bfef76d179f87892e7b40de88eda03e2cc374dfcfb50a428abfe4ccf15e"
+        },
+        {
+          "material_type": "script",
+          "revision_id": "rev_92045526b7595a378fdc3394f52eb0b6279a09d086fb6837350029ae673c1c88"
+        }
+      ],
+      "geometry_source": {
+        "approved_revision": "rev_6885a433487c6ddb1389451218b140da0991bb83b17a5136ce6375dcb8382774",
+        "artifact_geometry_hash": "sha256:f7c5d1f086968be139504e79e9a102da60a6f1a63e4e8fef9649be53460ba572"
+      },
+      "input_ref": "1::NEW::2",
+      "metadata_locked": true,
+      "metadata_review_state": "approved",
+      "output": {
+        "classification": {
+          "tags": [
+            "Coat of Arms",
+            "Snake",
+            "Scorption",
+            "Scalpel",
+            "Transcende Mortem",
+            "1396",
+            "Grim Reaper",
+            "Goat",
+            "Brain",
+            "Dark Angel Wings"
+          ]
+        },
+        "entities": {
+          "characters": [
+            "None"
+          ]
+        },
+        "narrative": {
+          "dialogue": [
+            "None"
+          ],
+          "summary": "Society of Killers Coat of arms featuring grim reaper, goat, brain, and dark angel wings.  A scalpel is to the right of the coat.  A snake is to the left.  Above there is an inscription in a shield that reads 'established' 1396'.  Above the inscription is a scorpion.  Below the shield in a scroll is the latin inscription, \"Transcende mortem, occide vitam.\""
+        }
+      },
+      "status": "complete",
+      "version": "v1.1"
+    },
+    "real_generated_output_example_same_artifact": {
+      "artifact_id": "1::NEW::2",
+      "context_source": [
+        {
+          "material_type": "character_registry",
+          "revision_id": "rev_c5675bfef76d179f87892e7b40de88eda03e2cc374dfcfb50a428abfe4ccf15e"
+        },
+        {
+          "material_type": "script",
+          "revision_id": "rev_92045526b7595a378fdc3394f52eb0b6279a09d086fb6837350029ae673c1c88"
+        }
+      ],
+      "geometry_source": {
+        "approved_revision": "rev_6885a433487c6ddb1389451218b140da0991bb83b17a5136ce6375dcb8382774",
+        "artifact_geometry_hash": "sha256:f7c5d1f086968be139504e79e9a102da60a6f1a63e4e8fef9649be53460ba572"
+      },
+      "input_ref": "1::NEW::2",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "smoking",
+            "mood": "edgy",
+            "setting": "character design"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Astrid St. James"
+          ]
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "Astrid St. James is depicted in a stylized character design, holding a cigarette."
+        }
+      },
+      "status": "complete",
+      "version": "v1.1"
+    }
+  },
+  "Q2_bounds_nullability": {
+    "generated_panels": 51,
+    "bounds_is_none": 0,
+    "bounds_absent": 0,
+    "guidance": "bounds always present -> fail-fast on absent is SAFE (a null/absent bounds is a genuine contract violation to surface, not silently handle)"
+  },
+  "Q3_spread_panels": {
+    "_finding": "THIRD geometry representation. isSpreadPanel:true entries live in SPREAD-CANVAS space via stage_geometry + page_range; their PAGE x/y/width/height are DEGENERATE (0.01) or ABSENT. Spreads are DRAWN -> the generated auto-geometry (page space) has NO counterpart -> spread panels are ALWAYS approved-only = missing panels in the delta; never IoU-match them to generated. Use stage_geometry (not page x/y/w/h) if reporting spread geometry.",
+    "drawn_spread_panel_NEW": {
+      "deleted": false,
+      "height": 0.01,
+      "isNew": true,
+      "isSpreadPanel": true,
+      "page_range": [
+        12,
+        13
+      ],
+      "stage_geometry": {
+        "height": 0.3659478129625867,
+        "width": 0.27435813801779974,
+        "x": 0.23908485159125856,
+        "y": 0.08391141555162106
+      },
+      "width": 0.01,
+      "x": 0,
+      "y": 0
+    },
+    "spread_panel_named": {
+      "artifact_id": "spread_12_13::p1",
+      "deleted": false,
+      "isSpreadPanel": true,
+      "page_range": [
+        12,
+        13
+      ],
+      "stage_geometry": {
+        "height": 0.3845548133435981,
+        "width": 0.24695389802101425,
+        "x": 0.006264618751894873,
+        "y": 0.05728088737405779
+      }
+    },
+    "detect": "entry.get('isSpreadPanel') is True"
+  },
+  "Q4_manual_publication_review_record": {
+    "review_id": "rev_65d5f1059e0a",
+    "provenance.generated_vs_approved": "not_applicable_manual_publication",
+    "generated_geometry": null,
+    "generated_metadata": null,
+    "guidance": "manual sentinel string + BOTH generated sides null -> skip the generated-vs-approved delta entirely (N/A, not zero-delta)."
+  }
+}

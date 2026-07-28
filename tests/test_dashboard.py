@@ -20,12 +20,17 @@ class TestDashboard(unittest.TestCase):
     def test_requires_auth(self):
         self.assertEqual(client.get("/dashboard").status_code, 401)
 
-    def test_serves_intelligence_dashboard(self):
+    def test_serves_workflow_dashboard(self):
         resp = client.get("/dashboard", auth=AUTH)
         self.assertEqual(resp.status_code, 200)
         html = resp.text
-        self.assertIn("Dataset Intelligence", html)
-        # Legacy framing is gone.
+        self.assertIn("Edenseek Scout", html)
+        # Organized around the three workflows.
+        for tab in ("Operations", "Engineering", "Intelligence"):
+            self.assertIn(tab, html)
+        # Reads the persisted contracts; legacy framing gone.
+        self.assertIn("/audit-review/archive", html)
+        self.assertIn("/audit-review/search", html)
         self.assertNotIn("always-on AI research agent", html.lower())
 
     def test_surfaces_required_screens(self):

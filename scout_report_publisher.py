@@ -27,6 +27,7 @@ Fail-loud: if the Scout Repository write target is not configured, the prefix is
 not a valid issue ownership chain, or any write fails, this raises
 ``ScoutReportPublishError`` rather than falling back to local files.
 """
+import hashlib
 import json
 import os
 
@@ -53,6 +54,11 @@ SCOUT_VERSION = "0.4.0"
 # Scout -> Edenseek governance/reporting contract (see REPORT_SPECIFICATION.md).
 SCOUT_REPORT_VERSION = "v1"
 SCOUT_REPORT_TYPE = "scout_report"
+
+# The Scout Synchronization Audit (6.3) delta report artifact, persisted at the same R1 keys as
+# the consolidated report. Its authoritative history/ snapshots are the source the report index
+# projects (see scout_report_index + docs/architecture/SCOUT_REPORT_INDEX.md).
+SCOUT_DELTA_REPORT_TYPE = "scout_delta_report"
 
 # Report-family blocks whose ``findings`` roll up into the consolidated report.
 _FINDING_SOURCES = ("dataset", "character", "dialogue", "retrieval")
@@ -420,6 +426,173 @@ def last_published_revision_id(client=None):
             f"Latest Scout Report is not valid JSON (s3://{bucket}/{key}): {e}"
         ) from e
     return (report.get("provenance") or {}).get("publisher_revision_id")
+
+
+def read_object(client, key):
+    """Read one Scout-repo object's bytes (GET only). Fail-loud; used by the index rebuild path."""
+    bucket = os.getenv(BUCKET_ENV)
+    try:
+        return client.get_object(Bucket=bucket, Key=key)["Body"].read()
+    except (ClientError, BotoCoreError) as e:
+        raise ScoutReportPublishError(f"Unable to read s3://{bucket}/{key}: {e}") from e
+
+
+def list_history_keys(client, report_type):
+    """List the immutable history snapshot keys for one artifact type, oldest→newest by run_seq.
+
+    Read-only enumeration under ``{issue}/history/`` — the authoritative source the report index
+    projects. Fail-loud on config/transport errors.
+    """
+    bucket = os.getenv(BUCKET_ENV)
+    prefix = os.getenv(PREFIX_ENV)
+    if not bucket or not prefix:
+        raise ScoutReportPublishError(
+            f"Scout Repository target is not configured: set {BUCKET_ENV} and {PREFIX_ENV}.")
+    issue_prefix, _ = _require_issue_prefix(prefix)
+    token_prefix = f"{issue_prefix}/history/{report_type}_"
+    keys, continuation = [], None
+    while True:
+        kwargs = {"Bucket": bucket, "Prefix": token_prefix}
+        if continuation:
+            kwargs["ContinuationToken"] = continuation
+        try:
+            resp = client.list_objects_v2(**kwargs)
+        except (ClientError, BotoCoreError) as e:
+            raise ScoutReportPublishError(
+                f"Unable to enumerate history for {report_type!r}: {e}") from e
+        for obj in resp.get("Contents", []):
+            name = obj["Key"].rsplit("/", 1)[-1]
+            stem = name[len(report_type) + 1:-len(".json")] if name.endswith(".json") else ""
+            if name.startswith(f"{report_type}_") and stem.isdigit():
+                keys.append((int(stem), obj["Key"]))
+        if resp.get("IsTruncated"):
+            continuation = resp.get("NextContinuationToken")
+        else:
+            break
+    return [k for _seq, k in sorted(keys)]
+
+
+def _read_json_if_present(client, bucket, key):
+    """Return the parsed JSON at ``key``, or ``None`` if absent. Fail-loud on other errors."""
+    try:
+        return json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read())
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "NotFound"):
+            return None
+        raise ScoutReportPublishError(f"Unable to read s3://{bucket}/{key}: {e}") from e
+    except (BotoCoreError, json.JSONDecodeError) as e:
+        raise ScoutReportPublishError(f"Unable to read s3://{bucket}/{key}: {e}") from e
+
+
+def _find_history_by_run_id(client, bucket, history_prefix, run_id):
+    """The immutable history snapshot whose ``run_id`` matches, if one exists (newest first). Used to
+    make a retry after a partial persist idempotent instead of minting a duplicate run_seq."""
+    token_prefix = f"{history_prefix}/{SCOUT_DELTA_REPORT_TYPE}_"
+    seqs, continuation = [], None
+    while True:
+        kwargs = {"Bucket": bucket, "Prefix": token_prefix}
+        if continuation:
+            kwargs["ContinuationToken"] = continuation
+        try:
+            resp = client.list_objects_v2(**kwargs)
+        except (ClientError, BotoCoreError) as e:
+            raise ScoutReportPublishError(f"Unable to scan history under s3://{bucket}/{history_prefix}/: {e}") from e
+        for obj in resp.get("Contents", []):
+            name = obj["Key"].rsplit("/", 1)[-1]
+            stem = name[len(SCOUT_DELTA_REPORT_TYPE) + 1:-len(".json")] if name.endswith(".json") else ""
+            if name.startswith(f"{SCOUT_DELTA_REPORT_TYPE}_") and stem.isdigit():
+                seqs.append((int(stem), obj["Key"]))
+        if resp.get("IsTruncated"):
+            continuation = resp.get("NextContinuationToken")
+        else:
+            break
+    for _seq, key in sorted(seqs, reverse=True):
+        doc = _read_json_if_present(client, bucket, key)
+        if doc and doc.get("run_id") == run_id:
+            return doc
+    return None
+
+
+def publish_delta_report(report_body, completed_at, client=None):
+    """Persist one Scout Synchronization Audit (delta) report to the Scout Repository.
+
+    ``report_body`` is the assembled report (versions + provenance + delta + findings) WITHOUT the
+    persistence-assigned fields. This function stamps ``report_id`` / ``run_seq`` / ``completed_at``
+    / ``persisted_key`` / ``report_sha256``, writes the immutable history snapshot first (fresh
+    run_seq key) then the latest-state object, and reads each back to byte-verify. Write-only within
+    the configured ``edenseek-scout`` issue chain; never touches the Publisher Repository. Fail-loud.
+    Returns ``{report_id, run_seq, keys, report_sha256, envelope}`` — the caller (the agent runner)
+    then updates the report index in the same transaction.
+    """
+    bucket = os.getenv(BUCKET_ENV)
+    prefix = os.getenv(PREFIX_ENV)
+    if not bucket or not prefix:
+        raise ScoutReportPublishError(
+            "Scout Repository write target is not configured: set "
+            f"{BUCKET_ENV} and {PREFIX_ENV} (there is no local fallback).")
+
+    region = os.getenv(REGION_ENV, DEFAULT_REGION)
+    issue_prefix, issue_id = _require_issue_prefix(prefix)
+    client = client or _s3_client(region)
+    reports_prefix = f"{issue_prefix}/reports"
+    history_prefix = f"{issue_prefix}/history"
+    latest_key = f"{reports_prefix}/{SCOUT_DELTA_REPORT_TYPE}.json"
+
+    # Idempotency: if this logical run (run_id) is already persisted — fully OR partially — do not
+    # create a second logical report. Check the latest pointer first (fast path); if that does not
+    # match, scan history so a retry after a PARTIAL persist (history written, latest not) completes
+    # the existing snapshot rather than minting a new run_seq.
+    run_id = report_body.get("run_id")
+    if run_id:
+        existing = _read_json_if_present(client, bucket, latest_key)
+        if not (existing and existing.get("run_id") == run_id):
+            prior = _find_history_by_run_id(client, bucket, history_prefix, run_id)
+            if prior is not None:
+                # Complete the transaction idempotently: ensure latest reflects the existing report.
+                pbody = _dumps(prior)
+                _put(client, bucket, latest_key, pbody, "application/json")
+                _verify_readback(client, bucket, latest_key, pbody)
+                existing = prior
+        if existing and existing.get("run_id") == run_id:
+            body = _dumps(existing)
+            logger.info("Scout delta report %s already persisted (run_id %s); idempotent reconcile.",
+                        existing.get("report_id"), run_id)
+            return {"report_id": existing.get("report_id"), "run_seq": existing.get("run_seq"),
+                    "keys": existing.get("persisted_key"), "report_sha256": hashlib.sha256(body).hexdigest(),
+                    "envelope": existing, "idempotent": True}
+
+    run_seq = _next_run_seq(client, bucket, history_prefix, SCOUT_DELTA_REPORT_TYPE)
+    seq_token = f"{run_seq:0{RUN_SEQ_WIDTH}d}"
+    published_revision_id = (report_body.get("provenance") or {}).get("published_revision_id", "unknown")
+    report_id = f"scoutdelta::{issue_id}::{published_revision_id}::run{seq_token}"
+
+    keys = {
+        "latest": f"{reports_prefix}/{SCOUT_DELTA_REPORT_TYPE}.json",
+        "history": f"{history_prefix}/{SCOUT_DELTA_REPORT_TYPE}_{seq_token}.json",
+    }
+    envelope = {
+        **report_body,
+        "artifact_type": SCOUT_DELTA_REPORT_TYPE,
+        "report_id": report_id,
+        "run_seq": run_seq,
+        "completed_at": completed_at,
+        "issue_id": issue_id,
+        "persisted_key": keys,
+    }
+    body = _dumps(envelope)
+    report_sha256 = hashlib.sha256(body).hexdigest()
+
+    # Immutable history first (fresh run_seq key — never overwrites), then latest-state.
+    _put(client, bucket, keys["history"], body, "application/json")
+    _put(client, bucket, keys["latest"], body, "application/json")
+    _verify_readback(client, bucket, keys["history"], body)
+    _verify_readback(client, bucket, keys["latest"], body)
+
+    logger.info(
+        f"Published + verified Scout delta report {report_id} to s3://{bucket}/{issue_prefix}/ "
+        f"(run_seq {run_seq})")
+    return {"report_id": report_id, "run_seq": run_seq, "keys": keys,
+            "report_sha256": report_sha256, "envelope": envelope, "idempotent": False}
 
 
 def publish_scout_report(result, generated_at, provenance=None, client=None):
