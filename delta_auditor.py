@@ -48,6 +48,7 @@ def run_delta_audit(review_report, platform_approval=None, generated_snapshot=No
 
     return {
         "scout_delta_report_version": SCOUT_DELTA_REPORT_VERSION,
+        "algorithm_version": DELTA_ALGORITHM_VERSION,
         "review_id": canonical["review_id"],
         "applicability": canonical["applicability"],
         "provenance": {
@@ -55,6 +56,12 @@ def run_delta_audit(review_report, platform_approval=None, generated_snapshot=No
             "published_revision_id": canonical["published_revision_id"],
             "generated_snapshot_revision_id": canonical["generated_snapshot_revision_id"],
             "source_versions": canonical["source_versions"],
+            "normalization_version": canonical.get("normalization_version"),
+            "metadata_provenance": canonical.get("metadata_provenance"),
+            "geometry_detector": {
+                "match_version": geometry_delta.get("geometry_match_version"),
+                "iou_threshold": geometry_delta.get("iou_threshold"),
+            },
         },
         # --- Scout's INDEPENDENT, advisory measurement (never authoritative) ---
         "geometry_delta": geometry_delta,

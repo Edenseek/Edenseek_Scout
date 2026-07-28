@@ -32,6 +32,11 @@ SUPPORTED_GENERATED_SNAPSHOT_VERSIONS = frozenset({"v1"})
 MANUAL_SENTINEL = "not_applicable_manual_publication"
 GENERATED_PUBLICATION_STATE = "generated_publication"
 
+# The version of Scout's normalization (this anti-corruption boundary): how Publisher shapes are
+# mapped to Scout's canonical geometry/metadata model. It is a comparability axis — a change here
+# can shift metrics without any Publisher or algorithm change (see SCOUT_REPORT_INDEX.md).
+NORMALIZATION_VERSION = "v1"
+
 # Canonical dataset states, reported VERBATIM from the Publisher (Scout never sets these).
 STATE_DRAFT = "draft"
 STATE_CREATOR_APPROVED = "creator_approved"
@@ -239,6 +244,39 @@ def _normalize_metadata(metadata_obj, side):
     return canon
 
 
+def _generated_summary(generated_panel_geometry):
+    """The generated side's page/panel totals (for per-page benchmark denominators). Best-effort:
+    missing fields are ``None``, never fabricated."""
+    g = generated_panel_geometry if isinstance(generated_panel_geometry, dict) else {}
+    return {"total_pages": g.get("total_pages"),
+            "total_story_pages": g.get("total_story_pages"),
+            "total_panels": g.get("total_panels")}
+
+
+def _metadata_provenance(generated_metadata, approved_metadata):
+    """Metadata generation provenance for the comparability contract — enrichment schema versions
+    on both sides, plus prompt/model identifiers WHEN the Publisher emits them (else ``None``).
+
+    Security: only identifiers/versions are captured — never prompt bodies, secrets, or credentials.
+    """
+    gm = generated_metadata if isinstance(generated_metadata, dict) else {}
+    am = approved_metadata if isinstance(approved_metadata, dict) else {}
+    # Prompt/model identifiers are optional and Publisher-emitted; probe a few known field names.
+    def pick(obj, *names):
+        for n in names:
+            if isinstance(obj, dict) and obj.get(n) not in (None, ""):
+                return obj[n]
+        return None
+    return {
+        "generated_schema_version": gm.get("llm_enrichment_output_version"),
+        "approved_schema_version": am.get("llm_enrichment_output_version"),
+        "prompt_id": pick(gm, "prompt_id", "enrichment_prompt_id"),
+        "prompt_version": pick(gm, "prompt_version", "enrichment_prompt_version"),
+        "model": pick(gm, "model", "enrichment_model", "llm_model"),
+        "provider": pick(gm, "provider", "model_provider", "llm_provider"),
+    }
+
+
 def _publisher_certified(platform_approval, published_something):
     """The Publisher/Platform's OWN certified signal, carried verbatim — kept strictly
     separate from Scout's independent delta. Absence of D ⇒ ``creator_approved`` (published,
@@ -312,6 +350,7 @@ def adapt_review(review_report, platform_approval=None, generated_snapshot=None)
         generated = {
             "geometry": _normalize_generated_geometry(gen_geom_raw),
             "metadata": _normalize_metadata(gen_meta_raw, "generated"),
+            "summary": _generated_summary(gen_geom_raw),
         }
     else:
         raise ReviewContractError(
@@ -335,9 +374,16 @@ def adapt_review(review_report, platform_approval=None, generated_snapshot=None)
         "generated": generated,
         "approved": approved,
         "publisher_certified": _publisher_certified(platform_approval, published_something=True),
+        "normalization_version": NORMALIZATION_VERSION,
+        "metadata_provenance": _metadata_provenance(
+            review_report.get("generated_metadata"), review_report.get("approved_metadata")),
         "source_versions": {
             "review_report_version": review_report.get("review_report_version"),
             "platform_approval_version": (platform_approval or {}).get("platform_approval_version"),
             "generated_snapshot_version": (generated_snapshot or {}).get("generated_snapshot_version"),
+            "generated_metadata_version": (review_report.get("generated_metadata") or {}).get(
+                "llm_enrichment_output_version"),
+            "approved_metadata_version": (review_report.get("approved_metadata") or {}).get(
+                "llm_enrichment_output_version"),
         },
     }

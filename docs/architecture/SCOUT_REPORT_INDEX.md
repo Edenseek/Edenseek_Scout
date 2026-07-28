@@ -39,13 +39,21 @@ Each **entry** is the searchable metadata for one report:
 
 | group | fields |
 |---|---|
-| identity | `report_id`, `run_seq`, `completed_at`, `publisher_id`, `title_group_id`, `series_id`, `issue_id` |
-| revisions | `published_revision_id` (approved), `generated_snapshot_revision_id` (generated), `review_id` |
+| identity | `report_id`, `run_id` (logical), `run_seq` (physical), `completed_at`, `publisher_id`, `title_group_id`, `series_id`, `issue_id` |
+| revisions | `published_revision_id` (approved baseline), `generated_snapshot_revision_id` (generated), `review_id` |
 | metrics | `precision`, `recall`, `split_rate`, `merge_rate`, `missing_count`, `spread_missing_count`, `false_count` |
+| geometry benchmark | `geometry_benchmark{}` — raw counts **and** numerator/denominator pairs (see §7) |
 | findings | `finding_counts` {PASS,WARNING,FAIL,INFO}, `finding_codes[]`, `worst_severity`, `metadata_status`, `compared_artifacts` |
-| **versions** | `report_version`, `algorithm_version`, `schema_version`, `evaluation_version`, `schema_versions{}`, `comparability_key` |
+| **versions** | `report_version`, `algorithm_version`, `schema_version`, `evaluation_version`, `normalization_version`, `schema_versions{}` |
+| **comparability** | `comparability{geometry,metadata,geometry_axes,metadata_axes}`, `geometry_comparability_key`, `metadata_comparability_key` |
 | commits | `publisher_commit`, `scout_commit` |
 | location | `persisted_key` {history, latest}, `report_sha256` |
+
+The persisted report envelope additionally carries full provenance (§8): publication `chain_id`/
+`published_at`/`initiating_user`, `evidence_manifest_version`, `geometry_detector` (match version +
+IoU threshold), `metadata_provenance` (enrichment schema versions + prompt/model identifiers when
+available), and per-object evidence keys + sha256. **No secrets, credentials, or prompt bodies are
+stored** — only identifiers and versions.
 
 The index is **derived and rebuildable**: `scout_report_index.rebuild_index` scans `history/` and
 reconstructs the whole index. The reports remain the source of truth; a lost or divergent index is
@@ -62,27 +70,38 @@ The report is written and verified first. If step 2 fails, the authoritative rep
 durable and the index is reconcilable via `rebuild_index` — the projection can always be recomputed
 from the immutable reports.
 
-## 4. Comparability contract (formal)
+**Idempotency (no duplicate logical runs).** Each report carries a deterministic `run_id` =
+`sha256(published_revision_id | generated_snapshot_revision_id | comparability.geometry |
+comparability.metadata)`. `publish_delta_report` reads the latest object first and, if its `run_id`
+already matches, returns it as a verified no-op — a retry of the same publication under the same
+methodology never creates a second history snapshot or a second `run_seq`. The physical `run_seq`
+still increments only for genuinely new logical runs.
 
-Two reports are **directly comparable** iff **all four axes** match. A change on any axis is a
-**boundary**: trend graphs must segment on `comparability_key` and must not draw a continuous line
-across a boundary without warning.
+## 4. Comparability contract (formal, per task family)
 
-| axis | owns | bump when… |
-|---|---|---|
-| `report_version` | delta report **format** (`delta_auditor.SCOUT_DELTA_REPORT_VERSION`) | the envelope/report shape changes |
-| `algorithm_version` | the delta **computation** (`delta_auditor.DELTA_ALGORITHM_VERSION`) | the IoU threshold, match/split/merge/false definitions, metadata field-equality or schema-scoping rule, or the ledger op set change |
-| `schema_version` | the Publisher **input contract** consumed (composite `rr:…|pa:…|gs:…`) | the Review Record / Platform Approval / Generated PAL schema versions change |
-| `evaluation_version` | the **findings/severity rules** (`audit_review.EVALUATION_VERSION`) | the PASS/WARNING/FAIL/INFO thresholds or rules change |
+Geometry and metadata metrics are only comparable under the conditions that actually govern each, so
+comparability is computed **per task family** — a report has both a `geometry` and a `metadata`
+comparability key. Reports with an **identical** key for a task may form one continuous benchmark
+series for that task's metrics. Reports with **different** keys stay visible but are separated by a
+**methodology boundary** and must never be silently combined into one improvement claim.
 
-`comparability_key = "cmp_" + sha256("report_version=…|algorithm_version=…|schema_version=…|evaluation_version=…")[:12]`.
+**Geometry axes** (`geometry_comparability_key`): `task=geometry`, `metric_definition_version`
+(`DELTA_ALGORITHM_VERSION`), `geometry_detector_version` (`delta_geometry.GEOMETRY_MATCH_VERSION`),
+`iou_threshold`, `normalization_version` (`review_contract_adapter.NORMALIZATION_VERSION`).
 
-**Prompts / upstream models are not a Scout axis.** Scout's delta is LLM-free. Changes to the
-Publisher's enrichment prompts or models surface here via `schema_version` (the enrichment output
-schema) and the `generated_snapshot_revision_id` — so a graph already segments across them.
+**Metadata axes** (`metadata_comparability_key`): `task=metadata`, `metric_definition_version`,
+`metadata_prompt_version`, `metadata_model`, `metadata_schema_version` (generated/approved enrichment
+versions), `normalization_version`, `evaluation_version` (`audit_review.EVALUATION_VERSION`).
 
-`scout_report_index.comparability_diff(a, b)` returns exactly which axes differ, so a future graph
-can label a boundary ("algorithm_version changed v1→v2") rather than silently splicing.
+`comparability_key(axes) = "cmp_" + sha256(sorted "k=v" join)[:12]`. `build_comparability(body)`
+returns both keys plus the axis values; `metric_series(index, task=…)` segments on the task's key and
+marks `boundaries`; `comparability_diff(a_axes, b_axes)` names exactly which axes moved so a graph can
+label a boundary ("iou_threshold 0.5→0.6") rather than silently splicing.
+
+**Prompts / upstream models are captured, not ignored.** Scout's delta is LLM-free, but the metadata
+it compares was produced by the Publisher's enrichment prompts/models — so those are metadata-axis
+inputs (`metadata_prompt_version`, `metadata_model`, `metadata_schema_version`), recorded when the
+Publisher emits them and otherwise `null`. They also surface via the `generated_snapshot_revision_id`.
 
 ## 5. Read model (server-side; UI never computes)
 
@@ -101,3 +120,28 @@ next slice). The browser passes parameters and renders; all filtering/segmenting
 
 Read-only on `edenseek-publishing`; writes only to `edenseek-scout`. Scout persists and indexes its
 own reports; it never mutates Publisher data, sets canonical state, or moves audit logic into the UI.
+
+## 7. Geometry benchmark (numerators + denominators)
+
+`geometry_benchmark` persists raw counts and explicit numerator/denominator pairs so every rate is
+independently reproducible — never a bare percentage:
+
+- counts: `true_matches`, `matched_generated`, `matched_approved`, `generated_panels_evaluated`,
+  `approved_panels_evaluated`, `approved_page_panels`, `approved_spread_panels`, `panel_splits`,
+  `panel_merges`, `false_panels`, `missing_panels`, `missing_page_panels`, `spread_missing_panels`,
+  `unchanged_geometry_panels`, `total_human_geometry_corrections`, `pages_evaluated`.
+- rates with backing: `corrections_per_page`, `unchanged_geometry_rate`, and `ratios{precision,
+  recall, split_rate, merge_rate, false_rate, missing_rate, unchanged_geometry_rate}` where each is
+  `{numerator, denominator, rate}`.
+
+## 8. Report identity + provenance (persisted envelope)
+
+Every persisted report carries: `report_id`, `run_id`, `run_seq`, `completed_at`; the issue chain
+(`publisher/title_group/series/issue`) via `issue_identity`; `provenance.publication`
+(`chain_id`/`published_at`/`initiating_user`); `published_revision_id` (approved baseline),
+`generated_snapshot_revision_id` (generated), `review_id`; `publisher_commit` + `scout_commit`;
+`evidence_manifest_version`, `report_version`, `algorithm_version`/`evaluation_version`,
+`geometry_detector` (match version + IoU), `metadata_provenance` (prompt id/version, model/provider
+when available, generated/approved enrichment schema versions), `normalization_version`,
+`schema_versions`; the exact `persisted_key` + `report_sha256`; and `evidence_summary.objects` with
+each evidence object's key + sha256. **Secrets, credentials, and prompt bodies are never stored.**

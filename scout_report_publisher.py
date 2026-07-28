@@ -495,6 +495,29 @@ def publish_delta_report(report_body, completed_at, client=None):
     client = client or _s3_client(region)
     reports_prefix = f"{issue_prefix}/reports"
     history_prefix = f"{issue_prefix}/history"
+    latest_key = f"{reports_prefix}/{SCOUT_DELTA_REPORT_TYPE}.json"
+
+    # Idempotency: if the latest persisted report is already this logical run, do not re-persist
+    # (retries must not create a duplicate logical run). Return the existing report unchanged.
+    run_id = report_body.get("run_id")
+    if run_id:
+        try:
+            existing = json.loads(client.get_object(Bucket=bucket, Key=latest_key)["Body"].read())
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") not in ("NoSuchKey", "404", "NotFound"):
+                raise ScoutReportPublishError(
+                    f"Unable to read latest for idempotency check s3://{bucket}/{latest_key}: {e}") from e
+            existing = None
+        except BotoCoreError as e:
+            raise ScoutReportPublishError(
+                f"Unable to read latest for idempotency check s3://{bucket}/{latest_key}: {e}") from e
+        if existing and existing.get("run_id") == run_id:
+            body = _dumps(existing)
+            logger.info("Scout delta report %s already persisted (run_id %s); idempotent no-op.",
+                        existing.get("report_id"), run_id)
+            return {"report_id": existing.get("report_id"), "run_seq": existing.get("run_seq"),
+                    "keys": existing.get("persisted_key"), "report_sha256": hashlib.sha256(body).hexdigest(),
+                    "envelope": existing, "idempotent": True}
 
     run_seq = _next_run_seq(client, bucket, history_prefix, SCOUT_DELTA_REPORT_TYPE)
     seq_token = f"{run_seq:0{RUN_SEQ_WIDTH}d}"
@@ -527,7 +550,7 @@ def publish_delta_report(report_body, completed_at, client=None):
         f"Published + verified Scout delta report {report_id} to s3://{bucket}/{issue_prefix}/ "
         f"(run_seq {run_seq})")
     return {"report_id": report_id, "run_seq": run_seq, "keys": keys,
-            "report_sha256": report_sha256, "envelope": envelope}
+            "report_sha256": report_sha256, "envelope": envelope, "idempotent": False}
 
 
 def publish_scout_report(result, generated_at, provenance=None, client=None):

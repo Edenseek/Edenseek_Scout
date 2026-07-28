@@ -31,12 +31,17 @@ import scout_report_publisher as srp
 REPORT_INDEX_VERSION = "v1"
 INDEX_ARTIFACT = "report_index"  # {issue}/reports/report_index.json (latest-state projection)
 
-# The formal comparability axes, in key order. Reports agree on comparability iff all four match.
-COMPARABILITY_AXES = ("report_version", "algorithm_version", "schema_version", "evaluation_version")
-
-# Numeric metrics the index carries for range-search and trend graphs.
+# Numeric metrics the index carries for range-search and trend graphs (geometry task family).
 METRIC_FIELDS = ("precision", "recall", "split_rate", "merge_rate",
                  "missing_count", "spread_missing_count", "false_count")
+
+# Comparability is per TASK FAMILY: geometry and metadata metrics are only comparable under the
+# conditions that actually govern each. The axis VALUES are assembled from a report body; the
+# field lists below document the contract.
+GEOMETRY_AXES = ("task", "metric_definition_version", "geometry_detector_version",
+                 "iou_threshold", "normalization_version")
+METADATA_AXES = ("task", "metric_definition_version", "metadata_prompt_version", "metadata_model",
+                 "metadata_schema_version", "normalization_version", "evaluation_version")
 
 
 class ScoutReportIndexError(Exception):
@@ -44,17 +49,54 @@ class ScoutReportIndexError(Exception):
 
 
 # --------------------------------------------------------------------------- #
-# Comparability contract
+# Comparability contract (per task family)
 # --------------------------------------------------------------------------- #
-def comparability_key(versions):
-    """Deterministic key over the four comparability axes. Equal keys ⇒ directly comparable."""
-    basis = "|".join(f"{ax}={versions.get(ax, '')}" for ax in COMPARABILITY_AXES)
+def comparability_key(axes):
+    """Deterministic key over an axis dict (order-independent). Equal keys ⇒ directly comparable."""
+    basis = "|".join(f"{k}={axes[k]}" for k in sorted(axes))
     return "cmp_" + hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
 
 
-def comparability_diff(a, b):
-    """The axes on which two entries differ (empty ⇒ directly comparable)."""
-    return [ax for ax in COMPARABILITY_AXES if a.get(ax) != b.get(ax)]
+def geometry_axes(body):
+    """The conditions a valid geometry-benchmark comparison requires."""
+    prov = body.get("provenance", {}) or {}
+    det = prov.get("geometry_detector", {}) or {}
+    return {
+        "task": "geometry",
+        "metric_definition_version": body.get("algorithm_version"),
+        "geometry_detector_version": det.get("match_version"),
+        "iou_threshold": det.get("iou_threshold"),
+        "normalization_version": prov.get("normalization_version"),
+    }
+
+
+def metadata_axes(body):
+    """The conditions a valid metadata comparison requires (prompt/model/schema/eval + normalization)."""
+    prov = body.get("provenance", {}) or {}
+    mp = prov.get("metadata_provenance", {}) or {}
+    return {
+        "task": "metadata",
+        "metric_definition_version": body.get("algorithm_version"),
+        "metadata_prompt_version": mp.get("prompt_version"),
+        "metadata_model": mp.get("model"),
+        "metadata_schema_version": f"{mp.get('generated_schema_version')}/{mp.get('approved_schema_version')}",
+        "normalization_version": prov.get("normalization_version"),
+        "evaluation_version": body.get("evaluation_version"),
+    }
+
+
+def build_comparability(body):
+    """Both task-family comparability keys + the axis values that produced them. Reports with equal
+    per-task keys may form one continuous benchmark series for that task; different keys stay visible
+    but must be separated by a methodology boundary and never silently combined."""
+    ga, ma = geometry_axes(body), metadata_axes(body)
+    return {"geometry": comparability_key(ga), "metadata": comparability_key(ma),
+            "geometry_axes": ga, "metadata_axes": ma}
+
+
+def comparability_diff(axes_a, axes_b):
+    """The axes on which two axis dicts differ (empty ⇒ directly comparable)."""
+    return sorted(k for k in set(axes_a) | set(axes_b) if axes_a.get(k) != axes_b.get(k))
 
 
 # --------------------------------------------------------------------------- #
@@ -68,9 +110,10 @@ def build_index_entry(envelope):
     """
     prov = envelope.get("provenance", {}) or {}
     ident = envelope.get("issue_identity", {}) or {}
-    versions = {ax: envelope.get(ax) for ax in COMPARABILITY_AXES}
+    comparability = envelope.get("comparability") or build_comparability(envelope)
     return {
         "report_id": envelope.get("report_id"),
+        "run_id": envelope.get("run_id"),
         "run_seq": envelope.get("run_seq"),
         "completed_at": envelope.get("completed_at"),
         "publisher_id": ident.get("publisher_id"),
@@ -82,18 +125,22 @@ def build_index_entry(envelope):
         "review_id": prov.get("review_id"),
         "applicability": envelope.get("applicability"),
         "metrics": dict(envelope.get("metrics", {}) or {}),
+        "geometry_benchmark": dict((envelope.get("geometry_benchmark") or {})),
         "metadata_status": envelope.get("metadata_status"),
         "compared_artifacts": envelope.get("compared_artifacts"),
         "finding_counts": dict(envelope.get("finding_counts", {}) or {}),
         "finding_codes": list(envelope.get("finding_codes", []) or []),
         "worst_severity": envelope.get("worst_severity"),
-        # comparability axes (carried individually so a graph can explain a boundary)
-        "report_version": versions["report_version"],
-        "algorithm_version": versions["algorithm_version"],
-        "schema_version": versions["schema_version"],
-        "evaluation_version": versions["evaluation_version"],
+        # comparability axes (per task family, so a graph can explain a boundary)
+        "report_version": envelope.get("report_version"),
+        "algorithm_version": envelope.get("algorithm_version"),
+        "schema_version": envelope.get("schema_version"),
+        "evaluation_version": envelope.get("evaluation_version"),
+        "normalization_version": (prov.get("normalization_version")),
         "schema_versions": dict(envelope.get("schema_versions", {}) or {}),
-        "comparability_key": comparability_key(versions),
+        "comparability": comparability,
+        "geometry_comparability_key": comparability["geometry"],
+        "metadata_comparability_key": comparability["metadata"],
         "publisher_commit": envelope.get("publisher_commit"),
         "scout_commit": envelope.get("scout_commit"),
         "persisted_key": dict(envelope.get("persisted_key", {}) or {}),
@@ -218,8 +265,10 @@ def query_index(index, filters=None):
     for e in index.get("entries", []):
         if f.get("report_id") and e.get("report_id") != f["report_id"]:
             continue
+        if f.get("run_id") and e.get("run_id") != f["run_id"]:
+            continue
         for field in ("issue_id", "publisher_id", "series_id", "title_group_id",
-                      "comparability_key", "schema_version"):
+                      "geometry_comparability_key", "metadata_comparability_key", "schema_version"):
             if f.get(field) and e.get(field) != f[field]:
                 break
         else:
@@ -250,20 +299,22 @@ def query_index(index, filters=None):
     return out
 
 
-def metric_series(index, metrics=None):
+def metric_series(index, metrics=None, task="geometry"):
     """Project the index into per-metric time series (oldest→newest) with comparability segments.
 
-    Each metric yields ordered points and ``segments`` grouped by ``comparability_key`` — a graph
-    draws a continuous line only within a segment, and marks ``boundaries`` (run_seqs where the key
-    changed) so metrics under different algorithms/schemas/eval-rules are never joined silently.
+    Metrics are segmented by the ``task``-family comparability key (``geometry`` or ``metadata``):
+    a graph draws a continuous line only within a segment, and marks ``boundaries`` (run_seqs where
+    the key changed) so metrics produced under different detectors/thresholds/prompts/models/schemas
+    are never silently joined into one improvement claim.
     """
     metrics = metrics or list(METRIC_FIELDS)
+    key_field = "metadata_comparability_key" if task == "metadata" else "geometry_comparability_key"
     ordered = sorted(index.get("entries", []), key=lambda e: (e.get("run_seq") or 0))
     series = {}
     for m in metrics:
         points, segments, boundaries, prev_key = [], [], [], None
         for e in ordered:
-            key = e.get("comparability_key")
+            key = e.get(key_field)
             pt = {"run_seq": e.get("run_seq"), "completed_at": e.get("completed_at"),
                   "value": (e.get("metrics", {}) or {}).get(m), "comparability_key": key}
             points.append(pt)
@@ -273,5 +324,5 @@ def metric_series(index, metrics=None):
                 segments.append({"comparability_key": key, "run_seqs": []})
                 prev_key = key
             segments[-1]["run_seqs"].append(e.get("run_seq"))
-        series[m] = {"points": points, "segments": segments, "boundaries": boundaries}
+        series[m] = {"task": task, "points": points, "segments": segments, "boundaries": boundaries}
     return series

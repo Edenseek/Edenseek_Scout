@@ -17,6 +17,7 @@ Usage:
     python scout_delta_audit.py --dry-run  # run + assemble the report body, persist nothing
 Exit 0 on success, 1 on failure.
 """
+import hashlib
 import json
 import sys
 from collections import Counter
@@ -29,6 +30,14 @@ from delta_auditor import SCOUT_DELTA_REPORT_VERSION, DELTA_ALGORITHM_VERSION
 from audit_review import EVALUATION_VERSION
 
 _SEVERITY_ORDER = ("FAIL", "WARNING", "INFO", "PASS")
+
+
+def _run_id(published_revision_id, generated_revision_id, comparability):
+    """A deterministic LOGICAL run id: the same publication audited under the same methodology yields
+    the same id, so retries are idempotent and cannot create duplicate logical runs."""
+    basis = "|".join([published_revision_id or "", generated_revision_id or "",
+                      comparability["geometry"], comparability["metadata"]])
+    return "run_" + hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
 
 
 def _schema_versions(delta):
@@ -73,25 +82,37 @@ def build_report_body(view):
     prov = delta.get("provenance", {}) or {}
     sv = _schema_versions(delta)
     ev = view["evidence"]
-    return {
-        # --- comparability axes (formal contract) ---
+    pub_prov = ev.get("publisher_provenance", {}) or {}
+    geometry_benchmark = (delta.get("geometry_delta") or {}).get("benchmark") or {}
+
+    body = {
+        # --- comparability axes carried at top level (index projection reads these) ---
         "report_version": SCOUT_DELTA_REPORT_VERSION,
         "algorithm_version": DELTA_ALGORITHM_VERSION,
-        "schema_version": _schema_version_str(sv),
+        "schema_version": _schema_version_str(sv),          # Publisher input-contract composite
         "evaluation_version": EVALUATION_VERSION,
         "schema_versions": sv,
-        # --- identity + provenance ---
+        # --- identity + provenance (requirement 2) ---
         "issue_identity": ev.get("issue_identity", {}),
         "applicability": delta.get("applicability"),
         "provenance": {
             "review_id": delta.get("review_id"),
-            "published_revision_id": prov.get("published_revision_id"),
-            "generated_snapshot_revision_id": prov.get("generated_snapshot_revision_id"),
+            "published_revision_id": prov.get("published_revision_id"),   # approved baseline
+            "generated_snapshot_revision_id": prov.get("generated_snapshot_revision_id"),  # generated
+            "publication": {"chain_id": pub_prov.get("chain_id"),
+                            "published_at": pub_prov.get("published_at"),
+                            "initiating_user": pub_prov.get("initiating_user")},
+            "source_versions": sv,
+            "evidence_manifest_version": ev.get("manifest_version"),
+            "normalization_version": prov.get("normalization_version"),
+            "geometry_detector": prov.get("geometry_detector"),
+            "metadata_provenance": prov.get("metadata_provenance"),
         },
         "publisher_commit": view.get("publisher_commit") or ev.get("publisher_commit"),
         "scout_commit": view.get("scout_commit") or ev.get("scout_commit"),
-        # --- measurement rollup carried on the entry for search/graph ---
+        # --- measurement rollups carried on the entry for search/graph ---
         "metrics": metrics,
+        "geometry_benchmark": geometry_benchmark,
         "metadata_status": m.get("status"),
         "compared_artifacts": m.get("compared"),
         "finding_counts": finding_counts,
@@ -108,6 +129,11 @@ def build_report_body(view):
                         for o in ev.get("objects", [])],
         },
     }
+    # Per-task comparability keys + a deterministic logical run id (for idempotency).
+    body["comparability"] = sri.build_comparability(body)
+    body["run_id"] = _run_id(prov.get("published_revision_id"),
+                             prov.get("generated_snapshot_revision_id"), body["comparability"])
+    return body
 
 
 def run_and_persist(client=None, dry_run=False):
@@ -124,23 +150,27 @@ def run_and_persist(client=None, dry_run=False):
         logger.info("Scout delta audit (dry-run): assembled report body; persisted nothing.")
         return {"status": "dry_run", "completed_at": completed_at, "report_body": body}
 
-    # 1) persist the immutable report (history + latest), byte-verified.
+    # 1) persist the immutable report (history + latest), byte-verified. Idempotent on run_id.
     published = srp.publish_delta_report(body, completed_at, client=client)
-    # 2) same transaction: project -> index entry, update the index (verified).
+    # 2) same transaction: project -> index entry, update the index (verified). update_index keys on
+    #    run_seq, so re-running an already-persisted logical run reconciles rather than duplicates.
     entry = sri.build_index_entry({**published["envelope"],
                                    "report_sha256": published["report_sha256"]})
     index = sri.update_index(entry, client=client)
 
-    logger.info("Scout delta audit persisted %s (run_seq %s); index count=%d",
+    logger.info("Scout delta audit %s %s (run_seq %s); index count=%d",
+                "reconciled" if published.get("idempotent") else "persisted",
                 published["report_id"], published["run_seq"], index["count"])
     return {
-        "status": "persisted",
+        "status": "reconciled" if published.get("idempotent") else "persisted",
         "report_id": published["report_id"],
+        "run_id": entry["run_id"],
         "run_seq": published["run_seq"],
         "keys": published["keys"],
         "report_sha256": published["report_sha256"],
         "index_count": index["count"],
-        "comparability_key": entry["comparability_key"],
+        "geometry_comparability_key": entry["geometry_comparability_key"],
+        "metadata_comparability_key": entry["metadata_comparability_key"],
     }
 
 

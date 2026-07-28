@@ -12,6 +12,11 @@ from review_contract_adapter import APPLICABILITY_MANUAL
 # Fixed IoU match threshold (named constant so the delta is reproducible and reviewable).
 IOU_THRESHOLD = 0.5
 
+# Version of the geometry MATCHING rules (IoU overlap match + split/merge/false/missing
+# definitions). A comparability axis for the geometry benchmark: a change here (or to
+# IOU_THRESHOLD) means new geometry metrics are not directly comparable to older ones.
+GEOMETRY_MATCH_VERSION = "v1"
+
 
 def _iou(a, b):
     """Intersection-over-union of two ``(x, y, w, h)`` boxes. Degenerate/zero-area -> 0.0."""
@@ -67,9 +72,26 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
 
     n_gen = len(generated_ids)
     n_app = len(approved_page) + len(approved_spread)   # spreads count against recall
+
+    # Panels the human left unchanged: a clean 1:1 match (approved page panel with exactly one
+    # automated match, whose automated panel maps only to it — neither split nor merge).
+    unchanged = sum(1 for a in approved_page
+                    if len(app_matches[a]) == 1 and len(gen_matches[app_matches[a][0]]) == 1)
+    # Every divergence from automation the human approval represents (added/removed/split/merged).
+    total_corrections = len(false_panels) + len(missing) + len(split) + len(merge)
+    summary = (canonical_review.get("generated") or {}).get("summary") or {}
+    pages = summary.get("total_story_pages") or summary.get("total_pages")
+    if not pages:  # fall back to distinct generated page numbers
+        pages = len({generated[g].get("page_number") for g in generated_ids
+                     if generated[g].get("page_number") is not None})
+
+    def _ratio(numer, denom):
+        return {"numerator": numer, "denominator": denom, "rate": _rate(numer, denom)}
+
     return {
         "applicable": True,
         "iou_threshold": iou_threshold,
+        "geometry_match_version": GEOMETRY_MATCH_VERSION,
         "generated_panel_count": n_gen,
         "approved_panel_count": n_app,
         "approved_spread_count": len(approved_spread),
@@ -87,4 +109,34 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
         "false_artifact_ids": false_panels,
         "split_artifact_ids": split,
         "merge_artifact_ids": merge,
+        # Raw counts + numerator/denominator pairs so every rate is independently reproducible.
+        "benchmark": {
+            "true_matches": len(matched_approved),          # approved page panels correctly detected
+            "matched_generated": len(matched_generated),
+            "matched_approved": len(matched_approved),
+            "generated_panels_evaluated": n_gen,
+            "approved_panels_evaluated": n_app,
+            "approved_page_panels": len(approved_page),
+            "approved_spread_panels": len(approved_spread),
+            "panel_splits": len(split),
+            "panel_merges": len(merge),
+            "false_panels": len(false_panels),
+            "missing_panels": len(missing),
+            "missing_page_panels": len(missing_page),
+            "spread_missing_panels": len(approved_spread),
+            "unchanged_geometry_panels": unchanged,
+            "total_human_geometry_corrections": total_corrections,
+            "pages_evaluated": pages,
+            "corrections_per_page": _rate(total_corrections, pages),
+            "unchanged_geometry_rate": _rate(unchanged, n_app),
+            "ratios": {
+                "precision": _ratio(len(matched_generated), n_gen),
+                "recall": _ratio(len(matched_approved), n_app),
+                "split_rate": _ratio(len(split), n_app),
+                "merge_rate": _ratio(len(merge), n_gen),
+                "false_rate": _ratio(len(false_panels), n_gen),
+                "missing_rate": _ratio(len(missing), n_app),
+                "unchanged_geometry_rate": _ratio(unchanged, n_app),
+            },
+        },
     }

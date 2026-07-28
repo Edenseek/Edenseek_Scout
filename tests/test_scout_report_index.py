@@ -124,12 +124,17 @@ class TestPersistAndIndex(unittest.TestCase):
         self.assertEqual(e["schema_version"], "rr:v1|pa:v1|gs:-")
         self.assertEqual(e["finding_counts"], {"PASS": 1, "WARNING": 2, "FAIL": 0, "INFO": 0})
         self.assertEqual(e["worst_severity"], "WARNING")
-        self.assertTrue(e["comparability_key"].startswith("cmp_"))
+        # per-task comparability keys + a deterministic logical run id
+        self.assertTrue(e["geometry_comparability_key"].startswith("cmp_"))
+        self.assertTrue(e["metadata_comparability_key"].startswith("cmp_"))
+        self.assertNotEqual(e["geometry_comparability_key"], e["metadata_comparability_key"])
+        self.assertTrue(e["run_id"].startswith("run_"))
+        self.assertEqual(res["run_id"], e["run_id"])
 
     def test_newest_first_and_rebuild_matches(self):
         s3 = FakeS3()
-        self._run(s3, _view(precision=0.9))
-        self._run(s3, _view(precision=0.8))  # run_seq 2
+        self._run(s3, _view(precision=0.9, published="rev_pub_1"))
+        self._run(s3, _view(precision=0.8, published="rev_pub_2"))  # distinct publication -> run_seq 2
         with mock.patch.dict("os.environ", _env(), clear=False):
             idx = sri.load_index(s3)
             self.assertEqual([e["run_seq"] for e in idx["entries"]], [2, 1])  # newest first
@@ -137,6 +142,22 @@ class TestPersistAndIndex(unittest.TestCase):
             rebuilt = sri.rebuild_index(s3)
         self.assertEqual([e["run_seq"] for e in rebuilt["entries"]], [2, 1])
         self.assertEqual(rebuilt["count"], 2)
+
+    def test_retry_same_publication_is_idempotent(self):
+        """Re-running the same publication under the same methodology must not create a duplicate
+        logical run: same run_id, one history report, index count stays 1."""
+        s3 = FakeS3()
+        first = self._run(s3, _view(published="rev_pub_x"))
+        second = self._run(s3, _view(precision=0.5, published="rev_pub_x"))  # retry, different metric
+        self.assertEqual(first["status"], "persisted")
+        self.assertEqual(second["status"], "reconciled")
+        self.assertEqual(first["run_id"], second["run_id"])
+        self.assertEqual(second["run_seq"], 1)              # no new run_seq
+        with mock.patch.dict("os.environ", _env(), clear=False):
+            self.assertEqual(sri.load_index(s3)["count"], 1)
+        # only one immutable history snapshot exists
+        hist = [k for (b, k) in s3.store if "/history/scout_delta_report_" in k]
+        self.assertEqual(len(hist), 1)
 
     def test_dry_run_writes_nothing(self):
         s3, view = FakeS3(), _view()
