@@ -23,6 +23,7 @@ from audit_inputs import AuditInputError
 from audit_reports import REPORT_FILES, REPORTS_ROOT
 from audit_review import build_evidence_manifest, build_audit_review, AuditReviewError
 import scout_report_index
+import scout_benchmark
 from logging_config import logger
 
 app = FastAPI(title="Edenseek Scout")
@@ -280,3 +281,23 @@ def get_audit_review_reports(username: str = Depends(require_auth)):
     except scout_report_index.ScoutReportIndexError as e:
         logger.warning(f"Report index error: {e}")
         raise HTTPException(status_code=503, detail=f"Report index unavailable: {e}")
+
+
+@app.get("/benchmark/{level}")
+def get_benchmark(level: str, username: str = Depends(require_auth)):
+    """Read-only benchmark projection for a level (platform | publisher | series | issue). Reads the
+    persisted, weighted projection; the browser renders it and never recomputes. Points carry counts
+    + both timestamps; segments are per methodology (comparability) boundary.
+    """
+    keys = {"platform": "benchmark/platform.json"}
+    if level not in keys:
+        raise HTTPException(status_code=400,
+                            detail="level must be one of: platform (publisher/series/issue: pass scope next slice)")
+    try:
+        projection = scout_benchmark.load_projection(keys[level])
+    except scout_benchmark.ScoutBenchmarkError as e:
+        logger.warning(f"Benchmark projection error: {e}")
+        raise HTTPException(status_code=503, detail=f"Benchmark unavailable: {e}")
+    if projection is None:
+        raise HTTPException(status_code=404, detail="Benchmark projection not generated yet")
+    return projection

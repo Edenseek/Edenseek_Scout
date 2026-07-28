@@ -117,7 +117,17 @@ def build_report_body(view):
     ev = view["evidence"]
     pub_prov = ev.get("publisher_provenance", {}) or {}
     geometry_benchmark = (delta.get("geometry_delta") or {}).get("benchmark") or {}
-    metadata_metrics = benchmark_headline(delta.get("metadata_benchmark") or {"applicable": False})
+    mb = delta.get("metadata_benchmark") or {"applicable": False}
+    metadata_metrics = benchmark_headline(mb)
+    # Compact metadata aggregate (counts + numerators/denominators, WITHOUT the per-field records)
+    # carried on the report/entry so higher-level projections aggregate from counts, not percentages.
+    metadata_benchmark = ({"applicable": True, "comparable_artifacts": mb.get("comparable_artifacts"),
+                           **mb["global"]} if mb.get("applicable") else {"applicable": False})
+    # Dual time: event (Publisher publication) vs measurement (Scout). completed_at (measurement) is
+    # stamped by the publisher; event/certified come from the evidence + Platform Approval.
+    event_time = pub_prov.get("published_at")
+    certified_at = ((delta.get("publisher_certified_state") or {}).get("platform_authority")
+                    or {}).get("approved_at")
 
     body = {
         # --- comparability axes carried at top level (index projection reads these) ---
@@ -145,9 +155,14 @@ def build_report_body(view):
         },
         "publisher_commit": view.get("publisher_commit") or ev.get("publisher_commit"),
         "scout_commit": view.get("scout_commit") or ev.get("scout_commit"),
-        # --- measurement rollups carried on the entry for search/graph ---
+        # --- dual time (event vs measurement) for time-series analysis ---
+        "event_time": event_time,          # Publisher publication timestamp
+        "certified_at": certified_at,      # Platform Approval certification timestamp
+        # (measurement_time == completed_at, stamped at persistence)
+        # --- measurement rollups carried on the entry for search/graph/benchmarks ---
         "metrics": metrics,
         "geometry_benchmark": geometry_benchmark,
+        "metadata_benchmark": metadata_benchmark,
         "metadata_metrics": metadata_metrics,
         "metadata_status": m.get("status"),
         "compared_artifacts": m.get("compared"),

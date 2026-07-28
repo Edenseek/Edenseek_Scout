@@ -117,7 +117,10 @@ def build_index_entry(envelope):
         "report_id": envelope.get("report_id"),
         "run_id": envelope.get("run_id"),
         "run_seq": envelope.get("run_seq"),
-        "completed_at": envelope.get("completed_at"),
+        "completed_at": envelope.get("completed_at"),          # measurement time
+        "measurement_time": envelope.get("completed_at"),
+        "event_time": envelope.get("event_time"),              # Publisher publication time
+        "certified_at": envelope.get("certified_at"),          # Platform certification time
         "publisher_id": ident.get("publisher_id"),
         "title_group_id": ident.get("title_group_id"),
         "series_id": ident.get("series_id"),
@@ -128,6 +131,7 @@ def build_index_entry(envelope):
         "applicability": envelope.get("applicability"),
         "metrics": dict(envelope.get("metrics", {}) or {}),
         "geometry_benchmark": dict((envelope.get("geometry_benchmark") or {})),
+        "metadata_benchmark": dict((envelope.get("metadata_benchmark") or {})),
         "metadata_metrics": dict((envelope.get("metadata_metrics") or {})),
         "metadata_status": envelope.get("metadata_status"),
         "compared_artifacts": envelope.get("compared_artifacts"),

@@ -186,6 +186,9 @@ def _aggregate(tally, distances, weighted_sum, gen_populated, app_populated, art
         "weighted_editorial_intervention_score": {
             "numerator": round(weighted_sum, 6), "denominator": comparable,
             "score": round(weighted_sum / comparable, 6) if comparable else 0.0},
+        # revision_distance_sum + count let higher-level projections compute an EXACT count-weighted
+        # mean (never a mean-of-means): weighted avg = sum(distance_sum) / sum(comparable_fields).
+        "revision_distance_sum": round(sum(distances), 6),
         "average_revision_distance": round(statistics.fmean(distances), 6) if distances else 0.0,
         "median_revision_distance": round(statistics.median(distances), 6) if distances else 0.0,
         "corrections_per_artifact": _ratio(edits, artifacts),
