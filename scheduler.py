@@ -29,6 +29,19 @@ def _legacy_enabled():
     return _flag("SCOUT_LEGACY_JOB_ENABLED", "false")
 
 
+def _delta_reconcile_enabled():
+    # OFF by default — the production VM scheduler is NOT activated in this increment.
+    return _flag("SCOUT_DELTA_RECONCILE_ENABLED", "false")
+
+
+def _reconcile_interval_minutes():
+    try:
+        m = int(os.getenv("SCOUT_RECONCILE_INTERVAL_MINUTES", "15"))
+    except ValueError:
+        m = 15
+    return m if m > 0 else 15
+
+
 def _audit_cron():
     return {
         "hour": int(os.getenv("SCOUT_AUDIT_HOUR", "8")),
@@ -58,6 +71,19 @@ def scheduled_scout():
         logger.info(f"Scheduled Scout (legacy) run completed: {report_path}")
     except Exception as e:
         logger.exception(f"Scheduled Scout (legacy) run failed: {e}")
+
+
+def scheduled_delta_reconcile():
+    """Reconciliation trigger for the synchronization/delta audit — the SAME canonical agent entry
+    point as the event-watch and manual triggers. Idempotent + ledger-guarded. Never re-raises."""
+    logger.info("Scheduled delta-audit reconciliation triggered")
+    try:
+        import scout_delta_audit  # lazy import (keeps scheduler import light)
+        result = scout_delta_audit.audit_current_revision(trigger="reconciliation")
+        logger.info(f"Delta-audit reconciliation: {result.get('status')} "
+                    f"(revision {result.get('revision_id')})")
+    except Exception as e:
+        logger.exception(f"Delta-audit reconciliation failed: {e}")
 
 
 def register_jobs(sched):
@@ -95,6 +121,25 @@ def register_jobs(sched):
         )
         registered.append("scheduled_scout")
         logger.info("Registered legacy strategic-report job")
+
+    # Delta-audit reconciliation (configurable interval). OFF by default — NOT activated on the
+    # production VM in this increment. When enabled it calls the same canonical agent entry point.
+    if _delta_reconcile_enabled():
+        minutes = _reconcile_interval_minutes()
+        sched.add_job(
+            scheduled_delta_reconcile,
+            trigger="interval",
+            minutes=minutes,
+            id="scheduled_delta_reconcile",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=600,
+        )
+        registered.append("scheduled_delta_reconcile")
+        logger.info(f"Registered delta-audit reconciliation job (every {minutes} min)")
+    else:
+        logger.info("Delta-audit reconciliation job disabled (SCOUT_DELTA_RECONCILE_ENABLED=false)")
 
     return registered
 

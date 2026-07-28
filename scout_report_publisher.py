@@ -472,6 +472,47 @@ def list_history_keys(client, report_type):
     return [k for _seq, k in sorted(keys)]
 
 
+def _read_json_if_present(client, bucket, key):
+    """Return the parsed JSON at ``key``, or ``None`` if absent. Fail-loud on other errors."""
+    try:
+        return json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read())
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "NotFound"):
+            return None
+        raise ScoutReportPublishError(f"Unable to read s3://{bucket}/{key}: {e}") from e
+    except (BotoCoreError, json.JSONDecodeError) as e:
+        raise ScoutReportPublishError(f"Unable to read s3://{bucket}/{key}: {e}") from e
+
+
+def _find_history_by_run_id(client, bucket, history_prefix, run_id):
+    """The immutable history snapshot whose ``run_id`` matches, if one exists (newest first). Used to
+    make a retry after a partial persist idempotent instead of minting a duplicate run_seq."""
+    token_prefix = f"{history_prefix}/{SCOUT_DELTA_REPORT_TYPE}_"
+    seqs, continuation = [], None
+    while True:
+        kwargs = {"Bucket": bucket, "Prefix": token_prefix}
+        if continuation:
+            kwargs["ContinuationToken"] = continuation
+        try:
+            resp = client.list_objects_v2(**kwargs)
+        except (ClientError, BotoCoreError) as e:
+            raise ScoutReportPublishError(f"Unable to scan history under s3://{bucket}/{history_prefix}/: {e}") from e
+        for obj in resp.get("Contents", []):
+            name = obj["Key"].rsplit("/", 1)[-1]
+            stem = name[len(SCOUT_DELTA_REPORT_TYPE) + 1:-len(".json")] if name.endswith(".json") else ""
+            if name.startswith(f"{SCOUT_DELTA_REPORT_TYPE}_") and stem.isdigit():
+                seqs.append((int(stem), obj["Key"]))
+        if resp.get("IsTruncated"):
+            continuation = resp.get("NextContinuationToken")
+        else:
+            break
+    for _seq, key in sorted(seqs, reverse=True):
+        doc = _read_json_if_present(client, bucket, key)
+        if doc and doc.get("run_id") == run_id:
+            return doc
+    return None
+
+
 def publish_delta_report(report_body, completed_at, client=None):
     """Persist one Scout Synchronization Audit (delta) report to the Scout Repository.
 
@@ -497,23 +538,24 @@ def publish_delta_report(report_body, completed_at, client=None):
     history_prefix = f"{issue_prefix}/history"
     latest_key = f"{reports_prefix}/{SCOUT_DELTA_REPORT_TYPE}.json"
 
-    # Idempotency: if the latest persisted report is already this logical run, do not re-persist
-    # (retries must not create a duplicate logical run). Return the existing report unchanged.
+    # Idempotency: if this logical run (run_id) is already persisted — fully OR partially — do not
+    # create a second logical report. Check the latest pointer first (fast path); if that does not
+    # match, scan history so a retry after a PARTIAL persist (history written, latest not) completes
+    # the existing snapshot rather than minting a new run_seq.
     run_id = report_body.get("run_id")
     if run_id:
-        try:
-            existing = json.loads(client.get_object(Bucket=bucket, Key=latest_key)["Body"].read())
-        except ClientError as e:
-            if e.response.get("Error", {}).get("Code") not in ("NoSuchKey", "404", "NotFound"):
-                raise ScoutReportPublishError(
-                    f"Unable to read latest for idempotency check s3://{bucket}/{latest_key}: {e}") from e
-            existing = None
-        except BotoCoreError as e:
-            raise ScoutReportPublishError(
-                f"Unable to read latest for idempotency check s3://{bucket}/{latest_key}: {e}") from e
+        existing = _read_json_if_present(client, bucket, latest_key)
+        if not (existing and existing.get("run_id") == run_id):
+            prior = _find_history_by_run_id(client, bucket, history_prefix, run_id)
+            if prior is not None:
+                # Complete the transaction idempotently: ensure latest reflects the existing report.
+                pbody = _dumps(prior)
+                _put(client, bucket, latest_key, pbody, "application/json")
+                _verify_readback(client, bucket, latest_key, pbody)
+                existing = prior
         if existing and existing.get("run_id") == run_id:
             body = _dumps(existing)
-            logger.info("Scout delta report %s already persisted (run_id %s); idempotent no-op.",
+            logger.info("Scout delta report %s already persisted (run_id %s); idempotent reconcile.",
                         existing.get("report_id"), run_id)
             return {"report_id": existing.get("report_id"), "run_seq": existing.get("run_seq"),
                     "keys": existing.get("persisted_key"), "report_sha256": hashlib.sha256(body).hexdigest(),

@@ -24,13 +24,45 @@ from collections import Counter
 
 from logging_config import logger
 import audit_review
+import audit_s3_source
 import scout_report_publisher as srp
 import scout_report_index as sri
+import scout_revision_ledger as ledger
+from audit_review import AuditReviewError, EVALUATION_VERSION
 from delta_auditor import SCOUT_DELTA_REPORT_VERSION, DELTA_ALGORITHM_VERSION
-from delta_metadata_revision import benchmark_headline
-from audit_review import EVALUATION_VERSION
+from delta_geometry import GEOMETRY_MATCH_VERSION
+from delta_metadata_revision import benchmark_headline, METADATA_REVISION_DISTANCE_VERSION
+from review_contract_adapter import NORMALIZATION_VERSION
 
 _SEVERITY_ORDER = ("FAIL", "WARNING", "INFO", "PASS")
+
+
+def static_versions():
+    """The static methodology versions that define the audit/comparability CONTEXT (independent of
+    any single revision's evidence). Their fingerprint keys the idempotency ledger."""
+    return {
+        "report_version": SCOUT_DELTA_REPORT_VERSION,
+        "algorithm_version": DELTA_ALGORITHM_VERSION,
+        "geometry_match_version": GEOMETRY_MATCH_VERSION,
+        "normalization_version": NORMALIZATION_VERSION,
+        "metadata_revision_distance_version": METADATA_REVISION_DISTANCE_VERSION,
+        "evaluation_version": EVALUATION_VERSION,
+    }
+
+
+def _failure_stage(exc):
+    """Map an exception to the pipeline stage that failed (for the ledger failure record)."""
+    if isinstance(exc, AuditReviewError):
+        return "evidence"
+    if isinstance(exc, ValueError):
+        return "assemble"            # build_report_body: no delta (contract not adapted)
+    if isinstance(exc, srp.ScoutReportPublishError):
+        return "persist_verify"      # write or read-back/hash verification
+    if isinstance(exc, sri.ScoutReportIndexError):
+        return "index"
+    if isinstance(exc, ledger.ScoutRevisionLedgerError):
+        return "ledger"
+    return "unknown"
 
 
 def _run_id(published_revision_id, generated_revision_id, comparability):
@@ -173,18 +205,80 @@ def run_and_persist(client=None, dry_run=False):
         "keys": published["keys"],
         "report_sha256": published["report_sha256"],
         "index_count": index["count"],
+        "completed_at": completed_at,
+        "published_revision_id": entry["published_revision_id"],
+        "generated_snapshot_revision_id": entry["generated_snapshot_revision_id"],
         "geometry_comparability_key": entry["geometry_comparability_key"],
         "metadata_comparability_key": entry["metadata_comparability_key"],
     }
 
 
-def main(argv=None):
-    argv = argv if argv is not None else sys.argv[1:]
-    dry = "--dry-run" in argv
+def audit_current_revision(client=None, force=False, trigger="manual"):
+    """THE canonical Scout delta-audit agent entry point — used by scheduled, reconciliation, and
+    manual triggers alike. Idempotent and ledger-guarded.
+
+    Flow: resolve the current certified revision → (cheap) skip if the ledger already marks it
+    processed under the current methodology context → run the audit (evidence manifest + delta) →
+    persist the immutable report → read it back + verify sha256 → update the latest pointer + index →
+    mark the revision processed **only after all verified persistence steps succeed**. A failure at
+    any stage is recorded in the ledger (with the failure stage + codes) and does NOT mark the
+    revision processed. Read-only on the Publisher repository; writes only to ``edenseek-scout``.
+    """
+    client = client or audit_s3_source.s3_client()
+    fingerprint = ledger.context_fingerprint(static_versions())
+
+    # 1) detect the eligible revision (cheap: pointer read only).
     try:
-        result = run_and_persist(dry_run=dry)
-        print(json.dumps({k: v for k, v in result.items() if k != "report_body"}, indent=2))
-        return 0
+        pointer = audit_s3_source.resolve_current_revision(client)
+    except audit_s3_source.ScoutS3SourceError as e:
+        logger.exception("Delta audit: could not resolve current revision: %s", e)
+        return {"status": "error", "stage": "resolve", "error": str(e)}
+    revision_id = pointer["revision_id"]
+
+    # 2) suppress duplicates: already processed under this exact context?
+    led = ledger.load_ledger(client)
+    if not force and ledger.is_processed(led, revision_id, fingerprint):
+        logger.info("Delta audit: revision %s already processed (fingerprint %s); skipping.",
+                    revision_id, fingerprint)
+        return {"status": "skipped", "revision_id": revision_id, "reason": "already_processed",
+                "context_fingerprint": fingerprint}
+
+    # 3) run + persist + verify + index (idempotent; safe to retry).
+    try:
+        result = run_and_persist(client=client)
+    except Exception as e:  # noqa: BLE001 — recorded to the ledger with the failing stage
+        stage = _failure_stage(e)
+        ledger.mark_failed(revision_id, fingerprint, stage=stage, error_codes=[type(e).__name__],
+                           trigger=trigger, client=client)
+        logger.exception("Delta audit failed at stage=%s for revision %s: %s", stage, revision_id, e)
+        return {"status": "failed", "revision_id": revision_id, "stage": stage, "error": str(e),
+                "context_fingerprint": fingerprint}
+
+    # 4) mark processed ONLY after verified persistence + index succeeded.
+    ledger.mark_processed(
+        revision_id, fingerprint, run_id=result["run_id"], run_seq=result["run_seq"],
+        report_id=result["report_id"], completed_at=result["completed_at"],
+        generated_snapshot_revision_id=result["generated_snapshot_revision_id"],
+        comparability={"geometry": result["geometry_comparability_key"],
+                       "metadata": result["metadata_comparability_key"]},
+        trigger=trigger, client=client)
+    return {"status": result["status"], "revision_id": revision_id, "run_id": result["run_id"],
+            "run_seq": result["run_seq"], "report_id": result["report_id"],
+            "index_count": result["index_count"], "context_fingerprint": fingerprint,
+            "trigger": trigger}
+
+
+def main(argv=None):
+    """Manual trigger — the same canonical agent entry point the scheduler/reconciliation use."""
+    argv = argv if argv is not None else sys.argv[1:]
+    try:
+        if "--dry-run" in argv:
+            result = run_and_persist(dry_run=True)
+            print(json.dumps({k: v for k, v in result.items() if k != "report_body"}, indent=2))
+        else:
+            result = audit_current_revision(force="--force" in argv, trigger="manual")
+            print(json.dumps(result, indent=2))
+        return 0 if result.get("status") not in ("failed", "error") else 1
     except Exception as e:  # noqa: BLE001 — CLI boundary; fail-loud with a log + exit 1
         logger.exception("Scout delta audit failed: %s", e)
         return 1
