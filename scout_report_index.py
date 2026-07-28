@@ -137,6 +137,8 @@ def build_index_entry(envelope):
         "compared_artifacts": envelope.get("compared_artifacts"),
         "finding_counts": dict(envelope.get("finding_counts", {}) or {}),
         "finding_codes": list(envelope.get("finding_codes", []) or []),
+        "findings": [{k: f.get(k) for k in ("code", "severity", "title", "detail")}
+                     for f in (envelope.get("findings") or [])],
         "worst_severity": envelope.get("worst_severity"),
         # comparability axes (per task family, so a graph can explain a boundary)
         "report_version": envelope.get("report_version"),

@@ -24,6 +24,7 @@ from audit_reports import REPORT_FILES, REPORTS_ROOT
 from audit_review import build_evidence_manifest, build_audit_review, AuditReviewError
 import scout_report_index
 import scout_benchmark
+import scout_archive
 from logging_config import logger
 
 app = FastAPI(title="Edenseek Scout")
@@ -281,6 +282,30 @@ def get_audit_review_reports(username: str = Depends(require_auth)):
     except scout_report_index.ScoutReportIndexError as e:
         logger.warning(f"Report index error: {e}")
         raise HTTPException(status_code=503, detail=f"Report index unavailable: {e}")
+
+
+@app.get("/audit-review/archive")
+def get_audit_review_archive(username: str = Depends(require_auth)):
+    """Read-only Reports Archive (newest first): successful reports + failed runs, with latest/
+    historical/failed marks and methodology boundaries. Reads persisted index + ledger only."""
+    try:
+        return scout_archive.build_archive()
+    except (scout_report_index.ScoutReportIndexError, Exception) as e:  # noqa: BLE001
+        logger.warning(f"Archive error: {e}")
+        raise HTTPException(status_code=503, detail=f"Archive unavailable: {e}")
+
+
+@app.get("/audit-review/search")
+def get_audit_review_search(q: str = "", username: str = Depends(require_auth)):
+    """Server-side search over persisted archive metadata (e.g. `precision<0.80`,
+    `finding:geometry.false_panels`, `severity:WARNING`, `publisher:<id> issue:<id>`). The browser
+    passes the query; all filtering happens here."""
+    try:
+        archive = scout_archive.build_archive()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Search error: {e}")
+        raise HTTPException(status_code=503, detail=f"Search unavailable: {e}")
+    return scout_archive.search_archive(archive, q)
 
 
 @app.get("/benchmark/{level}")
