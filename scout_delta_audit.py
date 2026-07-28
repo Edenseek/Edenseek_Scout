@@ -27,6 +27,7 @@ import audit_review
 import scout_report_publisher as srp
 import scout_report_index as sri
 from delta_auditor import SCOUT_DELTA_REPORT_VERSION, DELTA_ALGORITHM_VERSION
+from delta_metadata_revision import benchmark_headline
 from audit_review import EVALUATION_VERSION
 
 _SEVERITY_ORDER = ("FAIL", "WARNING", "INFO", "PASS")
@@ -84,6 +85,7 @@ def build_report_body(view):
     ev = view["evidence"]
     pub_prov = ev.get("publisher_provenance", {}) or {}
     geometry_benchmark = (delta.get("geometry_delta") or {}).get("benchmark") or {}
+    metadata_metrics = benchmark_headline(delta.get("metadata_benchmark") or {"applicable": False})
 
     body = {
         # --- comparability axes carried at top level (index projection reads these) ---
@@ -105,6 +107,7 @@ def build_report_body(view):
             "source_versions": sv,
             "evidence_manifest_version": ev.get("manifest_version"),
             "normalization_version": prov.get("normalization_version"),
+            "metadata_revision_distance_version": prov.get("metadata_revision_distance_version"),
             "geometry_detector": prov.get("geometry_detector"),
             "metadata_provenance": prov.get("metadata_provenance"),
         },
@@ -113,6 +116,7 @@ def build_report_body(view):
         # --- measurement rollups carried on the entry for search/graph ---
         "metrics": metrics,
         "geometry_benchmark": geometry_benchmark,
+        "metadata_metrics": metadata_metrics,
         "metadata_status": m.get("status"),
         "compared_artifacts": m.get("compared"),
         "finding_counts": finding_counts,

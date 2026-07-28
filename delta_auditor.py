@@ -20,6 +20,7 @@ import json
 from review_contract_adapter import adapt_review
 from delta_geometry import compute_geometry_delta
 from delta_metadata import compute_metadata_delta
+from delta_metadata_revision import compute_metadata_benchmark, METADATA_REVISION_DISTANCE_VERSION
 from delta_ledger import build_correction_ledger
 
 SCOUT_DELTA_REPORT_VERSION = "v1"
@@ -44,6 +45,7 @@ def run_delta_audit(review_report, platform_approval=None, generated_snapshot=No
     canonical = adapt_review(review_report, platform_approval, generated_snapshot)
     geometry_delta = compute_geometry_delta(canonical)
     metadata_delta = compute_metadata_delta(canonical)
+    metadata_benchmark = compute_metadata_benchmark(canonical)
     correction_ledger = build_correction_ledger(geometry_delta, metadata_delta)
 
     return {
@@ -58,6 +60,7 @@ def run_delta_audit(review_report, platform_approval=None, generated_snapshot=No
             "source_versions": canonical["source_versions"],
             "normalization_version": canonical.get("normalization_version"),
             "metadata_provenance": canonical.get("metadata_provenance"),
+            "metadata_revision_distance_version": METADATA_REVISION_DISTANCE_VERSION,
             "geometry_detector": {
                 "match_version": geometry_delta.get("geometry_match_version"),
                 "iou_threshold": geometry_delta.get("iou_threshold"),
@@ -66,6 +69,7 @@ def run_delta_audit(review_report, platform_approval=None, generated_snapshot=No
         # --- Scout's INDEPENDENT, advisory measurement (never authoritative) ---
         "geometry_delta": geometry_delta,
         "metadata_delta": metadata_delta,
+        "metadata_benchmark": metadata_benchmark,
         "correction_ledger": correction_ledger,
         # --- The Publisher/Platform's OWN certified signal, verbatim, kept SEPARATE ---
         "publisher_certified_state": canonical["publisher_certified"],

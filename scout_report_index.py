@@ -41,7 +41,8 @@ METRIC_FIELDS = ("precision", "recall", "split_rate", "merge_rate",
 GEOMETRY_AXES = ("task", "metric_definition_version", "geometry_detector_version",
                  "iou_threshold", "normalization_version")
 METADATA_AXES = ("task", "metric_definition_version", "metadata_prompt_version", "metadata_model",
-                 "metadata_schema_version", "normalization_version", "evaluation_version")
+                 "metadata_schema_version", "metadata_revision_distance_version",
+                 "normalization_version", "evaluation_version")
 
 
 class ScoutReportIndexError(Exception):
@@ -80,6 +81,7 @@ def metadata_axes(body):
         "metadata_prompt_version": mp.get("prompt_version"),
         "metadata_model": mp.get("model"),
         "metadata_schema_version": f"{mp.get('generated_schema_version')}/{mp.get('approved_schema_version')}",
+        "metadata_revision_distance_version": prov.get("metadata_revision_distance_version"),
         "normalization_version": prov.get("normalization_version"),
         "evaluation_version": body.get("evaluation_version"),
     }
@@ -126,6 +128,7 @@ def build_index_entry(envelope):
         "applicability": envelope.get("applicability"),
         "metrics": dict(envelope.get("metrics", {}) or {}),
         "geometry_benchmark": dict((envelope.get("geometry_benchmark") or {})),
+        "metadata_metrics": dict((envelope.get("metadata_metrics") or {})),
         "metadata_status": envelope.get("metadata_status"),
         "compared_artifacts": envelope.get("compared_artifacts"),
         "finding_counts": dict(envelope.get("finding_counts", {}) or {}),
