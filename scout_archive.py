@@ -42,6 +42,7 @@ def _report_record(entry, is_latest):
         "event_time": entry.get("event_time"), "certified_at": entry.get("certified_at"),
         "archived_at": entry.get("completed_at"),
         "worst_severity": entry.get("worst_severity"),
+        "metadata_status": entry.get("metadata_status"),
         "finding_counts": entry.get("finding_counts"), "finding_codes": entry.get("finding_codes"),
         "published_revision_id": entry.get("published_revision_id"),
         "generated_snapshot_revision_id": entry.get("generated_snapshot_revision_id"),
