@@ -13,9 +13,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import audit_s3_source  # noqa: E402
 import audit_review  # noqa: E402
+import _delta_fixtures as fx  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 APPROVED_PREFIX = (
@@ -145,6 +147,69 @@ class TestAuditReview(unittest.TestCase):
                                             audit_s3_source.PREFIX_ENV: ""}, clear=False):
             with self.assertRaises(audit_review.AuditReviewError):
                 audit_review.build_evidence_manifest(client=_fake_client())
+
+
+# --- Slice 2: live delta + state comparison + findings (delta fixtures as review bodies) ---
+
+def _delta_bodies(rr_version="v1", approved_meta_version="v1.1"):
+    """Serve the real delta fixtures as the review_report/platform_approval bodies so the audit
+    view runs an actual delta."""
+    pointer = {"published_pointer_version": "v1", "revision_id": REVISION_ID,
+               "revision_key": REVISION_KEY}
+    rr = fx.review_generated()
+    rr["review_report_version"] = rr_version
+    rr["approved_metadata"]["llm_enrichment_output_version"] = approved_meta_version
+    return {
+        f"{APPROVED_PREFIX}/published.json": json.dumps(pointer).encode(),
+        REVISION_KEY: json.dumps({"artifacts": []}).encode(),
+        f"{ISSUE_ROOT}/reviews/{REVIEW_ID}/review_report.json": json.dumps(rr).encode(),
+        f"{ISSUE_ROOT}/reviews/{REVIEW_ID}/platform_approval.json":
+            json.dumps(fx.platform_approval()).encode(),
+    }
+
+
+class TestAuditReviewDelta(unittest.TestCase):
+    def _env(self):
+        return {audit_s3_source.BUCKET_ENV: "edenseek-publishing",
+                audit_s3_source.PREFIX_ENV: APPROVED_PREFIX,
+                audit_s3_source.REGION_ENV: "us-west-2"}
+
+    def _view(self, bodies):
+        with mock.patch.dict("os.environ", self._env(), clear=False), \
+                mock.patch.object(audit_review, "_scout_commit", return_value="testsha"):
+            return audit_review.build_audit_review(client=_fake_client(bodies))
+
+    def _by_code(self, view):
+        return {f["code"]: f for f in view["findings"]}
+
+    def test_delta_computes_and_projects(self):
+        # both sides v1.1 -> metadata computes; contract adapts cleanly
+        v = self._view(_delta_bodies(approved_meta_version="v1.1"))
+        self.assertEqual(v["audit_review_version"], "v1")
+        self.assertEqual(len(v["delta_report_sha256"]), 64)
+        self.assertIsNotNone(v["state_comparison"])
+        self.assertEqual(v["state_comparison"]["publisher_certified"]["canonical_dataset_state"],
+                         "edenseek_approved")
+        self.assertEqual(v["delta_summary"]["geometry"]["status"], "computed")
+        self.assertEqual(v["delta_summary"]["metadata"]["status"], "computed")
+        fbc = self._by_code(v)
+        self.assertEqual(fbc["contract.adapted"]["severity"], "PASS")
+        self.assertEqual(fbc["metadata.comparability"]["severity"], "PASS")
+        self.assertEqual(fbc["delta.deterministic"]["severity"], "PASS")
+        self.assertEqual(fbc["evidence.loaded"]["severity"], "PASS")
+
+    def test_metadata_schema_skew_warns(self):
+        # generated v1.1 vs approved v1 -> metadata abstains -> WARNING, not FAIL
+        v = self._view(_delta_bodies(approved_meta_version="v1"))
+        self.assertEqual(v["delta_summary"]["metadata"]["status"], "abstained")
+        self.assertEqual(self._by_code(v)["metadata.comparability"]["severity"], "WARNING")
+        self.assertFalse(any(f["severity"] == "FAIL" for f in v["findings"]))
+
+    def test_unsupported_contract_version_fails(self):
+        v = self._view(_delta_bodies(rr_version="v99"))
+        self.assertIsNone(v["delta_report"])
+        self.assertIsNone(v["state_comparison"])
+        self.assertEqual(self._by_code(v)["contract.adapted"]["severity"], "FAIL")
 
 
 if __name__ == "__main__":

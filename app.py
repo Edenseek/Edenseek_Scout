@@ -21,7 +21,7 @@ from dataset_auditor import (
 )
 from audit_inputs import AuditInputError
 from audit_reports import REPORT_FILES, REPORTS_ROOT
-from audit_review import build_evidence_manifest, AuditReviewError
+from audit_review import build_evidence_manifest, build_audit_review, AuditReviewError
 from logging_config import logger
 
 app = FastAPI(title="Edenseek Scout")
@@ -254,3 +254,15 @@ def get_audit_review_evidence(username: str = Depends(require_auth)):
     except AuditReviewError as e:
         logger.warning(f"Audit-review evidence error: {e}")
         raise HTTPException(status_code=503, detail=f"Audit-review evidence unavailable: {e}")
+
+
+@app.get("/audit-review/audit")
+def get_audit_review_audit(username: str = Depends(require_auth)):
+    """Read-only full audit-review view: evidence manifest + live delta + Publisher/Scout state
+    side by side + PASS/WARNING/FAIL/INFO findings + the delta report. Computes/persists nothing.
+    """
+    try:
+        return build_audit_review()
+    except AuditReviewError as e:
+        logger.warning(f"Audit-review audit error: {e}")
+        raise HTTPException(status_code=503, detail=f"Audit-review unavailable: {e}")
