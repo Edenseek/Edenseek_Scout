@@ -25,6 +25,9 @@ from audit_review import build_evidence_manifest, build_audit_review, AuditRevie
 import scout_report_index
 import scout_benchmark
 import scout_archive
+import scout_intelligence
+import scout_schema
+import scout_report_publisher
 from logging_config import logger
 
 app = FastAPI(title="Edenseek Scout")
@@ -306,6 +309,82 @@ def get_audit_review_search(q: str = "", username: str = Depends(require_auth)):
         logger.warning(f"Search error: {e}")
         raise HTTPException(status_code=503, detail=f"Search unavailable: {e}")
     return scout_archive.search_archive(archive, q)
+
+
+@app.get("/intelligence/geometry")
+def get_geometry_intelligence(username: str = Depends(require_auth)):
+    """Read-only Geometry Intelligence projection — recurring panel failure modes + version-correlated
+    improvements, consuming the persisted report index. Advisory only; mutates nothing."""
+    try:
+        return scout_intelligence.build_geometry_intelligence()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Geometry intelligence error: {e}")
+        raise HTTPException(status_code=503, detail=f"Geometry intelligence unavailable: {e}")
+
+
+@app.get("/intelligence/metadata")
+def get_metadata_intelligence(username: str = Depends(require_auth)):
+    """Read-only Metadata Intelligence projection — weak fields, edit classes, prompt/model/schema
+    correlations, consuming the persisted index + immutable reports. Advisory only; mutates nothing."""
+    try:
+        return scout_intelligence.build_metadata_intelligence()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Metadata intelligence error: {e}")
+        raise HTTPException(status_code=503, detail=f"Metadata intelligence unavailable: {e}")
+
+
+@app.get("/reports/latest")
+def get_latest_report(username: str = Depends(require_auth)):
+    """The current/latest persisted immutable Scout delta report (read-only)."""
+    try:
+        index = scout_report_index.load_index()
+        latest = (index.get("latest") or {})
+        key = (latest.get("persisted_key") or {}).get("history")
+        if not key:
+            raise HTTPException(status_code=404, detail="No persisted report yet")
+        import json as _json
+        return _json.loads(scout_report_publisher.read_object(
+            scout_report_publisher._s3_client(os.getenv("SCOUT_REPO_S3_REGION", "us-west-2")), key))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Latest report error: {e}")
+        raise HTTPException(status_code=503, detail=f"Latest report unavailable: {e}")
+
+
+@app.get("/reports/{report_id}")
+def get_report(report_id: str, username: str = Depends(require_auth)):
+    """One immutable persisted Scout delta report by report_id (read-only)."""
+    try:
+        index = scout_report_index.load_index()
+        entry = next((e for e in index.get("entries", []) if e.get("report_id") == report_id), None)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Unknown report_id")
+        import json as _json
+        return _json.loads(scout_report_publisher.read_object(
+            scout_report_publisher._s3_client(os.getenv("SCOUT_REPO_S3_REGION", "us-west-2")),
+            (entry.get("persisted_key") or {}).get("history")))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Report fetch error: {e}")
+        raise HTTPException(status_code=503, detail=f"Report unavailable: {e}")
+
+
+@app.get("/schemas")
+def list_schemas(username: str = Depends(require_auth)):
+    """List the versioned machine-readable contract schemas the UI + intelligence consumers share."""
+    return {"schemas": sorted(p.name.replace(".schema.json", "")
+                              for p in scout_schema.SCHEMA_DIR.glob("*.schema.json"))}
+
+
+@app.get("/schemas/{name}")
+def get_schema(name: str, username: str = Depends(require_auth)):
+    """Serve one versioned JSON Schema contract (read-only)."""
+    try:
+        return scout_schema.load_schema(name)
+    except scout_schema.SchemaError:
+        raise HTTPException(status_code=404, detail="Unknown schema")
 
 
 @app.get("/benchmark/{level}")

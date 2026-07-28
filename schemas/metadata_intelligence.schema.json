@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Metadata Intelligence projection (v1)",
+  "type": "object",
+  "required": ["contract_version", "task", "generated_at", "scope", "sample_sizes",
+               "comparable_reports", "weak_fields", "common_edit_classes",
+               "prompt_model_schema_correlations", "prompt_improvement_opportunities",
+               "recommendations", "governance"],
+  "properties": {
+    "contract_version": {"type": "string"},
+    "task": {"enum": ["metadata"]},
+    "generated_at": {"type": ["string", "null"]},
+    "scope": {"type": "object"},
+    "sample_sizes": {"type": "object", "required": ["reports", "comparable_reports"]},
+    "comparable_reports": {"type": "integer"},
+    "weak_fields": {
+      "type": "array",
+      "items": {"type": "object",
+                "required": ["field", "accepted_unchanged_rate", "edit_rate",
+                             "numerator", "denominator"]}
+    },
+    "common_edit_classes": {
+      "type": "object",
+      "required": ["counts", "total_comparable_fields"],
+      "properties": {"counts": {"type": "object"},
+                     "total_comparable_fields": {"type": "integer"}}
+    },
+    "prompt_model_schema_correlations": {
+      "type": "array",
+      "items": {"type": "object",
+                "required": ["group", "reports", "accepted_unchanged_rate",
+                             "numerator", "denominator"]}
+    },
+    "prompt_improvement_opportunities": {
+      "type": "array",
+      "items": {"type": "object", "required": ["field", "reason", "rate"]}
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {"type": "object", "required": ["code", "advice", "evidence"]}
+    },
+    "governance": {"type": "object", "required": ["advisory_only", "note"]}
+  }
+}
