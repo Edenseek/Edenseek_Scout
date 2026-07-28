@@ -133,6 +133,42 @@ def _get_object(client, bucket, key):
     return body, obj.get("VersionId")
 
 
+def s3_client(region=None):
+    """Public read-only S3 client factory on the least-privilege ``edenseek-scout-app``
+    identity (standard AWS chain). Thin wrapper so callers (e.g. the audit-review manifest)
+    do not reach into module internals."""
+    return _s3_client(region or os.getenv(REGION_ENV, DEFAULT_REGION))
+
+
+def probe_object(client, bucket, key):
+    """Read-only probe of one object for the evidence manifest — GET only, and **tolerant**:
+    a missing or access-denied object is *recorded*, never raised, so a manifest can report
+    pipeline health rather than crash.
+
+    Returns ``{status, size, sha256, version_id, body}`` where ``status`` is one of
+    ``read`` / ``missing`` / ``denied`` / ``error``. On a non-``read`` status ``size``/``sha256``/
+    ``version_id``/``body`` are ``None``. Never writes anything.
+    """
+    try:
+        obj = client.get_object(Bucket=bucket, Key=key)
+        body = obj["Body"].read()
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        status = ("missing" if code in ("NoSuchKey", "404", "NotFound")
+                  else "denied" if code in ("AccessDenied", "403", "AccessDeniedException")
+                  else "error")
+        return {"status": status, "size": None, "sha256": None, "version_id": None, "body": None}
+    except BotoCoreError:
+        return {"status": "error", "size": None, "sha256": None, "version_id": None, "body": None}
+    return {
+        "status": "read",
+        "size": len(body),
+        "sha256": hashlib.sha256(body).hexdigest(),
+        "version_id": obj.get("VersionId"),
+        "body": body,
+    }
+
+
 def _resolve_published_pointer(client, bucket, approved_prefix):
     """Resolve the mutable ``approved/published.json`` pointer for this run.
 

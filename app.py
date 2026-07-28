@@ -21,6 +21,7 @@ from dataset_auditor import (
 )
 from audit_inputs import AuditInputError
 from audit_reports import REPORT_FILES, REPORTS_ROOT
+from audit_review import build_evidence_manifest, AuditReviewError
 from logging_config import logger
 
 app = FastAPI(title="Edenseek Scout")
@@ -239,3 +240,17 @@ def get_audit_digest(username: str = Depends(require_auth)):
     except AuditInputError as e:
         logger.warning(f"Digest input error: {e}")
         raise HTTPException(status_code=422, detail=f"Invalid audit input: {e}")
+
+
+@app.get("/audit-review/evidence")
+def get_audit_review_evidence(username: str = Depends(require_auth)):
+    """Read-only Consumed-Evidence Manifest for the configured issue + current certified revision.
+
+    Reports every Publisher object Scout consumed (key/status/size/sha256/version/revision/schema)
+    plus permanent audit metadata + a health summary. GetObject-only; writes nothing.
+    """
+    try:
+        return build_evidence_manifest()
+    except AuditReviewError as e:
+        logger.warning(f"Audit-review evidence error: {e}")
+        raise HTTPException(status_code=503, detail=f"Audit-review evidence unavailable: {e}")
