@@ -41,6 +41,12 @@ STATE_EDENSEEK_APPROVED = "edenseek_approved"
 APPLICABILITY_GENERATED = "generated_publication"
 APPLICABILITY_MANUAL = "manual"
 
+# Known STRUCTURAL sibling keys that live inside the approved_geometry map alongside the
+# artifact-id-keyed panel entries (Publisher-emitted, verified against production
+# rev_a8c65a83a196). They are ordering/collection metadata, NOT panel geometry, and are
+# skipped. Any OTHER non-artifact member is unknown and fails fast (never silently reinterpreted).
+APPROVED_GEOMETRY_STRUCTURAL_KEYS = frozenset({"panel_order", "spread_artifacts"})
+
 
 class ReviewContractError(Exception):
     """Raised at the anti-corruption boundary when the Publisher-emitted Review Record
@@ -143,18 +149,29 @@ def _normalize_approved_geometry(approved_geometry):
     """Normalize the approved side's flat ``{artifact_id: {...}}`` map into Scout's canonical
     geometry map (flags preserved, not interpreted).
 
-    Three representations exist. A normal page panel carries normalized 0..1
+    The map ALSO carries known structural sibling keys (``panel_order``, ``spread_artifacts``)
+    that are not panel geometry — those are skipped; any other non-artifact member fails fast.
+
+    Three panel representations exist. A normal page panel carries normalized 0..1
     ``{x,y,width,height}``. A **spread** panel (``isSpreadPanel: true``) carries **degenerate
     page coordinates (0.01/absent)** and its real geometry in **``stage_geometry``** (spread-
     canvas space) with a ``page_range`` — for those we use ``stage_geometry`` and flag
     ``is_spread`` (spreads are drawn, have no generated counterpart, and are handled as
-    approved-only/missing downstream — never IoU-matched)."""
+    approved-only/missing downstream — never IoU-matched). Spread panels appear both as
+    ``spread_<pages>::pN`` entries and as ``<page>::NEW::N`` drawn-on-spread entries; both carry
+    ``isSpreadPanel`` and are handled identically."""
     if not isinstance(approved_geometry, dict):
         raise ReviewContractError("approved_geometry must be a JSON object (artifact_id map)")
     canon = {}
     for artifact_id, entry in approved_geometry.items():
+        if artifact_id in APPROVED_GEOMETRY_STRUCTURAL_KEYS:
+            continue  # ordering/collection sibling, not a panel — not Scout's to compare
         src = f"approved_geometry[{artifact_id!r}]"
-        is_spread = bool(entry.get("isSpreadPanel")) if isinstance(entry, dict) else False
+        if not isinstance(entry, dict):
+            raise ReviewContractError(
+                f"{src}: expected an artifact geometry object, got {type(entry).__name__} "
+                "(unknown non-artifact member of approved_geometry — refusing to reinterpret)")
+        is_spread = bool(entry.get("isSpreadPanel"))
         flags = _geometry_flags(entry)
         page_range = None
         if is_spread:
@@ -165,8 +182,12 @@ def _normalize_approved_geometry(approved_geometry):
                 raise ReviewContractError(
                     f"{src}: isSpreadPanel with no stage_geometry (spread-canvas geometry required)")
             bbox = _normalize_bbox(stage, src + ".stage_geometry")
-        else:
+        elif any(k in entry for k in ("x", "y", "width", "height")):
             bbox = _normalize_bbox(entry, src)
+        else:
+            raise ReviewContractError(
+                f"{src}: not a recognized panel geometry (no x/y/width/height and not a spread) "
+                "— unexpected approved_geometry member; refusing to reinterpret")
         canon[artifact_id] = {
             "bbox": bbox,
             "page_number": entry.get("page_number") if isinstance(entry, dict) else None,

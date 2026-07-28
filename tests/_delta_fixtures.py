@@ -78,10 +78,17 @@ def review_generated():
             "society_of_killers_1_7::p1": {"x": 0.1, "y": 0.1, "width": 0.5, "height": 0.5, "approved": True},
             # approved-only drawn page panel -> missing
             "11::NEW::1": {"x": 0.65, "y": 0.74, "width": 0.34, "height": 0.23, "isNew": True, "deleted": False},
-            # approved spread panel -> always missing (stage_geometry; page coords degenerate)
-            "spread_12_13::p1": {"isSpreadPanel": True, "page_range": [12, 13], "deleted": False,
-                                 "x": 0, "y": 0, "width": 0.01, "height": 0.01,
+            # approved spread panel -> always missing (stage_geometry; page coords degenerate).
+            # Real prod carries two spread forms: a ``spread_<pages>::pN`` entry (no x/y/w/h,
+            # only stage_geometry) and a ``<page>::NEW::N`` drawn-on-spread entry (degenerate
+            # page coords + stage_geometry). Both carry isSpreadPanel and are handled identically.
+            "spread_12_13::p1": {"artifact_id": "spread_12_13::p1", "isSpreadPanel": True,
+                                 "page_range": [12, 13], "deleted": False,
                                  "stage_geometry": {"x": 0.006, "y": 0.057, "width": 0.247, "height": 0.385}},
+            # STRUCTURAL sibling keys that live in approved_geometry (Publisher-emitted): ordering
+            # + a collection list. Not panels -> the adapter skips them (never compared).
+            "panel_order": {"3": ["society_of_killers_1_3::p1"], "10": ["society_of_killers_1_10::p1"]},
+            "spread_artifacts": [],
         },
         "approved_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": [
             # panel_10: tags dict==dict ACCEPT, characters accepted, dialogue added, summary accepted

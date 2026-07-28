@@ -34,6 +34,37 @@ class TestAdapter(unittest.TestCase):
         self.assertEqual(spread["coordinate_space"], "spread")
         self.assertEqual(spread["page_range"], [12, 13])
 
+    def test_structural_keys_skipped_not_treated_as_panels(self):
+        """approved_geometry carries structural siblings (panel_order, spread_artifacts) among
+        the artifact entries; the adapter must skip them, never compare them as panels."""
+        c = adapt_review(fx.review_generated())
+        geom = c["approved"]["geometry"]
+        self.assertNotIn("panel_order", geom)
+        self.assertNotIn("spread_artifacts", geom)
+        # the real artifacts survive
+        self.assertIn("society_of_killers_1_10::p1", geom)
+        self.assertIn("spread_12_13::p1", geom)
+
+    def test_new_on_spread_entry_handled_as_spread(self):
+        """A ``<page>::NEW::N`` drawn-on-spread entry (degenerate page coords + stage_geometry)
+        is handled identically to a ``spread_*`` entry."""
+        r = fx.review_generated()
+        r["approved_geometry"]["12::NEW::1"] = {
+            "isSpreadPanel": True, "isNew": True, "deleted": False, "page_range": [12, 13],
+            "x": 0, "y": 0, "width": 0.01, "height": 0.01,
+            "stage_geometry": {"x": 0.239, "y": 0.084, "width": 0.274, "height": 0.366}}
+        entry = adapt_review(r)["approved"]["geometry"]["12::NEW::1"]
+        self.assertTrue(entry["flags"]["is_spread"])
+        self.assertEqual(entry["bbox"], (0.239, 0.084, 0.274, 0.366))  # stage_geometry, not page 0.01
+
+    def test_unknown_non_artifact_member_fails_fast(self):
+        """An unrecognized non-artifact member (not a known structural key, not a panel) must
+        fail loud rather than be silently reinterpreted."""
+        r = fx.review_generated()
+        r["approved_geometry"]["some_future_summary"] = {"totally": "unknown"}
+        with self.assertRaises(ReviewContractError):
+            adapt_review(r)
+
     def test_metadata_extracts_four_nested_content_fields(self):
         c = adapt_review(fx.review_generated())
         fields = c["approved"]["metadata"]["society_of_killers_1_10::p1"]["fields"]

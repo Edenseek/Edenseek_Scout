@@ -96,11 +96,22 @@ where **`bbox` is normalized 0..1 `(x, y, width, height)`**:
   list keyed by `panel_key`. Each row carries **`bbox` = PIXELS `[x1,y1,x2,y2]` corners** (kept only
   as provenance) **and `bounds` = normalized 0..1 `{x,y,width,height}`**. The adapter normalizes
   from **`bounds`** (fail-fast if absent) — never `bbox`.
-- **approved page panel** — normalized 0..1 `{x,y,width,height}` (+ `approved`/`deleted`/`isNew`).
+- **approved page panel** — normalized 0..1 `{x,y,width,height}` (+ `deleted`/`isNew`).
 - **approved spread panel** — `isSpreadPanel: true`, with page `x/y/width/height` **degenerate
   (0.01)/absent**; real geometry in **`stage_geometry`** (spread-canvas space) + `page_range`. The
   adapter uses `stage_geometry`, flags `is_spread`. Spreads are drawn → no generated counterpart →
-  always **approved-only / missing panels**; the geometry delta never IoU-matches them.
+  always **approved-only / missing panels**; the geometry delta never IoU-matches them. Spreads
+  appear in **two key forms**, both carrying `isSpreadPanel` + `stage_geometry` and handled
+  identically: a `spread_<pages>::pN` entry (no page `x/y/w/h`, only `stage_geometry`) and a
+  `<page>::NEW::N` drawn-on-spread entry (degenerate page coords + `stage_geometry`).
+
+**Structural sibling keys (skipped).** `approved_geometry` is an `artifact_id`-keyed map that also
+carries **non-panel structural siblings** — `panel_order` (a page→artifact-id ordering dict) and
+`spread_artifacts` (a collection list). The adapter **skips the known structural keys**
+(`APPROVED_GEOMETRY_STRUCTURAL_KEYS`) and **fails fast on any other non-artifact member** (a member
+that is neither a page geometry nor a spread) rather than reinterpreting it. Verified against
+production `rev_a8c65a83a196` (Society of Killers Issue 1: 97 artifact entries = 36 page + 48 NEW +
+13 spread, plus the 2 structural keys).
 
 **Identity spaces align:** generated `panel_key` == approved `artifact_id`.
 
@@ -122,6 +133,16 @@ Field shapes (Publisher census over 97 artifacts, 2026-07-27):
 nor edit). **Excluded as provenance:** `context_source`, `geometry_source`. **Excluded as
 plumbing:** `artifact_id`, `input_ref`, `version`, `metadata_locked`, `metadata_review_state`,
 `status`.
+
+**Comparability is schema-version scoped** (per `SCOUT_APPROVAL_DELTA_ARCHITECTURE.md`): metadata is
+compared only within a single `llm_enrichment_output_version`; artifacts whose generated vs approved
+schema versions differ are reported as `schema_version_mismatch` and **excluded** from the field
+aggregates — never silently mixed. **Live observation (production `rev_a8c65a83a196`, 2026-07-27):**
+the generated enrichment set is `v1.1` while the approved set is `v1`, so **all 97 artifacts are a
+schema-version mismatch and the metadata field delta abstains** (0 compared). This is Scout behaving
+correctly (it will not compare across a declared schema boundary); whether the `v1.1`→`v1` skew is
+expected — and whether the two versions are content-comparable — is a **Publisher-side question**
+Scout surfaces, not one it resolves by relaxing comparability.
 
 ## 6. Scout invariants (must hold; enforced downstream)
 
