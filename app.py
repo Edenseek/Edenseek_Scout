@@ -22,6 +22,7 @@ from dataset_auditor import (
 from audit_inputs import AuditInputError
 from audit_reports import REPORT_FILES, REPORTS_ROOT
 from audit_review import build_evidence_manifest, build_audit_review, AuditReviewError
+import scout_report_index
 from logging_config import logger
 
 app = FastAPI(title="Edenseek Scout")
@@ -266,3 +267,16 @@ def get_audit_review_audit(username: str = Depends(require_auth)):
     except AuditReviewError as e:
         logger.warning(f"Audit-review audit error: {e}")
         raise HTTPException(status_code=503, detail=f"Audit-review unavailable: {e}")
+
+
+@app.get("/audit-review/reports")
+def get_audit_review_reports(username: str = Depends(require_auth)):
+    """Read-only report index: the newest-first archive of persisted Scout delta reports with the
+    latest pointer + per-report searchable metadata. Reads the persisted projection only; it does
+    not run or recompute audits. (Search/filter + metric graphs are the next slice.)
+    """
+    try:
+        return scout_report_index.load_index()
+    except scout_report_index.ScoutReportIndexError as e:
+        logger.warning(f"Report index error: {e}")
+        raise HTTPException(status_code=503, detail=f"Report index unavailable: {e}")

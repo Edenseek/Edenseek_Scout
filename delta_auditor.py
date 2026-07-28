@@ -24,6 +24,15 @@ from delta_ledger import build_correction_ledger
 
 SCOUT_DELTA_REPORT_VERSION = "v1"
 
+# The version of the delta COMPUTATION itself (distinct from the report format version above).
+# Bump this whenever the algorithm that produces the numbers changes in a way that makes new
+# reports not directly comparable to older ones — e.g. the geometry IoU match threshold
+# (delta_geometry.IOU_THRESHOLD), the split/merge/false definitions, the metadata field-equality
+# rule or schema-version scoping, or the correction-ledger operation set. It is one axis of the
+# comparability contract (see docs/architecture/SCOUT_REPORT_INDEX.md); a change marks a boundary
+# in trend graphs so older and newer metrics are never presented as directly comparable.
+DELTA_ALGORITHM_VERSION = "v1"
+
 
 def run_delta_audit(review_report, platform_approval=None, generated_snapshot=None):
     """Run the deterministic Scout Synchronization Audit for one publication.

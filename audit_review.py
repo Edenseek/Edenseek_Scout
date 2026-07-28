@@ -42,6 +42,11 @@ from logging_config import logger
 MANIFEST_VERSION = "v1"
 AUDIT_REVIEW_VERSION = "v1"
 
+# The version of the EVALUATION rules that turn delta numbers into severity-tagged findings
+# (``_project_findings``). Bump when the PASS/WARNING/FAIL/INFO thresholds or rules change; it is
+# one axis of the comparability contract (see docs/architecture/SCOUT_REPORT_INDEX.md).
+EVALUATION_VERSION = "v1"
+
 # Finding severities the UI renders at-a-glance.
 PASS, WARNING, FAIL, INFO = "PASS", "WARNING", "FAIL", "INFO"
 _HERE = Path(__file__).resolve().parent
@@ -158,6 +163,10 @@ def _gather_evidence(client):
 
     rr_prov = (parsed_by_role.get("review_report") or {}).get("provenance") or {}
     publisher_commit = rr_prov.get("published_revision_id") or published_revision_id
+    # Full issue ownership chain, authoritatively from the Review Record (falls back to the
+    # configured prefix's issue segment). Lets the report index carry publisher/title/series/issue.
+    issue_identity = dict((parsed_by_role.get("review_report") or {}).get("issue_identity") or {})
+    issue_identity.setdefault("issue_id", issue_id)
 
     manifest = {
         "manifest_version": MANIFEST_VERSION,
@@ -165,6 +174,7 @@ def _gather_evidence(client):
         "scout_commit": _scout_commit(),
         "publisher_commit": publisher_commit,
         "issue_id": issue_id,
+        "issue_identity": issue_identity,
         "review_id": review_id,
         "bucket": bucket,
         "objects": objects,
