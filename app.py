@@ -2,8 +2,8 @@ import os
 import secrets
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import PlainTextResponse, FileResponse
+from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.responses import PlainTextResponse, FileResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from scout import generate_report, load_memory
@@ -20,6 +20,7 @@ from dataset_auditor import (
     analyze_digest,
 )
 from audit_inputs import AuditInputError
+from audit_s3_source import ScoutS3SourceError
 from audit_reports import REPORT_FILES, REPORTS_ROOT
 from audit_review import build_evidence_manifest, build_audit_review, AuditReviewError
 import scout_report_index
@@ -31,6 +32,18 @@ import scout_report_publisher
 from logging_config import logger
 
 app = FastAPI(title="Edenseek Scout")
+
+
+@app.exception_handler(ScoutS3SourceError)
+def _approved_source_unavailable(request: Request, exc: ScoutS3SourceError):
+    """The canonical Approved-Dataset S3 source is unconfigured/unreachable. Degrade gracefully
+    (503) instead of a hard 500 — the legacy dataset-audit endpoints (/audit/*) only caught
+    AuditInputError, so this class previously escaped as an unhandled 500. Backward-compatible:
+    endpoints that already return 422/503 are unaffected."""
+    logger.warning(f"Approved-Dataset source unavailable: {exc}")
+    return JSONResponse(status_code=503,
+                        content={"detail": f"Approved-Dataset source unavailable: {exc}"})
+
 
 security = HTTPBasic()
 
