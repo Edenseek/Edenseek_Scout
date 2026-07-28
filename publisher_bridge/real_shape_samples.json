@@ -1,0 +1,182 @@
+{
+  "_note": "REAL emitted shapes captured from the certified Review Record (Society of Killers Issue 1, review rev_a8c65a83a196) on production S3. Use VERBATIM to ground Scout fixtures. Coordinate spaces differ by side -- see _shapes.",
+  "_shapes": {
+    "generated_panel_geometry.panels[].bbox": "PIXELS, [x1,y1,x2,y2] CORNER format (NOT [x,y,w,h])",
+    "generated_panel_geometry.panels[].bounds": "NORMALIZED 0..1 {x,y,width,height} -- USE THIS (matches approved)",
+    "approved_geometry[artifact_id]": "NORMALIZED 0..1 {x,y,width,height} (+ deleted,isNew flags)",
+    "correspondence_key": "generated panel_key == approved artifact_id",
+    "counts_this_issue": {
+      "generated_panels": 51,
+      "approved_artifacts": 99,
+      "correspond": 49
+    }
+  },
+  "generated_geometry_top_level_keys": [
+    "issue_number",
+    "panels",
+    "property_id",
+    "total_pages",
+    "total_panels",
+    "total_story_pages"
+  ],
+  "matched_pair_same_panel_key_true_IoU_match": {
+    "panel_key": "society_of_killers_1_10::p1",
+    "generated_row": {
+      "bbox": [
+        0,
+        0,
+        2063,
+        2864
+      ],
+      "bounds": {
+        "height": 0.9092063492063492,
+        "width": 1.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "coordinate_space": "page",
+      "height": 2864,
+      "order": 1,
+      "page_id": "society_of_killers_1_10",
+      "page_number": 10,
+      "panel_id": "p1",
+      "panel_image": "panel_images/society_of_killers_1_10_p1.png",
+      "panel_key": "society_of_killers_1_10::p1",
+      "width": 2063
+    },
+    "approved_entry": {
+      "height": 0.9999033812188719,
+      "width": 1,
+      "x": 0,
+      "y": 0
+    }
+  },
+  "approved_only_artifact_NEW_missing_panel_case": {
+    "artifact_id": "11::NEW::1",
+    "approved_entry": {
+      "deleted": false,
+      "height": 0.22786286485988771,
+      "isNew": true,
+      "width": 0.33900529695776493,
+      "x": 0.6540570946421038,
+      "y": 0.7403701543844572
+    }
+  },
+  "generated_vs_approved_link": {
+    "generated_snapshot_revision_id": "rev_ce73dba486e48465257d2acc042e9ee6d2fd42d845d98b676a7729ce158c7736",
+    "state": "generated_publication"
+  },
+  "manual_sentinel_value": "not_applicable_manual_publication",
+  "metadata_pair_same_artifact_id": {
+    "artifact_id": "society_of_killers_1_10::p1",
+    "generated_metadata_output": {
+      "artifact_id": "society_of_killers_1_10::p1",
+      "context_source": [
+        {
+          "material_type": "character_registry",
+          "revision_id": "rev_c5675bfef76d179f87892e7b40de88eda03e2cc374dfcfb50a428abfe4ccf15e"
+        },
+        {
+          "material_type": "script",
+          "revision_id": "rev_92045526b7595a378fdc3394f52eb0b6279a09d086fb6837350029ae673c1c88"
+        }
+      ],
+      "geometry_source": {
+        "approved_revision": "rev_6885a433487c6ddb1389451218b140da0991bb83b17a5136ce6375dcb8382774",
+        "artifact_geometry_hash": "sha256:2446d8cbdbaa4d2588718cf6a8a8ee33365e5c18d0647bb29ccdf0f12a3a312d"
+      },
+      "input_ref": "society_of_killers_1_10::p1",
+      "metadata_locked": false,
+      "metadata_review_state": "unreviewed",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "observation",
+            "mood": "tense",
+            "setting": "holding pen"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Quentin Larouche"
+          ]
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A group of guards stands around a cage containing Quentin Larouche, a dangerous individual with a history of violence."
+        }
+      },
+      "status": "complete",
+      "version": "v1.1"
+    },
+    "approved_metadata_output": {
+      "artifact_id": "society_of_killers_1_10::p1",
+      "context_source": [
+        {
+          "material_type": "character_registry",
+          "revision_id": "rev_c5675bfef76d179f87892e7b40de88eda03e2cc374dfcfb50a428abfe4ccf15e"
+        },
+        {
+          "material_type": "script",
+          "revision_id": "rev_92045526b7595a378fdc3394f52eb0b6279a09d086fb6837350029ae673c1c88"
+        }
+      ],
+      "geometry_source": {
+        "approved_revision": "rev_6885a433487c6ddb1389451218b140da0991bb83b17a5136ce6375dcb8382774",
+        "artifact_geometry_hash": "sha256:2446d8cbdbaa4d2588718cf6a8a8ee33365e5c18d0647bb29ccdf0f12a3a312d"
+      },
+      "input_ref": "society_of_killers_1_10::p1",
+      "metadata_locked": true,
+      "metadata_review_state": "approved",
+      "output": {
+        "classification": {
+          "tags": {
+            "action": "observation",
+            "mood": "tense",
+            "setting": "holding pen"
+          }
+        },
+        "entities": {
+          "characters": [
+            "Quentin Larouche"
+          ]
+        },
+        "narrative": {
+          "dialogue": [],
+          "summary": "A group of guards stands around a cage containing Quentin Larouche, a dangerous individual with a history of violence."
+        }
+      },
+      "status": "complete",
+      "version": "v1.1"
+    }
+  },
+  "platform_approval_excerpt": {
+    "platform_approval_version": "v1",
+    "canonical_dataset_state": "edenseek_approved",
+    "state_transition": [
+      "creator_approved",
+      "edenseek_approved"
+    ],
+    "platform_authority": {
+      "actor": "Edenseek Platform – Derek",
+      "approved_at": "2026-07-27T22:46:31Z"
+    },
+    "readiness": {
+      "geometry_artifact_count": 99,
+      "hard_failures": [],
+      "metadata_artifact_count": 97,
+      "passes_integrity": true,
+      "readiness_version": "v1",
+      "warnings": [
+        {
+          "check": "artifacts_without_metadata",
+          "count": 2
+        },
+        {
+          "check": "metadata_output_empty",
+          "count": 2
+        }
+      ]
+    }
+  }
+}

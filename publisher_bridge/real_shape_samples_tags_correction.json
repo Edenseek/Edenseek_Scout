@@ -1,0 +1,67 @@
+{
+  "_note": "CORRECTION to round-2: classification.tags is normally a dict{action,mood,setting} on BOTH sides (94-95 of 97); a flat list is a RARE human edit (1 artifact: 1::NEW::2); 2 are null. Reground the tags fixture on this NORM, not the list outlier. Scout's shape-agnostic value-equality is correct.",
+  "shape_census_over_97_common_artifacts": {
+    "generated_tags": {
+      "dict{action,mood,setting}": 95,
+      "null": 2
+    },
+    "approved_tags": {
+      "dict{action,mood,setting}": 94,
+      "list": 1,
+      "null": 2
+    },
+    "characters": "list on both sides (95/95, 2 null)",
+    "dialogue_gen": {
+      "list": 95,
+      "NoneType": 2
+    },
+    "dialogue_app": {
+      "list": 95,
+      "NoneType": 2
+    }
+  },
+  "representative_dict_tags_artifact": {
+    "artifact_id": "2::NEW::1",
+    "generated_tags": {
+      "action": "observation",
+      "mood": "tense",
+      "setting": "testing facility"
+    },
+    "approved_tags": {
+      "action": "observation",
+      "mood": "tense",
+      "setting": "testing facility"
+    },
+    "generated_characters": [
+      "Astrid St. James"
+    ],
+    "approved_characters": [
+      "Astrid St. James"
+    ]
+  },
+  "rare_list_edit_outlier": {
+    "artifact_id": "1::NEW::2",
+    "generated_tags": {
+      "action": "smoking",
+      "mood": "edgy",
+      "setting": "character design"
+    },
+    "approved_tags": [
+      "Coat of Arms",
+      "Snake",
+      "Scorption",
+      "Scalpel",
+      "Transcende Mortem",
+      "1396",
+      "Grim Reaper",
+      "Goat",
+      "Brain",
+      "Dark Angel Wings"
+    ]
+  },
+  "null_tags_artifact": {
+    "artifact_id": "society_of_killers_1_7::p1",
+    "generated_tags": null,
+    "approved_tags": null
+  }
+}
