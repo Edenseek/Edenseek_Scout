@@ -76,11 +76,11 @@ def _failed_record(led_entry):
     }
 
 
-def build_archive(client=None):
+def build_archive(client=None, context=None):
     """The archive for the configured issue: successful reports (index) + failed runs (ledger),
     newest first, with latest/historical/failed marks and methodology boundaries between adjacent
     reports. Read-only."""
-    index = sri.load_index(client)
+    index = sri.load_index(client, context=context)
     entries = index.get("entries", [])            # already newest-first (by run_seq)
     latest_run_seq = (index.get("latest") or {}).get("run_seq")
     reports = [_report_record(e, e.get("run_seq") == latest_run_seq) for e in entries]
@@ -94,7 +94,7 @@ def build_archive(client=None):
         }
 
     try:
-        led = ledger.load_ledger(client)
+        led = ledger.load_ledger(client, context=context)
         failed = [_failed_record(e) for e in (led.get("entries") or {}).values()
                   if e.get("status") == ledger.STATUS_FAILED]
     except ledger.ScoutRevisionLedgerError:

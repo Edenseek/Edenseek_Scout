@@ -11,6 +11,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import scout_report_publisher as srp  # noqa: E402
 import scout_archive as sa  # noqa: E402
+import scout_context  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 PREFIX = "publishers/edenseek/title_groups/tg/series/soc/issues/issue_001"
@@ -145,6 +146,25 @@ class TestParse(unittest.TestCase):
         self.assertEqual(f["severities"], ["WARNING"])
         self.assertEqual(f["fields"]["publisher"], "x")
         self.assertEqual(f["texts"], ["foo"])
+
+
+class TestArchiveIssueContextThreading(_Base):
+    """Increment 5b: build_archive forwards an explicit IssueContext to load_index + load_ledger,
+    producing the identical archive with the environment cleared (context-driven)."""
+
+    def _ctx(self):
+        return scout_context.IssueContext.for_prefixes(
+            approved_bucket="edenseek-publishing", approved_prefix=PREFIX + "/approved",
+            scout_bucket="edenseek-scout", scout_prefix=PREFIX)
+
+    def test_build_archive_context_equals_env(self):
+        s3 = self._s3([_entry(2, precision=0.8), _entry(1, precision=0.9)], latest_seq=2)
+        arc_env = self.build(s3)
+        with mock.patch.dict("os.environ", {}, clear=True):  # env cleared → context-driven
+            arc_ctx = sa.build_archive(client=s3, context=self._ctx())
+        self.assertEqual(arc_env, arc_ctx)
+        self.assertEqual(arc_ctx["report_count"], 2)
+        self.assertEqual(arc_ctx["failed_count"], 1)
 
 
 if __name__ == "__main__":
