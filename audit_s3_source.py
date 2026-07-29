@@ -268,7 +268,7 @@ def _extract_contract_files(snapshot_bytes, revision_id):
     return extracted
 
 
-def materialize_approved_contract(dest_root=None):
+def materialize_approved_contract(dest_root=None, context=None):
     """Reconstruct the certified Approved-Dataset contract from S3, read-only.
 
     Resolves the published pointer, fetches the immutable content-addressed
@@ -279,18 +279,27 @@ def materialize_approved_contract(dest_root=None):
     (fail-loud) when the source is unconfigured, the pointer/snapshot is
     unreachable, or content integrity fails. Never falls back to fixtures.
     """
-    bucket = os.getenv(BUCKET_ENV)
-    prefix = os.getenv(PREFIX_ENV)
-    if not bucket or not prefix:
-        raise ScoutS3SourceError(
-            "Canonical Approved-Dataset S3 source is not configured: set "
-            f"{BUCKET_ENV} and {PREFIX_ENV} (there is no fixture fallback)."
-        )
+    if context is not None:
+        # Explicit context: the approved surface + identity are already resolved and normalized
+        # (IssueContext.from_env reproduces this env derivation byte-for-byte — Increment 1).
+        bucket = context.approved_bucket
+        normalized_prefix = context.approved_prefix
+        region = context.approved_region
+        series_id, issue_id = context.series_id, context.issue_id
+    else:
+        # Environment path — unchanged (byte-for-byte with the certified single-issue behavior).
+        bucket = os.getenv(BUCKET_ENV)
+        prefix = os.getenv(PREFIX_ENV)
+        if not bucket or not prefix:
+            raise ScoutS3SourceError(
+                "Canonical Approved-Dataset S3 source is not configured: set "
+                f"{BUCKET_ENV} and {PREFIX_ENV} (there is no fixture fallback)."
+            )
 
-    region = os.getenv(REGION_ENV, DEFAULT_REGION)
-    segments = _require_approved_prefix(prefix)
-    normalized_prefix = "/".join(segments)
-    series_id, issue_id = _derive_identity_tail(segments)
+        region = os.getenv(REGION_ENV, DEFAULT_REGION)
+        segments = _require_approved_prefix(prefix)
+        normalized_prefix = "/".join(segments)
+        series_id, issue_id = _derive_identity_tail(segments)
 
     client = _s3_client(region)
 
@@ -337,7 +346,7 @@ def materialize_approved_contract(dest_root=None):
     return str(dest_dir)
 
 
-def resolve_current_revision(client=None):
+def resolve_current_revision(client=None, context=None):
     """Resolve the current Approved Dataset revision from the pointer only.
 
     A cheap, read-only ``GetObject`` on ``approved/published.json`` (the mutable
@@ -347,15 +356,22 @@ def resolve_current_revision(client=None):
     ``revision_key``). Fail-loud (``ScoutS3SourceError``) when unconfigured or
     unreachable; no fixture fallback.
     """
-    bucket = os.getenv(BUCKET_ENV)
-    prefix = os.getenv(PREFIX_ENV)
-    if not bucket or not prefix:
-        raise ScoutS3SourceError(
-            "Canonical Approved-Dataset S3 source is not configured: set "
-            f"{BUCKET_ENV} and {PREFIX_ENV} (there is no fixture fallback)."
-        )
-    region = os.getenv(REGION_ENV, DEFAULT_REGION)
-    normalized_prefix = "/".join(_require_approved_prefix(prefix))
+    if context is not None:
+        # Explicit context: already-normalized approved surface (byte-for-byte with the env path).
+        bucket = context.approved_bucket
+        normalized_prefix = context.approved_prefix
+        region = context.approved_region
+    else:
+        # Environment path — unchanged.
+        bucket = os.getenv(BUCKET_ENV)
+        prefix = os.getenv(PREFIX_ENV)
+        if not bucket or not prefix:
+            raise ScoutS3SourceError(
+                "Canonical Approved-Dataset S3 source is not configured: set "
+                f"{BUCKET_ENV} and {PREFIX_ENV} (there is no fixture fallback)."
+            )
+        region = os.getenv(REGION_ENV, DEFAULT_REGION)
+        normalized_prefix = "/".join(_require_approved_prefix(prefix))
     client = client or _s3_client(region)
     return _resolve_published_pointer(client, bucket, normalized_prefix)
 

@@ -22,6 +22,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import audit_s3_source  # noqa: E402
 import audit_inputs  # noqa: E402
+import scout_context  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 APPROVED_PREFIX = (
@@ -213,6 +214,92 @@ class TestScoutS3Source(unittest.TestCase):
                 mock.patch.object(audit_s3_source, "_s3_client", return_value=client):
             with self.assertRaises(audit_s3_source.ScoutS3SourceError):
                 audit_s3_source.materialize_approved_contract(dest_root=root)
+
+
+class TestIssueContextThreading(unittest.TestCase):
+    """Increment 2: an explicit IssueContext drives the read path identically to the env default.
+
+    The context path must (a) produce byte-identical S3 access + outputs to the env path, and
+    (b) be fully self-contained — it works with the environment *cleared*, and it *overrides* the
+    environment when both are present.
+    """
+
+    SCOUT_PREFIX = ("publishers/edenseek/title_groups/society_universe/series/"
+                    "society_of_killers/issues/issue_001")
+
+    def _env(self, **overrides):
+        env = {
+            audit_s3_source.BUCKET_ENV: "edenseek-publishing",
+            audit_s3_source.PREFIX_ENV: APPROVED_PREFIX,
+            audit_s3_source.REGION_ENV: "us-west-2",
+        }
+        env.update(overrides)
+        return env
+
+    def _ctx(self):
+        return scout_context.IssueContext.for_prefixes(
+            approved_bucket="edenseek-publishing", approved_prefix=APPROVED_PREFIX,
+            scout_bucket="edenseek-scout", scout_prefix=self.SCOUT_PREFIX)
+
+    @staticmethod
+    def _keys(client):
+        return [c.kwargs.get("Key") or c.args[1] for c in client.get_object.call_args_list]
+
+    def test_resolve_current_revision_context_equals_env(self):
+        snap, rev, key = _build_snapshot()
+        client_env = _fake_client(snapshot_bytes=snap, revision_id=rev, revision_key=key)
+        with mock.patch.dict("os.environ", self._env(), clear=False), \
+                mock.patch.object(audit_s3_source, "_s3_client", return_value=client_env):
+            ptr_env = audit_s3_source.resolve_current_revision()
+        # Context path with the environment CLEARED — proves it is context-driven, not env-driven.
+        client_ctx = _fake_client(snapshot_bytes=snap, revision_id=rev, revision_key=key)
+        with mock.patch.dict("os.environ", {}, clear=True), \
+                mock.patch.object(audit_s3_source, "_s3_client", return_value=client_ctx):
+            ptr_ctx = audit_s3_source.resolve_current_revision(context=self._ctx())
+        self.assertEqual(ptr_env, ptr_ctx)
+        self.assertEqual(self._keys(client_env), self._keys(client_ctx))
+
+    def test_materialize_context_equals_env(self):
+        snap, rev, key = _build_snapshot()
+        client_env = _fake_client(snapshot_bytes=snap, revision_id=rev, revision_key=key)
+        with tempfile.TemporaryDirectory() as root_env, \
+                mock.patch.dict("os.environ", self._env(), clear=False), \
+                mock.patch.object(audit_s3_source, "_s3_client", return_value=client_env):
+            dest_env = audit_s3_source.materialize_approved_contract(dest_root=root_env)
+            rel_env = Path(dest_env).relative_to(root_env).as_posix()
+            prov_env = (Path(dest_env) / audit_s3_source.PROVENANCE_FILE).read_text(encoding="utf-8")
+        client_ctx = _fake_client(snapshot_bytes=snap, revision_id=rev, revision_key=key)
+        with tempfile.TemporaryDirectory() as root_ctx, \
+                mock.patch.dict("os.environ", {}, clear=True), \
+                mock.patch.object(audit_s3_source, "_s3_client", return_value=client_ctx):
+            dest_ctx = audit_s3_source.materialize_approved_contract(
+                dest_root=root_ctx, context=self._ctx())
+            rel_ctx = Path(dest_ctx).relative_to(root_ctx).as_posix()
+            prov_ctx = (Path(dest_ctx) / audit_s3_source.PROVENANCE_FILE).read_text(encoding="utf-8")
+        # Same dest path (series/issue), same S3 keys read, byte-identical provenance.
+        self.assertEqual(rel_env, rel_ctx)
+        self.assertEqual(self._keys(client_env), self._keys(client_ctx))
+        self.assertEqual(prov_env, prov_ctx)
+
+    def test_context_overrides_environment(self):
+        # Environment points at a different (wrong) issue; the context must win.
+        snap, rev, key = _build_snapshot()
+        client = _fake_client(snapshot_bytes=snap, revision_id=rev, revision_key=key)
+        wrong = self._env(**{audit_s3_source.PREFIX_ENV:
+                             "publishers/x/title_groups/y/series/z/issues/issue_999/approved"})
+        with mock.patch.dict("os.environ", wrong, clear=False), \
+                mock.patch.object(audit_s3_source, "_s3_client", return_value=client):
+            audit_s3_source.resolve_current_revision(context=self._ctx())
+        self.assertTrue(all(k.startswith(APPROVED_PREFIX) for k in self._keys(client)))
+
+    def test_context_never_writes(self):
+        client = _fake_client()
+        with tempfile.TemporaryDirectory() as root, \
+                mock.patch.dict("os.environ", {}, clear=True), \
+                mock.patch.object(audit_s3_source, "_s3_client", return_value=client):
+            audit_s3_source.materialize_approved_contract(dest_root=root, context=self._ctx())
+        client.put_object.assert_not_called()
+        client.delete_object.assert_not_called()
 
 
 if __name__ == "__main__":
