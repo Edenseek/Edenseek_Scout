@@ -52,14 +52,18 @@ def _now():
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _ctx(client):
-    bucket = os.getenv(srp.BUCKET_ENV)
-    prefix = os.getenv(srp.PREFIX_ENV)
-    if not bucket or not prefix:
-        raise ScoutRevisionLedgerError(
-            f"Scout Repository target is not configured: set {srp.BUCKET_ENV} and {srp.PREFIX_ENV}.")
-    issue_prefix, _issue_id = srp._require_issue_prefix(prefix)
-    client = client or srp._s3_client(os.getenv(srp.REGION_ENV, srp.DEFAULT_REGION))
+def _ctx(client, context=None):
+    if context is not None:
+        bucket, issue_prefix, region = context.scout_bucket, context.scout_prefix, context.scout_region
+    else:
+        bucket = os.getenv(srp.BUCKET_ENV)
+        prefix = os.getenv(srp.PREFIX_ENV)
+        if not bucket or not prefix:
+            raise ScoutRevisionLedgerError(
+                f"Scout Repository target is not configured: set {srp.BUCKET_ENV} and {srp.PREFIX_ENV}.")
+        issue_prefix, _issue_id = srp._require_issue_prefix(prefix)
+        region = os.getenv(srp.REGION_ENV, srp.DEFAULT_REGION)
+    client = client or srp._s3_client(region)
     key = f"{issue_prefix}/ledger/{LEDGER_ARTIFACT}.json"
     return client, bucket, issue_prefix, key
 
@@ -69,9 +73,9 @@ def _empty(issue_prefix):
             "updated_at": None, "count": 0, "entries": {}}
 
 
-def load_ledger(client=None):
+def load_ledger(client=None, context=None):
     """Read the current ledger (read-only). Empty ledger when none exists yet."""
-    client, bucket, issue_prefix, key = _ctx(client)
+    client, bucket, issue_prefix, key = _ctx(client, context)
     try:
         body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
     except ClientError as e:
@@ -106,9 +110,9 @@ def _write(client, bucket, key, ledger, issue_prefix):
     return ledger
 
 
-def _upsert(client, published_revision_id, fingerprint, changes):
-    client, bucket, issue_prefix, key = _ctx(client)
-    ledger = load_ledger(client)
+def _upsert(client, published_revision_id, fingerprint, changes, context=None):
+    client, bucket, issue_prefix, key = _ctx(client, context)
+    ledger = load_ledger(client, context=context)
     entries = ledger.setdefault("entries", {})
     k = entry_key(published_revision_id, fingerprint)
     existing = entries.get(k) or {}
@@ -129,7 +133,7 @@ def _upsert(client, published_revision_id, fingerprint, changes):
 
 
 def mark_processed(published_revision_id, fingerprint, *, run_id, run_seq, report_id, completed_at,
-                   generated_snapshot_revision_id, comparability, trigger, client=None):
+                   generated_snapshot_revision_id, comparability, trigger, client=None, context=None):
     """Record a revision as successfully processed — ONLY after all verified persistence steps.
     Clears any prior failure fields for this key."""
     entry = _upsert(client, published_revision_id, fingerprint, {
@@ -137,19 +141,19 @@ def mark_processed(published_revision_id, fingerprint, *, run_id, run_seq, repor
         "completed_at": completed_at, "generated_snapshot_revision_id": generated_snapshot_revision_id,
         "comparability": comparability, "trigger": trigger,
         "failure_stage": None, "error_codes": [],
-    })
+    }, context=context)
     logger.info("Ledger: revision %s marked processed (run_seq %s, fingerprint %s)",
                 published_revision_id, run_seq, fingerprint)
     return entry
 
 
 def mark_failed(published_revision_id, fingerprint, *, stage, error_codes, trigger,
-                run_id=None, client=None):
+                run_id=None, client=None, context=None):
     """Record a failed/incomplete run. Never marks the revision processed."""
     entry = _upsert(client, published_revision_id, fingerprint, {
         "status": STATUS_FAILED, "failure_stage": stage, "error_codes": list(error_codes or []),
         "trigger": trigger, **({"run_id": run_id} if run_id else {}),
-    })
+    }, context=context)
     logger.warning("Ledger: revision %s marked FAILED at stage=%s codes=%s",
                    published_revision_id, stage, error_codes)
     return entry
