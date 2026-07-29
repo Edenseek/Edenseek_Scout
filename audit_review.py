@@ -399,7 +399,10 @@ if __name__ == "__main__":
     # `python audit_review.py --evidence-only` prints just the consumed-evidence manifest.
     import sys as _sys
     _load_dotenv()
-    os.environ.pop("AWS_PROFILE", None)
+    # See scout_delta_audit.py: only drop AWS_PROFILE when explicit access keys are present,
+    # so the VM's named-profile credentials keep working (else boto3 raises NoCredentialsError).
+    if os.environ.get("AWS_ACCESS_KEY_ID"):
+        os.environ.pop("AWS_PROFILE", None)
     _view = (build_evidence_manifest() if "--evidence-only" in _sys.argv[1:]
              else build_audit_review())
     print(json.dumps(_view, indent=2, ensure_ascii=False))

@@ -303,5 +303,10 @@ if __name__ == "__main__":
     # CLI verification path: load .env so the scout-app creds + repo config are present.
     audit_review._load_dotenv()
     import os as _os
-    _os.environ.pop("AWS_PROFILE", None)
+    # Prefer explicit access-key creds (dev .env) and only then drop an ambient AWS_PROFILE
+    # so those keys win. When no access keys are present — e.g. the VM/systemd deployment
+    # authenticates via a named AWS profile — keep AWS_PROFILE so boto3's default credential
+    # chain can resolve it (otherwise boto3 raises NoCredentialsError).
+    if _os.environ.get("AWS_ACCESS_KEY_ID"):
+        _os.environ.pop("AWS_PROFILE", None)
     sys.exit(main())
