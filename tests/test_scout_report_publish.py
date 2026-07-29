@@ -19,6 +19,7 @@ import audit_inputs  # noqa: E402
 import audit_scoring  # noqa: E402
 import dataset_auditor  # noqa: E402
 import scout_report_publisher as srp  # noqa: E402
+import scout_context  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "dataset" / "society_of_killers" / "issue_1"
@@ -160,6 +161,91 @@ class TestScoutReportPublish(unittest.TestCase):
         env = json.loads(client.store[("edenseek-scout", out["keys"]["latest_json"])])
         self.assertEqual(env["provenance"], {"source": "local_or_explicit_dir"})
         self.assertIn("local", out["report_id"])
+
+
+class TestIssueContextThreading(unittest.TestCase):
+    """Increment 3: an explicit IssueContext drives persistence identically to the env default.
+
+    The strongest equivalence assertion is that the *entire in-memory S3 store* is byte-identical
+    between an env-driven run and a context-driven run (env cleared) — same keys, same bytes.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.result = _make_result()
+
+    def _ctx(self):
+        return scout_context.IssueContext.for_prefixes(
+            approved_bucket="edenseek-publishing", approved_prefix=ISSUE_PREFIX + "/approved",
+            scout_bucket="edenseek-scout", scout_prefix=ISSUE_PREFIX)
+
+    @staticmethod
+    def _delta_body():
+        return {"run_id": "run_ctxtest", "provenance": {"published_revision_id": "rev_ctx"},
+                "delta_report": {"geometry": {"precision": 1.0}}, "findings": []}
+
+    def test_publish_scout_report_context_equals_env(self):
+        env_client = _FakeS3()
+        with mock.patch.dict("os.environ", _env(), clear=False):
+            out_env = srp.publish_scout_report(
+                self.result, "2026-07-14T00:00:00Z", PROVENANCE, client=env_client)
+        ctx_client = _FakeS3()
+        with mock.patch.dict("os.environ", {}, clear=True):  # env cleared → proves context-driven
+            out_ctx = srp.publish_scout_report(
+                self.result, "2026-07-14T00:00:00Z", PROVENANCE, client=ctx_client, context=self._ctx())
+        self.assertEqual(out_env["report_id"], out_ctx["report_id"])
+        self.assertEqual(out_env["keys"], out_ctx["keys"])
+        self.assertEqual(env_client.store, ctx_client.store)  # byte-identical objects at identical keys
+
+    def test_publish_delta_report_context_equals_env(self):
+        env_client = _FakeS3()
+        with mock.patch.dict("os.environ", _env(), clear=False):
+            out_env = srp.publish_delta_report(self._delta_body(), "2026-07-14T00:00:00Z", client=env_client)
+        ctx_client = _FakeS3()
+        with mock.patch.dict("os.environ", {}, clear=True):
+            out_ctx = srp.publish_delta_report(
+                self._delta_body(), "2026-07-14T00:00:00Z", client=ctx_client, context=self._ctx())
+        self.assertEqual(out_env["report_id"], out_ctx["report_id"])
+        self.assertEqual(out_env["report_sha256"], out_ctx["report_sha256"])
+        self.assertEqual(env_client.store, ctx_client.store)
+
+    def test_read_paths_context_equal_env(self):
+        # Publish two delta snapshots, then compare list_history_keys + read_object env vs context.
+        client = _FakeS3()
+        with mock.patch.dict("os.environ", _env(), clear=False):
+            srp.publish_delta_report(self._delta_body(), "2026-07-14T00:00:00Z", client=client)
+            srp.publish_delta_report({**self._delta_body(), "run_id": "run_two"},
+                                     "2026-07-14T01:00:00Z", client=client)
+            keys_env = srp.list_history_keys(client, srp.SCOUT_DELTA_REPORT_TYPE)
+            obj_env = srp.read_object(client, keys_env[0])
+        with mock.patch.dict("os.environ", {}, clear=True):
+            keys_ctx = srp.list_history_keys(client, srp.SCOUT_DELTA_REPORT_TYPE, context=self._ctx())
+            obj_ctx = srp.read_object(client, keys_ctx[0], context=self._ctx())
+        self.assertEqual(keys_env, keys_ctx)
+        self.assertEqual(obj_env, obj_ctx)
+
+    def test_last_published_revision_id_context_equals_env(self):
+        client = _FakeS3()
+        with mock.patch.dict("os.environ", _env(), clear=False):
+            srp.publish_scout_report(self.result, "2026-07-14T00:00:00Z", PROVENANCE, client=client)
+            rev_env = srp.last_published_revision_id(client=client)
+        with mock.patch.dict("os.environ", {}, clear=True):
+            rev_ctx = srp.last_published_revision_id(client=client, context=self._ctx())
+        self.assertEqual(rev_env, rev_ctx)
+        self.assertEqual(rev_ctx, "rev_abc123")
+
+    def test_context_overrides_env_and_writes_only_scout(self):
+        client = _FakeS3()
+        wrong = _env(**{srp.PREFIX_ENV:
+                        "publishers/x/title_groups/y/series/z/issues/issue_999"})
+        with mock.patch.dict("os.environ", wrong, clear=False):
+            srp.publish_scout_report(
+                self.result, "2026-07-14T00:00:00Z", PROVENANCE, client=client, context=self._ctx())
+        # Context wins: everything under issue_001 in edenseek-scout, nothing under issue_999.
+        self.assertTrue(all(b == "edenseek-scout" for (b, _k) in client.store))
+        self.assertTrue(all("issues/issue_001/" in k for (_b, k) in client.store))
+        self.assertFalse(any("issue_999" in k for (_b, k) in client.store))
+        self.assertEqual(client.deleted, [])
 
 
 if __name__ == "__main__":
