@@ -258,13 +258,18 @@ def _persist(client, bucket, key, projection):
     return key
 
 
-def rebuild_all(client=None, generated_at="1970-01-01T00:00:00Z"):
+def rebuild_all(client=None, generated_at="1970-01-01T00:00:00Z", context=None):
     """Rebuild + persist every benchmark projection (issue/series/publisher/platform) from the report
     indexes. Rebuildable + idempotent. Returns the keys written per level."""
-    bucket = os.getenv(srp.BUCKET_ENV)
-    if not bucket:
-        raise ScoutBenchmarkError(f"Scout Repository bucket not configured: set {srp.BUCKET_ENV}.")
-    client = client or srp._s3_client(os.getenv(srp.REGION_ENV, srp.DEFAULT_REGION))
+    if context is not None:
+        bucket = context.scout_bucket
+        region = context.scout_region
+    else:
+        bucket = os.getenv(srp.BUCKET_ENV)
+        if not bucket:
+            raise ScoutBenchmarkError(f"Scout Repository bucket not configured: set {srp.BUCKET_ENV}.")
+        region = os.getenv(srp.REGION_ENV, srp.DEFAULT_REGION)
+    client = client or srp._s3_client(region)
 
     discovered = discover_issue_indexes(client, bucket)
     issue_entries, series_entries, publisher_entries, platform_entries = {}, {}, {}, []
@@ -300,12 +305,17 @@ def rebuild_all(client=None, generated_at="1970-01-01T00:00:00Z"):
     return written
 
 
-def load_projection(key, client=None):
+def load_projection(key, client=None, context=None):
     """Read a persisted benchmark projection by key (read-only). None if absent."""
-    bucket = os.getenv(srp.BUCKET_ENV)
-    if not bucket:
-        raise ScoutBenchmarkError(f"Scout Repository bucket not configured: set {srp.BUCKET_ENV}.")
-    client = client or srp._s3_client(os.getenv(srp.REGION_ENV, srp.DEFAULT_REGION))
+    if context is not None:
+        bucket = context.scout_bucket
+        region = context.scout_region
+    else:
+        bucket = os.getenv(srp.BUCKET_ENV)
+        if not bucket:
+            raise ScoutBenchmarkError(f"Scout Repository bucket not configured: set {srp.BUCKET_ENV}.")
+        region = os.getenv(srp.REGION_ENV, srp.DEFAULT_REGION)
+    client = client or srp._s3_client(region)
     try:
         return json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read())
     except ClientError as e:

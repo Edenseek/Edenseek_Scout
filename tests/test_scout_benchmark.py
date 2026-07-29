@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import scout_report_publisher as srp  # noqa: E402
 import scout_benchmark as sb  # noqa: E402
+import scout_context  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 PUB = "publishers/edenseek/title_groups/tg/series/soc/issues"
@@ -166,6 +167,52 @@ class TestHierarchy(unittest.TestCase):
             first = s3.store[("edenseek-scout", "benchmark/platform.json")]
             sb.rebuild_all(client=s3, generated_at="t1")
             self.assertEqual(s3.store[("edenseek-scout", "benchmark/platform.json")], first)
+
+
+class TestBenchmarkIssueContextThreading(unittest.TestCase):
+    """Increment 5a: an explicit IssueContext supplies the bucket/region identically to the env
+    default. scout_benchmark is bucket-wide (no per-issue prefix), so the context only sources
+    scout_bucket + scout_region."""
+
+    def _ctx(self):
+        return scout_context.IssueContext.for_prefixes(
+            approved_bucket="edenseek-publishing", approved_prefix=f"{PUB}/issue_001/approved",
+            scout_bucket="edenseek-scout", scout_prefix=f"{PUB}/issue_001")
+
+    def _seed(self, s3):
+        idx1 = {"entries": [_entry(1, issue_id="issue_001", geom=_geom((8, 10), (6, 10)))]}
+        idx2 = {"entries": [_entry(1, issue_id="issue_002", geom=_geom((90, 100), (50, 100)))]}
+        s3.store[("edenseek-scout", f"{PUB}/issue_001/reports/report_index.json")] = json.dumps(idx1).encode()
+        s3.store[("edenseek-scout", f"{PUB}/issue_002/reports/report_index.json")] = json.dumps(idx2).encode()
+
+    def test_rebuild_all_context_equals_env(self):
+        a = FakeS3()
+        self._seed(a)
+        with mock.patch.dict("os.environ", {srp.BUCKET_ENV: "edenseek-scout"}, clear=False):
+            w_env = sb.rebuild_all(client=a, generated_at="t1")
+        b = FakeS3()
+        self._seed(b)
+        with mock.patch.dict("os.environ", {}, clear=True):  # env cleared → context-driven
+            w_ctx = sb.rebuild_all(client=b, generated_at="t1", context=self._ctx())
+        self.assertEqual(w_env, w_ctx)
+        self.assertEqual(a.store, b.store)  # byte-identical projections at identical keys
+
+    def test_load_projection_context_equals_env(self):
+        s3 = FakeS3()
+        self._seed(s3)
+        with mock.patch.dict("os.environ", {srp.BUCKET_ENV: "edenseek-scout"}, clear=False):
+            sb.rebuild_all(client=s3, generated_at="t1")
+            p_env = sb.load_projection("benchmark/platform.json", client=s3)
+        with mock.patch.dict("os.environ", {}, clear=True):
+            p_ctx = sb.load_projection("benchmark/platform.json", client=s3, context=self._ctx())
+        self.assertEqual(p_env, p_ctx)
+
+    def test_context_writes_only_scout_bucket(self):
+        b = FakeS3()
+        self._seed(b)
+        with mock.patch.dict("os.environ", {}, clear=True):
+            sb.rebuild_all(client=b, generated_at="t1", context=self._ctx())
+        self.assertTrue(all(bkt == "edenseek-scout" for (bkt, _k) in b.store))
 
 
 if __name__ == "__main__":

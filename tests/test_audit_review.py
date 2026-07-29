@@ -17,8 +17,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import audit_s3_source  # noqa: E402
 import audit_review  # noqa: E402
+import scout_context  # noqa: E402
 import _delta_fixtures as fx  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
 
 APPROVED_PREFIX = (
     "publishers/edenseek/title_groups/society_universe/series/"
@@ -210,6 +212,43 @@ class TestAuditReviewDelta(unittest.TestCase):
         self.assertIsNone(v["delta_report"])
         self.assertIsNone(v["state_comparison"])
         self.assertEqual(self._by_code(v)["contract.adapted"]["severity"], "FAIL")
+
+
+class TestAuditReviewIssueContextThreading(unittest.TestCase):
+    """Increment 4: an explicit IssueContext drives the evidence read layer identically to the env
+    default. `datetime` is pinned so the audit_timestamp cannot mask a real diff."""
+
+    APPROVED_ENV = {audit_s3_source.BUCKET_ENV: "edenseek-publishing",
+                    audit_s3_source.PREFIX_ENV: APPROVED_PREFIX,
+                    audit_s3_source.REGION_ENV: "us-west-2"}
+
+    def _ctx(self):
+        return scout_context.IssueContext.for_prefixes(
+            approved_bucket="edenseek-publishing", approved_prefix=APPROVED_PREFIX,
+            scout_bucket="edenseek-scout", scout_prefix=ISSUE_ROOT)
+
+    def test_evidence_manifest_context_equals_env(self):
+        fixed = datetime(2026, 7, 14, tzinfo=timezone.utc)
+        with mock.patch.object(audit_review, "_scout_commit", return_value="testsha"), \
+                mock.patch.object(audit_review, "datetime") as dt:
+            dt.now.return_value = fixed
+            with mock.patch.dict("os.environ", self.APPROVED_ENV, clear=False):
+                m_env = audit_review.build_evidence_manifest(client=_fake_client())
+            with mock.patch.dict("os.environ", {}, clear=True):  # env cleared → context-driven
+                m_ctx = audit_review.build_evidence_manifest(client=_fake_client(), context=self._ctx())
+        self.assertEqual(m_env, m_ctx)
+
+    def test_audit_review_view_context_equals_env(self):
+        fixed = datetime(2026, 7, 14, tzinfo=timezone.utc)
+        bodies = _delta_bodies()
+        with mock.patch.object(audit_review, "_scout_commit", return_value="testsha"), \
+                mock.patch.object(audit_review, "datetime") as dt:
+            dt.now.return_value = fixed
+            with mock.patch.dict("os.environ", self.APPROVED_ENV, clear=False):
+                v_env = audit_review.build_audit_review(client=_fake_client(bodies))
+            with mock.patch.dict("os.environ", {}, clear=True):
+                v_ctx = audit_review.build_audit_review(client=_fake_client(bodies), context=self._ctx())
+        self.assertEqual(v_env, v_ctx)
 
 
 if __name__ == "__main__":

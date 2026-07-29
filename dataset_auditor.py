@@ -26,7 +26,7 @@ import scout
 REPORTS_ROOT = Path("reports")
 
 
-def _resolve_input_dir(input_dir):
+def _resolve_input_dir(input_dir, context=None):
     """Resolve the audit input directory.
 
     Precedence: an explicit caller-provided path (tests / local dev), then an
@@ -39,7 +39,7 @@ def _resolve_input_dir(input_dir):
     explicit = input_dir or os.getenv("SCOUT_DATASET_DIR")
     if explicit:
         return explicit
-    return audit_s3_source.materialize_approved_contract()
+    return audit_s3_source.materialize_approved_contract(context=context)
 
 
 def _latest_delta(history):
@@ -78,9 +78,9 @@ def _derive_core_blocks(result):
     return root_cause
 
 
-def run_dataset_audit(input_dir=None):
+def run_dataset_audit(input_dir=None, context=None):
     """Run a full dataset audit and return a summary dict of the outcome."""
-    input_dir = _resolve_input_dir(input_dir)
+    input_dir = _resolve_input_dir(input_dir, context=context)
     logger.info(f"Dataset audit started: {input_dir}")
 
     inputs = audit_inputs.load_inputs(input_dir)
@@ -136,15 +136,15 @@ def run_dataset_audit(input_dir=None):
     # (no re-computation). Runs only when the write target is configured — a
     # deployment switch, not an error-fallback; when configured, any publication
     # failure raises out of here (fail-loud, no local fallback).
-    if scout_report_publisher.is_configured():
-        published = scout_report_publisher.publish_reports(result, generated_at)
+    if context is not None or scout_report_publisher.is_configured():
+        published = scout_report_publisher.publish_reports(result, generated_at, context=context)
         # Canonical consolidated Scout Report, tied to the exact Publisher Approved
         # Dataset revision analyzed (provenance from the read path), written and
         # then verified by read-back. This is the primary artifact the future
         # Edenseek review/governance workflow consumes.
         provenance = audit_s3_source.load_source_provenance(input_dir)
         scout_report = scout_report_publisher.publish_scout_report(
-            result, generated_at, provenance)
+            result, generated_at, provenance, context=context)
         logger.info(
             f"Scout Repository publication complete: {len(published)} per-type report(s) "
             f"+ consolidated {scout_report['report_id']} (read-back verified)")

@@ -10,11 +10,19 @@ sys.path.insert(0, str(REPO_ROOT))
 os.environ.setdefault("SCOUT_USERNAME", "scout")
 os.environ.setdefault("SCOUT_PASSWORD", "testpass")
 
+import io  # noqa: E402
+import json  # noqa: E402
+from unittest import mock  # noqa: E402
 import scout_intelligence as si  # noqa: E402
 import scout_benchmark as sb  # noqa: E402
 import scout_schema as ss  # noqa: E402
+import scout_report_publisher as srp  # noqa: E402
+import scout_context  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 import app as scout_app  # noqa: E402
+from botocore.exceptions import ClientError  # noqa: E402
+
+INTEL_PREFIX = "publishers/edenseek/title_groups/tg/series/soc/issues/issue_001"
 
 AUTH = ("scout", "testpass")
 client = TestClient(scout_app.app)
@@ -145,6 +153,78 @@ class TestEndpoints(unittest.TestCase):
 
     def test_intelligence_requires_auth(self):
         self.assertEqual(client.get("/intelligence/geometry").status_code, 401)
+
+
+class _IntelFakeS3:
+    def __init__(self):
+        self.store = {}
+
+    def get_object(self, Bucket, Key):  # noqa: N803
+        if (Bucket, Key) not in self.store:
+            raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        return {"Body": io.BytesIO(self.store[(Bucket, Key)]), "VersionId": "v"}
+
+    def list_objects_v2(self, Bucket, Prefix, ContinuationToken=None):  # noqa: N803
+        keys = [k for (b, k) in self.store if b == Bucket and k.startswith(Prefix)]
+        return {"Contents": [{"Key": k} for k in sorted(keys)], "IsTruncated": False}
+
+
+class TestIntelligenceIssueContextThreading(unittest.TestCase):
+    """Increment 5c: the build_* wrappers forward an explicit IssueContext to load_index (both) and
+    read_object (metadata), producing identical intelligence with the environment cleared."""
+
+    ENV = {srp.BUCKET_ENV: "edenseek-scout", srp.PREFIX_ENV: INTEL_PREFIX, srp.REGION_ENV: "us-west-2"}
+
+    def _ctx(self):
+        return scout_context.IssueContext.for_prefixes(
+            approved_bucket="edenseek-publishing", approved_prefix=INTEL_PREFIX + "/approved",
+            scout_bucket="edenseek-scout", scout_prefix=INTEL_PREFIX)
+
+    def _s3(self, entries):
+        s3 = _IntelFakeS3()
+        idx = {"report_index_version": "v1", "issue_prefix": INTEL_PREFIX, "count": len(entries),
+               "latest": {"run_seq": entries[-1]["run_seq"]}, "entries": entries}
+        s3.store[("edenseek-scout", f"{INTEL_PREFIX}/reports/report_index.json")] = json.dumps(idx).encode()
+        return s3
+
+    def test_geometry_intelligence_context_equals_env(self):
+        s3 = self._s3([_entry(1), _entry(2, gkey="cmp_gB", giou=0.6)])
+        with mock.patch.dict(os.environ, self.ENV, clear=False):
+            gi_env = si.build_geometry_intelligence(client=s3, generated_at="t1")
+        with mock.patch.dict(os.environ, {}, clear=True):  # env cleared → context-driven
+            gi_ctx = si.build_geometry_intelligence(client=s3, generated_at="t1", context=self._ctx())
+        self.assertEqual(gi_env, gi_ctx)
+
+    def test_metadata_intelligence_context_equals_env(self):
+        # non-comparable metadata → read_object is skipped; exercises load_index forwarding.
+        s3 = self._s3([_entry(1), _entry(2)])
+        with mock.patch.dict(os.environ, self.ENV, clear=False):
+            mi_env = si.build_metadata_intelligence(client=s3, generated_at="t1")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            mi_ctx = si.build_metadata_intelligence(client=s3, generated_at="t1", context=self._ctx())
+        self.assertEqual(mi_env, mi_ctx)
+
+    def test_metadata_forwards_context_to_load_index_and_read_object(self):
+        ctx = self._ctx()
+        entry = _entry(1, meta=_meta())  # applicable + comparable_fields + persisted_key.history="h1"
+        idx = {"report_index_version": "v1", "issue_prefix": INTEL_PREFIX, "count": 1,
+               "latest": {"run_seq": 1}, "entries": [entry]}
+        captured = {}
+
+        def fake_load_index(client=None, context=None):
+            captured["load"] = context
+            return idx
+
+        def fake_read_object(client, key, context=None):
+            captured["read"] = context
+            return b"{}"
+
+        with mock.patch.object(si.sri, "load_index", side_effect=fake_load_index), \
+                mock.patch.object(si.srp, "read_object", side_effect=fake_read_object), \
+                mock.patch.object(si, "metadata_intelligence", return_value={"ok": True}):
+            si.build_metadata_intelligence(client=object(), context=ctx)
+        self.assertEqual(captured["load"], ctx)
+        self.assertEqual(captured["read"], ctx)
 
 
 if __name__ == "__main__":

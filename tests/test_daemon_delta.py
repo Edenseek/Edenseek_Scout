@@ -20,6 +20,7 @@ import scout_report_index as sri  # noqa: E402
 import scout_revision_ledger as ledger  # noqa: E402
 import scout_delta_audit as sda  # noqa: E402
 import scout_watch  # noqa: E402
+import scout_context  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 REPO_PREFIX = "publishers/edenseek/title_groups/society_universe/series/society_of_killers/issues/issue_001"
@@ -160,11 +161,11 @@ class TestFailures(_Base):
         calls = {"n": 0}
         real_update = sri.update_index
 
-        def flaky_update(entry, client=None):
+        def flaky_update(entry, client=None, context=None):
             calls["n"] += 1
             if calls["n"] == 1:
                 raise sri.ScoutReportIndexError("simulated index write failure")
-            return real_update(entry, client=client)
+            return real_update(entry, client=client, context=context)
 
         with mock.patch.object(sri, "update_index", side_effect=flaky_update):
             r1 = self.run_agent(s3, _view())
@@ -222,6 +223,100 @@ class TestBoundaries(_Base):
         delta.assert_called_once()
         self.assertEqual(out["dataset"]["status"], "unchanged")
         self.assertEqual(out["delta"]["status"], "skipped")
+
+
+class TestLedgerIssueContextThreading(unittest.TestCase):
+    """Increment 3: an explicit IssueContext drives the ledger identically to the env default.
+
+    Timestamps (`_now`) are pinned so the env-vs-context comparison is a true byte-for-byte check
+    of the persisted ledger object rather than being defeated by wall-clock differences.
+    """
+
+    def _ctx(self):
+        return scout_context.IssueContext.for_prefixes(
+            approved_bucket="edenseek-publishing", approved_prefix=REPO_PREFIX + "/approved",
+            scout_bucket="edenseek-scout", scout_prefix=REPO_PREFIX)
+
+    def _mark_processed(self, client, context=None):
+        return ledger.mark_processed(
+            "rev_pub_1", "fp_1", run_id="run_x", run_seq=1, report_id="rid",
+            completed_at="2026-07-14T00:00:00Z", generated_snapshot_revision_id="rev_gen_1",
+            comparability={"geometry": "cmp_g", "metadata": "cmp_m"}, trigger="manual",
+            client=client, context=context)
+
+    def test_mark_processed_context_equals_env(self):
+        a, b = FakeS3(), FakeS3()
+        with mock.patch.object(ledger, "_now", return_value="2026-07-14T00:00:00Z"):
+            with mock.patch.dict("os.environ", _env(), clear=False):
+                self._mark_processed(a)
+            with mock.patch.dict("os.environ", {}, clear=True):  # env cleared → context-driven
+                self._mark_processed(b, context=self._ctx())
+        self.assertEqual(a.store, b.store)  # byte-identical ledger object at identical key
+
+    def test_mark_failed_context_equals_env(self):
+        a, b = FakeS3(), FakeS3()
+        with mock.patch.object(ledger, "_now", return_value="2026-07-14T00:00:00Z"):
+            with mock.patch.dict("os.environ", _env(), clear=False):
+                ledger.mark_failed("rev_pub_1", "fp_1", stage="persist_verify",
+                                   error_codes=["Boom"], trigger="manual", client=a)
+            with mock.patch.dict("os.environ", {}, clear=True):
+                ledger.mark_failed("rev_pub_1", "fp_1", stage="persist_verify",
+                                   error_codes=["Boom"], trigger="manual", client=b, context=self._ctx())
+        self.assertEqual(a.store, b.store)
+
+    def test_load_ledger_context_equals_env(self):
+        s3 = FakeS3()
+        with mock.patch.dict("os.environ", _env(), clear=False):
+            self._mark_processed(s3)
+            led_env = ledger.load_ledger(s3)
+        with mock.patch.dict("os.environ", {}, clear=True):
+            led_ctx = ledger.load_ledger(s3, context=self._ctx())
+        self.assertEqual(led_env, led_ctx)
+
+    def test_context_ledger_writes_only_scout(self):
+        s3 = FakeS3()
+        with mock.patch.dict("os.environ", {}, clear=True):
+            self._mark_processed(s3, context=self._ctx())
+        self.assertTrue(all(bkt == "edenseek-scout" for (bkt, _k) in s3.store))
+        self.assertTrue(all("issues/issue_001/" in k for (_b, k) in s3.store))
+
+
+class TestRunnerIssueContextThreading(_Base):
+    """Increment 4b: audit_current_revision forwards an explicit IssueContext through the WHOLE delta
+    transaction (resolve -> evidence -> persist -> index -> ledger). With the environment CLEARED,
+    the run must still succeed and be byte-identical to the env-driven run — which can only happen if
+    the runner forwards the context to every downstream write."""
+
+    def _ctx(self):
+        return scout_context.IssueContext.for_prefixes(
+            approved_bucket="edenseek-publishing", approved_prefix=REPO_PREFIX + "/approved",
+            scout_bucket="edenseek-scout", scout_prefix=REPO_PREFIX)
+
+    def _run_ctx(self, s3, view, published="rev_pub_1"):
+        # resolve + build_audit_review are mocked; env is cleared, so the persistence/index/ledger
+        # writes survive ONLY because audit_current_revision threads the context to them.
+        with mock.patch.dict("os.environ", {}, clear=True), \
+                mock.patch.object(sda.audit_s3_source, "resolve_current_revision",
+                                  return_value=_pointer(published)), \
+                mock.patch.object(sda.audit_review, "build_audit_review", return_value=view):
+            return sda.audit_current_revision(client=s3, context=self._ctx())
+
+    def test_audit_current_revision_context_equals_env(self):
+        with mock.patch.object(ledger, "_now", return_value="2026-07-14T00:00:00Z"):
+            a = FakeS3()
+            res_env = self.run_agent(a, _view())          # env-driven (env set)
+            b = FakeS3()
+            res_ctx = self._run_ctx(b, _view())            # context-driven (env cleared)
+        self.assertEqual(res_env["status"], "persisted")
+        self.assertEqual(res_env, res_ctx)                 # identical runner result
+        self.assertEqual(a.store, b.store)                 # byte-identical report + index + ledger
+
+    def test_context_run_writes_only_scout_repo(self):
+        with mock.patch.object(ledger, "_now", return_value="2026-07-14T00:00:00Z"):
+            b = FakeS3()
+            self._run_ctx(b, _view())
+        self.assertTrue(all(bkt == "edenseek-scout" for (bkt, _k) in b.store))
+        self.assertTrue(all("issues/issue_001/" in k for (_b, k) in b.store))
 
 
 if __name__ == "__main__":

@@ -163,7 +163,7 @@ def _next_run_seq(client, bucket, history_prefix, report_type):
     return highest + 1
 
 
-def publish_reports(result, generated_at, report_types=None, client=None):
+def publish_reports(result, generated_at, report_types=None, client=None, context=None):
     """Publish audit report blocks to the Scout Repository at the frozen R1 keys.
 
     For each report type this writes both addressing roles:
@@ -177,16 +177,20 @@ def publish_reports(result, generated_at, report_types=None, client=None):
     configured ``edenseek-scout`` issue chain. Fail-loud when unconfigured or a
     write fails. Returns ``{report_type: {"latest": key, "history": key}}``.
     """
-    bucket = os.getenv(BUCKET_ENV)
-    prefix = os.getenv(PREFIX_ENV)
-    if not bucket or not prefix:
-        raise ScoutReportPublishError(
-            "Scout Repository write target is not configured: set "
-            f"{BUCKET_ENV} and {PREFIX_ENV} (there is no local fallback)."
-        )
+    if context is not None:
+        bucket, issue_prefix, region, issue_id = (
+            context.scout_bucket, context.scout_prefix, context.scout_region, context.issue_id)
+    else:
+        bucket = os.getenv(BUCKET_ENV)
+        prefix = os.getenv(PREFIX_ENV)
+        if not bucket or not prefix:
+            raise ScoutReportPublishError(
+                "Scout Repository write target is not configured: set "
+                f"{BUCKET_ENV} and {PREFIX_ENV} (there is no local fallback)."
+            )
 
-    region = os.getenv(REGION_ENV, DEFAULT_REGION)
-    issue_prefix, issue_id = _require_issue_prefix(prefix)
+        region = os.getenv(REGION_ENV, DEFAULT_REGION)
+        issue_prefix, issue_id = _require_issue_prefix(prefix)
     dataset_id = result["dataset_id"]
     blocks = result["blocks"]
     report_types = report_types or list(audit_reports.REPORT_FILES.keys())
@@ -387,7 +391,7 @@ def _verify_readback(client, bucket, key, expected_body):
         )
 
 
-def last_published_revision_id(client=None):
+def last_published_revision_id(client=None, context=None):
     """Return the Publisher revision id of the latest persisted Scout Report.
 
     Reads ``{issue}/reports/scout_report.json`` from the Scout Repository and
@@ -396,15 +400,19 @@ def last_published_revision_id(client=None):
     normal "audit now" signal, not an error. Read-only; fail-loud on any error
     other than a missing object.
     """
-    bucket = os.getenv(BUCKET_ENV)
-    prefix = os.getenv(PREFIX_ENV)
-    if not bucket or not prefix:
-        raise ScoutReportPublishError(
-            "Scout Repository target is not configured: set "
-            f"{BUCKET_ENV} and {PREFIX_ENV}."
-        )
-    region = os.getenv(REGION_ENV, DEFAULT_REGION)
-    issue_prefix, _issue_id = _require_issue_prefix(prefix)
+    if context is not None:
+        bucket, issue_prefix, region = (
+            context.scout_bucket, context.scout_prefix, context.scout_region)
+    else:
+        bucket = os.getenv(BUCKET_ENV)
+        prefix = os.getenv(PREFIX_ENV)
+        if not bucket or not prefix:
+            raise ScoutReportPublishError(
+                "Scout Repository target is not configured: set "
+                f"{BUCKET_ENV} and {PREFIX_ENV}."
+            )
+        region = os.getenv(REGION_ENV, DEFAULT_REGION)
+        issue_prefix, _issue_id = _require_issue_prefix(prefix)
     client = client or _s3_client(region)
     key = f"{issue_prefix}/reports/{SCOUT_REPORT_TYPE}.json"
     try:
@@ -428,27 +436,30 @@ def last_published_revision_id(client=None):
     return (report.get("provenance") or {}).get("publisher_revision_id")
 
 
-def read_object(client, key):
+def read_object(client, key, context=None):
     """Read one Scout-repo object's bytes (GET only). Fail-loud; used by the index rebuild path."""
-    bucket = os.getenv(BUCKET_ENV)
+    bucket = context.scout_bucket if context is not None else os.getenv(BUCKET_ENV)
     try:
         return client.get_object(Bucket=bucket, Key=key)["Body"].read()
     except (ClientError, BotoCoreError) as e:
         raise ScoutReportPublishError(f"Unable to read s3://{bucket}/{key}: {e}") from e
 
 
-def list_history_keys(client, report_type):
+def list_history_keys(client, report_type, context=None):
     """List the immutable history snapshot keys for one artifact type, oldest→newest by run_seq.
 
     Read-only enumeration under ``{issue}/history/`` — the authoritative source the report index
     projects. Fail-loud on config/transport errors.
     """
-    bucket = os.getenv(BUCKET_ENV)
-    prefix = os.getenv(PREFIX_ENV)
-    if not bucket or not prefix:
-        raise ScoutReportPublishError(
-            f"Scout Repository target is not configured: set {BUCKET_ENV} and {PREFIX_ENV}.")
-    issue_prefix, _ = _require_issue_prefix(prefix)
+    if context is not None:
+        bucket, issue_prefix = context.scout_bucket, context.scout_prefix
+    else:
+        bucket = os.getenv(BUCKET_ENV)
+        prefix = os.getenv(PREFIX_ENV)
+        if not bucket or not prefix:
+            raise ScoutReportPublishError(
+                f"Scout Repository target is not configured: set {BUCKET_ENV} and {PREFIX_ENV}.")
+        issue_prefix, _ = _require_issue_prefix(prefix)
     token_prefix = f"{issue_prefix}/history/{report_type}_"
     keys, continuation = [], None
     while True:
@@ -513,7 +524,7 @@ def _find_history_by_run_id(client, bucket, history_prefix, run_id):
     return None
 
 
-def publish_delta_report(report_body, completed_at, client=None):
+def publish_delta_report(report_body, completed_at, client=None, context=None):
     """Persist one Scout Synchronization Audit (delta) report to the Scout Repository.
 
     ``report_body`` is the assembled report (versions + provenance + delta + findings) WITHOUT the
@@ -524,15 +535,19 @@ def publish_delta_report(report_body, completed_at, client=None):
     Returns ``{report_id, run_seq, keys, report_sha256, envelope}`` — the caller (the agent runner)
     then updates the report index in the same transaction.
     """
-    bucket = os.getenv(BUCKET_ENV)
-    prefix = os.getenv(PREFIX_ENV)
-    if not bucket or not prefix:
-        raise ScoutReportPublishError(
-            "Scout Repository write target is not configured: set "
-            f"{BUCKET_ENV} and {PREFIX_ENV} (there is no local fallback).")
+    if context is not None:
+        bucket, issue_prefix, region, issue_id = (
+            context.scout_bucket, context.scout_prefix, context.scout_region, context.issue_id)
+    else:
+        bucket = os.getenv(BUCKET_ENV)
+        prefix = os.getenv(PREFIX_ENV)
+        if not bucket or not prefix:
+            raise ScoutReportPublishError(
+                "Scout Repository write target is not configured: set "
+                f"{BUCKET_ENV} and {PREFIX_ENV} (there is no local fallback).")
 
-    region = os.getenv(REGION_ENV, DEFAULT_REGION)
-    issue_prefix, issue_id = _require_issue_prefix(prefix)
+        region = os.getenv(REGION_ENV, DEFAULT_REGION)
+        issue_prefix, issue_id = _require_issue_prefix(prefix)
     client = client or _s3_client(region)
     reports_prefix = f"{issue_prefix}/reports"
     history_prefix = f"{issue_prefix}/history"
@@ -595,7 +610,7 @@ def publish_delta_report(report_body, completed_at, client=None):
             "report_sha256": report_sha256, "envelope": envelope, "idempotent": False}
 
 
-def publish_scout_report(result, generated_at, provenance=None, client=None):
+def publish_scout_report(result, generated_at, provenance=None, client=None, context=None):
     """Persist the consolidated Scout Report to the Scout Repository and verify it.
 
     Writes the canonical machine-readable ``scout_report.json`` (latest + immutable
@@ -605,16 +620,20 @@ def publish_scout_report(result, generated_at, provenance=None, client=None):
     touches the Publisher Repository. Fail-loud when unconfigured, a write fails, or
     a read-back mismatches. Returns the report id and the keys written.
     """
-    bucket = os.getenv(BUCKET_ENV)
-    prefix = os.getenv(PREFIX_ENV)
-    if not bucket or not prefix:
-        raise ScoutReportPublishError(
-            "Scout Repository write target is not configured: set "
-            f"{BUCKET_ENV} and {PREFIX_ENV} (there is no local fallback)."
-        )
+    if context is not None:
+        bucket, issue_prefix, region, issue_id = (
+            context.scout_bucket, context.scout_prefix, context.scout_region, context.issue_id)
+    else:
+        bucket = os.getenv(BUCKET_ENV)
+        prefix = os.getenv(PREFIX_ENV)
+        if not bucket or not prefix:
+            raise ScoutReportPublishError(
+                "Scout Repository write target is not configured: set "
+                f"{BUCKET_ENV} and {PREFIX_ENV} (there is no local fallback)."
+            )
 
-    region = os.getenv(REGION_ENV, DEFAULT_REGION)
-    issue_prefix, issue_id = _require_issue_prefix(prefix)
+        region = os.getenv(REGION_ENV, DEFAULT_REGION)
+        issue_prefix, issue_id = _require_issue_prefix(prefix)
     client = client or _s3_client(region)
     reports_prefix = f"{issue_prefix}/reports"
     history_prefix = f"{issue_prefix}/history"

@@ -179,21 +179,25 @@ def _finalize(index, issue_prefix):
 # --------------------------------------------------------------------------- #
 # S3 read/write for the index object (edenseek-scout only)
 # --------------------------------------------------------------------------- #
-def _index_context(client):
-    bucket = os.getenv(srp.BUCKET_ENV)
-    prefix = os.getenv(srp.PREFIX_ENV)
-    if not bucket or not prefix:
-        raise ScoutReportIndexError(
-            f"Scout Repository target is not configured: set {srp.BUCKET_ENV} and {srp.PREFIX_ENV}.")
-    issue_prefix, _issue_id = srp._require_issue_prefix(prefix)
-    client = client or srp._s3_client(os.getenv(srp.REGION_ENV, srp.DEFAULT_REGION))
+def _index_context(client, context=None):
+    if context is not None:
+        bucket, issue_prefix, region = context.scout_bucket, context.scout_prefix, context.scout_region
+    else:
+        bucket = os.getenv(srp.BUCKET_ENV)
+        prefix = os.getenv(srp.PREFIX_ENV)
+        if not bucket or not prefix:
+            raise ScoutReportIndexError(
+                f"Scout Repository target is not configured: set {srp.BUCKET_ENV} and {srp.PREFIX_ENV}.")
+        issue_prefix, _issue_id = srp._require_issue_prefix(prefix)
+        region = os.getenv(srp.REGION_ENV, srp.DEFAULT_REGION)
+    client = client or srp._s3_client(region)
     key = f"{issue_prefix}/reports/{INDEX_ARTIFACT}.json"
     return client, bucket, issue_prefix, key
 
 
-def load_index(client=None):
+def load_index(client=None, context=None):
     """Read the current report index (read-only). Returns an empty index when none exists yet."""
-    client, bucket, issue_prefix, key = _index_context(client)
+    client, bucket, issue_prefix, key = _index_context(client, context)
     try:
         body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
     except ClientError as e:
@@ -215,11 +219,11 @@ def _write_index(client, bucket, key, index):
     return body
 
 
-def update_index(entry, client=None):
+def update_index(entry, client=None, context=None):
     """Insert (or replace by run_seq) one entry and rewrite the index, verified. Called by the agent
     runner immediately after a report is persisted+verified — the second half of the transaction."""
-    client, bucket, issue_prefix, key = _index_context(client)
-    index = load_index(client)
+    client, bucket, issue_prefix, key = _index_context(client, context)
+    index = load_index(client, context=context)
     entries = [e for e in index.get("entries", []) if e.get("run_seq") != entry.get("run_seq")]
     entries.append(entry)
     index["entries"] = entries
@@ -230,15 +234,15 @@ def update_index(entry, client=None):
     return index
 
 
-def rebuild_index(client=None):
+def rebuild_index(client=None, context=None):
     """Rebuild the index from scratch by scanning the immutable history reports — proof that the
     index is a derived projection, and the reconciliation path if it is ever lost or divergent."""
-    client, bucket, issue_prefix, key = _index_context(client)
-    keys = srp.list_history_keys(client, srp.SCOUT_DELTA_REPORT_TYPE)
+    client, bucket, issue_prefix, key = _index_context(client, context)
+    keys = srp.list_history_keys(client, srp.SCOUT_DELTA_REPORT_TYPE, context=context)
     entries = []
     for hk in keys:
         try:
-            envelope = json.loads(srp.read_object(client, hk))
+            envelope = json.loads(srp.read_object(client, hk, context=context))
         except (json.JSONDecodeError, srp.ScoutReportPublishError) as e:
             logger.warning("Skipping unreadable history report %s during rebuild: %s", hk, e)
             continue

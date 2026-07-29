@@ -204,14 +204,14 @@ def metadata_intelligence(entries, reports_by_id, generated_at="1970-01-01T00:00
 # --------------------------------------------------------------------------- #
 # Loaders (consume the persisted contracts from edenseek-scout)
 # --------------------------------------------------------------------------- #
-def build_geometry_intelligence(client=None, generated_at="1970-01-01T00:00:00Z"):
-    index = sri.load_index(client)
+def build_geometry_intelligence(client=None, generated_at="1970-01-01T00:00:00Z", context=None):
+    index = sri.load_index(client, context=context)
     return geometry_intelligence(index.get("entries", []), generated_at,
                                  {"level": "issue", "issue_prefix": index.get("issue_prefix")})
 
 
-def build_metadata_intelligence(client=None, generated_at="1970-01-01T00:00:00Z"):
-    index = sri.load_index(client)
+def build_metadata_intelligence(client=None, generated_at="1970-01-01T00:00:00Z", context=None):
+    index = sri.load_index(client, context=context)
     entries = index.get("entries", [])
     reports_by_id = {}
     for e in entries:
@@ -223,7 +223,7 @@ def build_metadata_intelligence(client=None, generated_at="1970-01-01T00:00:00Z"
             continue
         try:
             import json
-            reports_by_id[e["report_id"]] = json.loads(srp.read_object(client, key))
+            reports_by_id[e["report_id"]] = json.loads(srp.read_object(client, key, context=context))
         except Exception:  # noqa: BLE001 — a missing/unreadable report just drops from per-field detail
             continue
     return metadata_intelligence(entries, reports_by_id, generated_at,
