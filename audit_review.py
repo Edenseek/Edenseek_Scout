@@ -92,30 +92,36 @@ def _schema_version(role, parsed):
     }.get(role)
 
 
-def _gather_evidence(client):
+def _gather_evidence(client, context=None):
     """Probe the four consumed objects once and return ``(manifest, parsed_by_role)``.
 
     ``parsed_by_role`` holds the parsed JSON for the objects we parse (pointer, review_report,
     platform_approval) so a downstream delta reuses them without re-fetching. Read-only; per-object
     failures are recorded in the manifest, not raised.
     """
-    bucket = os.getenv(audit_s3_source.BUCKET_ENV)
-    prefix = os.getenv(audit_s3_source.PREFIX_ENV)
-    if not bucket or not prefix:
-        raise AuditReviewError(
-            "Approved-Dataset S3 source is not configured: set "
-            f"{audit_s3_source.BUCKET_ENV} and {audit_s3_source.PREFIX_ENV}.")
+    if context is not None:
+        bucket = context.approved_bucket
+        normalized = context.approved_prefix
+        issue_root = normalized[: -len("/approved")]
+        issue_id = context.issue_id
+    else:
+        bucket = os.getenv(audit_s3_source.BUCKET_ENV)
+        prefix = os.getenv(audit_s3_source.PREFIX_ENV)
+        if not bucket or not prefix:
+            raise AuditReviewError(
+                "Approved-Dataset S3 source is not configured: set "
+                f"{audit_s3_source.BUCKET_ENV} and {audit_s3_source.PREFIX_ENV}.")
 
-    segments = audit_s3_source._require_approved_prefix(prefix)
-    normalized = "/".join(segments)
-    issue_root = normalized[: -len("/approved")]
-    _series_id, issue_id = audit_s3_source._derive_identity_tail(segments)
+        segments = audit_s3_source._require_approved_prefix(prefix)
+        normalized = "/".join(segments)
+        issue_root = normalized[: -len("/approved")]
+        _series_id, issue_id = audit_s3_source._derive_identity_tail(segments)
 
-    client = client or audit_s3_source.s3_client()
+    client = client or audit_s3_source.s3_client(context.approved_region if context is not None else None)
 
     # Resolve the mutable pointer (fail-loud — without it there is no revision to review).
     try:
-        pointer = audit_s3_source.resolve_current_revision(client)
+        pointer = audit_s3_source.resolve_current_revision(client, context=context)
     except audit_s3_source.ScoutS3SourceError as e:
         raise AuditReviewError(f"Unable to resolve the current certified revision: {e}") from e
 
@@ -198,7 +204,7 @@ def _gather_evidence(client):
     return manifest, parsed_by_role
 
 
-def build_evidence_manifest(client=None):
+def build_evidence_manifest(client=None, context=None):
     """Build the read-only Consumed-Evidence Manifest for the configured issue + current revision.
 
     Resolves the published pointer, derives ``review_id``, and probes the four Publisher objects
@@ -206,8 +212,8 @@ def build_evidence_manifest(client=None):
     approval). Returns a manifest dict with permanent audit metadata + a ``summary`` health block.
     Fail-loud only on whole-manifest config/resolution errors; per-object issues are recorded.
     """
-    client = client or audit_s3_source.s3_client()
-    manifest, _parsed = _gather_evidence(client)
+    client = client or audit_s3_source.s3_client(context.approved_region if context is not None else None)
+    manifest, _parsed = _gather_evidence(client, context)
     return manifest
 
 
@@ -333,7 +339,7 @@ def _project_findings(manifest, delta, adapter_error, delta_sha):
     return findings
 
 
-def build_audit_review(client=None):
+def build_audit_review(client=None, context=None):
     """Full read-only audit-review view: evidence manifest + live delta + Publisher/Scout state
     side by side + severity findings + the delta report in human-readable rollup form.
 
@@ -341,8 +347,8 @@ def build_audit_review(client=None):
     Review Record + Platform Approval. Read-only; computes and persists nothing (persistence is
     Slice 3). Fail-loud only on whole-view config/resolution errors.
     """
-    client = client or audit_s3_source.s3_client()
-    manifest, parsed = _gather_evidence(client)
+    client = client or audit_s3_source.s3_client(context.approved_region if context is not None else None)
+    manifest, parsed = _gather_evidence(client, context)
 
     review_report = parsed.get("review_report")
     platform_approval = parsed.get("platform_approval")
