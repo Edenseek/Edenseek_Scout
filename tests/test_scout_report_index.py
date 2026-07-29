@@ -17,6 +17,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import scout_report_publisher as srp  # noqa: E402
 import scout_report_index as sri  # noqa: E402
 import scout_delta_audit  # noqa: E402
+import scout_context  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 REPO_PREFIX = "publishers/edenseek/title_groups/society_universe/series/society_of_killers/issues/issue_001"
@@ -206,6 +207,64 @@ class TestQueryAndSeries(unittest.TestCase):
         self.assertEqual([p["value"] for p in series["points"]], [0.9, 0.8])   # oldest->newest
         self.assertEqual(len(series["segments"]), 2)             # split by comparability key
         self.assertEqual(series["boundaries"], [2])              # boundary at run_seq 2
+
+
+class TestIndexIssueContextThreading(unittest.TestCase):
+    """Increment 3: an explicit IssueContext drives the index identically to the env default."""
+
+    def _ctx(self):
+        return scout_context.IssueContext.for_prefixes(
+            approved_bucket="edenseek-publishing", approved_prefix=REPO_PREFIX + "/approved",
+            scout_bucket="edenseek-scout", scout_prefix=REPO_PREFIX)
+
+    def _seed(self, s3):
+        """Persist one delta report + index via the env path (the certified single-issue flow)."""
+        with mock.patch.dict("os.environ", _env(), clear=False), \
+                mock.patch.object(scout_delta_audit.audit_review, "build_audit_review", return_value=_view()):
+            scout_delta_audit.run_and_persist(client=s3)
+
+    def test_load_index_context_equals_env(self):
+        s3 = FakeS3()
+        self._seed(s3)
+        with mock.patch.dict("os.environ", _env(), clear=False):
+            idx_env = sri.load_index(s3)
+        with mock.patch.dict("os.environ", {}, clear=True):  # env cleared → context-driven
+            idx_ctx = sri.load_index(s3, context=self._ctx())
+        self.assertEqual(idx_env, idx_ctx)
+
+    def test_update_index_context_equals_env(self):
+        seed = FakeS3()
+        self._seed(seed)
+        envelope = json.loads(seed.store[("edenseek-scout",
+                                          f"{REPO_PREFIX}/history/scout_delta_report_000001.json")])
+        entry = sri.build_index_entry(envelope)
+        a, b = FakeS3(), FakeS3()
+        with mock.patch.dict("os.environ", _env(), clear=False):
+            idx_a = sri.update_index(entry, client=a)
+        with mock.patch.dict("os.environ", {}, clear=True):
+            idx_b = sri.update_index(entry, client=b, context=self._ctx())
+        self.assertEqual(idx_a, idx_b)
+        self.assertEqual(a.store, b.store)  # byte-identical index object at identical key
+
+    def test_rebuild_index_context_equals_env(self):
+        s3a, s3b = FakeS3(), FakeS3()
+        self._seed(s3a)
+        self._seed(s3b)
+        with mock.patch.dict("os.environ", _env(), clear=False):
+            reb_env = sri.rebuild_index(s3a)
+        with mock.patch.dict("os.environ", {}, clear=True):
+            reb_ctx = sri.rebuild_index(s3b, context=self._ctx())
+        self.assertEqual(reb_env, reb_ctx)
+        idx_key = f"{REPO_PREFIX}/reports/report_index.json"
+        self.assertEqual(s3a.store[("edenseek-scout", idx_key)],
+                         s3b.store[("edenseek-scout", idx_key)])
+
+    def test_context_index_writes_only_scout(self):
+        s3 = FakeS3()
+        self._seed(s3)
+        with mock.patch.dict("os.environ", {}, clear=True):
+            sri.rebuild_index(s3, context=self._ctx())
+        self.assertTrue(all(b == "edenseek-scout" for (b, _k) in s3.store))
 
 
 if __name__ == "__main__":
