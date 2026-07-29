@@ -161,11 +161,11 @@ class TestFailures(_Base):
         calls = {"n": 0}
         real_update = sri.update_index
 
-        def flaky_update(entry, client=None):
+        def flaky_update(entry, client=None, context=None):
             calls["n"] += 1
             if calls["n"] == 1:
                 raise sri.ScoutReportIndexError("simulated index write failure")
-            return real_update(entry, client=client)
+            return real_update(entry, client=client, context=context)
 
         with mock.patch.object(sri, "update_index", side_effect=flaky_update):
             r1 = self.run_agent(s3, _view())
@@ -279,6 +279,44 @@ class TestLedgerIssueContextThreading(unittest.TestCase):
             self._mark_processed(s3, context=self._ctx())
         self.assertTrue(all(bkt == "edenseek-scout" for (bkt, _k) in s3.store))
         self.assertTrue(all("issues/issue_001/" in k for (_b, k) in s3.store))
+
+
+class TestRunnerIssueContextThreading(_Base):
+    """Increment 4b: audit_current_revision forwards an explicit IssueContext through the WHOLE delta
+    transaction (resolve -> evidence -> persist -> index -> ledger). With the environment CLEARED,
+    the run must still succeed and be byte-identical to the env-driven run — which can only happen if
+    the runner forwards the context to every downstream write."""
+
+    def _ctx(self):
+        return scout_context.IssueContext.for_prefixes(
+            approved_bucket="edenseek-publishing", approved_prefix=REPO_PREFIX + "/approved",
+            scout_bucket="edenseek-scout", scout_prefix=REPO_PREFIX)
+
+    def _run_ctx(self, s3, view, published="rev_pub_1"):
+        # resolve + build_audit_review are mocked; env is cleared, so the persistence/index/ledger
+        # writes survive ONLY because audit_current_revision threads the context to them.
+        with mock.patch.dict("os.environ", {}, clear=True), \
+                mock.patch.object(sda.audit_s3_source, "resolve_current_revision",
+                                  return_value=_pointer(published)), \
+                mock.patch.object(sda.audit_review, "build_audit_review", return_value=view):
+            return sda.audit_current_revision(client=s3, context=self._ctx())
+
+    def test_audit_current_revision_context_equals_env(self):
+        with mock.patch.object(ledger, "_now", return_value="2026-07-14T00:00:00Z"):
+            a = FakeS3()
+            res_env = self.run_agent(a, _view())          # env-driven (env set)
+            b = FakeS3()
+            res_ctx = self._run_ctx(b, _view())            # context-driven (env cleared)
+        self.assertEqual(res_env["status"], "persisted")
+        self.assertEqual(res_env, res_ctx)                 # identical runner result
+        self.assertEqual(a.store, b.store)                 # byte-identical report + index + ledger
+
+    def test_context_run_writes_only_scout_repo(self):
+        with mock.patch.object(ledger, "_now", return_value="2026-07-14T00:00:00Z"):
+            b = FakeS3()
+            self._run_ctx(b, _view())
+        self.assertTrue(all(bkt == "edenseek-scout" for (bkt, _k) in b.store))
+        self.assertTrue(all("issues/issue_001/" in k for (_b, k) in b.store))
 
 
 if __name__ == "__main__":

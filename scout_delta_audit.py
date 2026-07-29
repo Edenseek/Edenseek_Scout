@@ -187,13 +187,13 @@ def build_report_body(view):
     return body
 
 
-def run_and_persist(client=None, dry_run=False):
+def run_and_persist(client=None, dry_run=False, context=None):
     """Run one audit, persist the report, and update the index — the full transaction.
 
     Returns a summary dict. ``dry_run`` assembles the report body and returns it without writing.
     Fail-loud on any error.
     """
-    view = audit_review.build_audit_review(client=client)
+    view = audit_review.build_audit_review(client=client, context=context)
     body = build_report_body(view)
     completed_at = view["audit_timestamp"]
 
@@ -202,12 +202,12 @@ def run_and_persist(client=None, dry_run=False):
         return {"status": "dry_run", "completed_at": completed_at, "report_body": body}
 
     # 1) persist the immutable report (history + latest), byte-verified. Idempotent on run_id.
-    published = srp.publish_delta_report(body, completed_at, client=client)
+    published = srp.publish_delta_report(body, completed_at, client=client, context=context)
     # 2) same transaction: project -> index entry, update the index (verified). update_index keys on
     #    run_seq, so re-running an already-persisted logical run reconciles rather than duplicates.
     entry = sri.build_index_entry({**published["envelope"],
                                    "report_sha256": published["report_sha256"]})
-    index = sri.update_index(entry, client=client)
+    index = sri.update_index(entry, client=client, context=context)
 
     logger.info("Scout delta audit %s %s (run_seq %s); index count=%d",
                 "reconciled" if published.get("idempotent") else "persisted",
@@ -228,7 +228,7 @@ def run_and_persist(client=None, dry_run=False):
     }
 
 
-def audit_current_revision(client=None, force=False, trigger="manual"):
+def audit_current_revision(client=None, force=False, trigger="manual", context=None):
     """THE canonical Scout delta-audit agent entry point — used by scheduled, reconciliation, and
     manual triggers alike. Idempotent and ledger-guarded.
 
@@ -239,19 +239,19 @@ def audit_current_revision(client=None, force=False, trigger="manual"):
     any stage is recorded in the ledger (with the failure stage + codes) and does NOT mark the
     revision processed. Read-only on the Publisher repository; writes only to ``edenseek-scout``.
     """
-    client = client or audit_s3_source.s3_client()
+    client = client or audit_s3_source.s3_client(context.approved_region if context is not None else None)
     fingerprint = ledger.context_fingerprint(static_versions())
 
     # 1) detect the eligible revision (cheap: pointer read only).
     try:
-        pointer = audit_s3_source.resolve_current_revision(client)
+        pointer = audit_s3_source.resolve_current_revision(client, context=context)
     except audit_s3_source.ScoutS3SourceError as e:
         logger.exception("Delta audit: could not resolve current revision: %s", e)
         return {"status": "error", "stage": "resolve", "error": str(e)}
     revision_id = pointer["revision_id"]
 
     # 2) suppress duplicates: already processed under this exact context?
-    led = ledger.load_ledger(client)
+    led = ledger.load_ledger(client, context=context)
     if not force and ledger.is_processed(led, revision_id, fingerprint):
         logger.info("Delta audit: revision %s already processed (fingerprint %s); skipping.",
                     revision_id, fingerprint)
@@ -260,11 +260,11 @@ def audit_current_revision(client=None, force=False, trigger="manual"):
 
     # 3) run + persist + verify + index (idempotent; safe to retry).
     try:
-        result = run_and_persist(client=client)
+        result = run_and_persist(client=client, context=context)
     except Exception as e:  # noqa: BLE001 — recorded to the ledger with the failing stage
         stage = _failure_stage(e)
         ledger.mark_failed(revision_id, fingerprint, stage=stage, error_codes=[type(e).__name__],
-                           trigger=trigger, client=client)
+                           trigger=trigger, client=client, context=context)
         logger.exception("Delta audit failed at stage=%s for revision %s: %s", stage, revision_id, e)
         return {"status": "failed", "revision_id": revision_id, "stage": stage, "error": str(e),
                 "context_fingerprint": fingerprint}
@@ -276,7 +276,7 @@ def audit_current_revision(client=None, force=False, trigger="manual"):
         generated_snapshot_revision_id=result["generated_snapshot_revision_id"],
         comparability={"geometry": result["geometry_comparability_key"],
                        "metadata": result["metadata_comparability_key"]},
-        trigger=trigger, client=client)
+        trigger=trigger, client=client, context=context)
     return {"status": result["status"], "revision_id": revision_id, "run_id": result["run_id"],
             "run_seq": result["run_seq"], "report_id": result["report_id"],
             "index_count": result["index_count"], "context_fingerprint": fingerprint,
