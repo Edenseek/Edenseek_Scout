@@ -405,6 +405,18 @@ def get_observability_health_publisher(username: str = Depends(require_auth)):
         raise HTTPException(status_code=503, detail=f"Publisher health unavailable: {e}")
 
 
+@app.get("/observability/health/cross-series")
+def get_observability_health_cross_series(username: str = Depends(require_auth)):
+    """Read-only **Cross-Series Health** projection (ADR-0001 D8): a deterministic platform-wide comparison
+    of Series Health — series distribution + the actionable attention set. Advisory; Registry-derived;
+    mutates nothing."""
+    try:
+        return scout_observability.cross_series_health(scout_registry.load_registry())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Cross-series health error: {e}")
+        raise HTTPException(status_code=503, detail=f"Cross-series health unavailable: {e}")
+
+
 @app.get("/reports/latest")
 def get_latest_report(username: str = Depends(require_auth)):
     """The current/latest persisted immutable Scout delta report (read-only)."""

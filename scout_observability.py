@@ -13,8 +13,9 @@ projections. ``roll_up`` is a monotone max over ``attention > unknown > healthy`
 composing the levels yields the same result as rolling the leaves directly — the hierarchy is coherent by
 construction.
 
-Increment 1 implemented **Issue Health**; Increment 2 adds **Series Health** and **Publisher Health** as
-aggregations. All share the primitives:
+Increment 1 implemented **Issue Health**; Increment 2 adds **Series Health** and **Publisher Health**;
+Increment 3 adds **Cross-Series Health** (a platform-wide comparison over Series Health). All share the
+primitives:
 - ``assess_issue`` — the atomic per-issue health rule (the leaf assessment every projection starts from);
 - ``roll_up`` — the parent-from-children rule (how Series/Publisher/Cross-Series health will aggregate);
 - ``_summary`` — health counts; and a common projection envelope (``projection`` name + ``summary`` +
@@ -215,3 +216,28 @@ def publisher_health(registry: Mapping[str, Any]) -> dict:
             "series": [s["series_id"] for s in series_recs],
         })
     return _envelope("publisher_health", registry, records)
+
+
+def cross_series_health(registry: Mapping[str, Any]) -> dict:
+    """**Cross-Series Health** — a deterministic platform-wide comparison *of Series Health*.
+
+    Composes the level beneath (``series_health``) and, across ALL publishers/series, surfaces the
+    platform-wide distribution (``summary``), the series grouped by status (``by_health``), and the
+    actionable **attention set** (series whose health is not ``healthy``, with their issue counts). Pure;
+    no new input beyond Series Health; no inference (no per-publisher comparison in this increment).
+    """
+    series = series_health(registry)
+    records = series["records"]
+    by_health: dict[str, list] = {HEALTHY: [], ATTENTION: [], UNKNOWN: []}
+    for rec in records:
+        by_health.setdefault(rec["health"], []).append(rec["series_prefix"])
+    attention = [rec for rec in records if rec["health"] != HEALTHY]
+    return {
+        "projection": "cross_series_health",
+        "health_version": HEALTH_VERSION,
+        "registry_version": registry.get("registry_version"),
+        "registry_generated_at": registry.get("generated_at"),
+        "summary": series["summary"],          # platform-wide series distribution
+        "by_health": by_health,
+        "attention": attention,
+    }

@@ -27,7 +27,7 @@ Health vocabulary: `healthy` / `attention` / `unknown`, with machine reasons (`n
 | **Issue Health** | ✅ Increment 1 (merged, prod-certified) | `assess_issue` over `registry.entries` |
 | **Series Health** | ✅ Increment 2 | `roll_up` over Issue Health grouped by `series_id` (composes `issue_health`) |
 | **Publisher Health** | ✅ Increment 2 | `roll_up` over Series Health grouped by `publisher_id` (composes `series_health`) |
-| Cross-Series Health | planned | comparison/rollup across series (Registry `tree_view`) |
+| **Cross-Series Health** | ✅ Increment 3 | platform-wide comparison over Series Health: distribution + `by_health` grouping + attention set (composes `series_health`; per-publisher comparison deferred) |
 | Retrieval Health | planned | Registry + retrieval-readiness signals (still read-only, Registry-anchored) |
 | Trend Health | planned | health over the report index/benchmark history (time series) |
 
@@ -46,7 +46,9 @@ Routing stays a single `/observability/health` until a second projection justifi
   (`INCREMENT_1_DEPLOYMENT_VALIDATION_PLAN.md`).
 
 ## Invariants future projections must preserve
-- **Recomputable-from-below (binding).** Every level is a deterministic function of the level beneath it —
+> Recompute-from-Below is now a first-class architectural principle — **`PRINCIPLES.md` P2**.
+
+- **Recomputable-from-below (binding; PRINCIPLES.md P2).** Every level is a deterministic function of the level beneath it —
   it can always be recomputed solely from that layer (Issue ← Registry; Series ← Issue; Publisher ← Series;
   future Cross-Series/Trend/Recommendations ← the certified layers beneath them). This gives explainability,
   reproducibility, independent testing, and deterministic certification. `roll_up` is a monotone max

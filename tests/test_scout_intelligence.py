@@ -226,6 +226,23 @@ class TestEndpoints(unittest.TestCase):
         self.assertEqual(client.get("/observability/health/series").status_code, 401)
         self.assertEqual(client.get("/observability/health/publisher").status_code, 401)
 
+    def test_observability_cross_series_endpoint(self):
+        known = sreg.build_registry([sreg.build_entry(
+            issue_prefix="publishers/edenseek/title_groups/tg/series/soc/issues/issue_001",
+            identity={"publisher_id": "edenseek", "title_group_id": "tg",
+                      "series_id": "soc", "issue_id": "issue_001"},
+            published_revision_id="rev_x", review_id="rev_x", publication_state="edenseek_approved",
+            audit={"audit_state": "audited", "run_seq": 3, "run_id": "r", "report_id": "rep"})],
+            generated_at="t1")
+        with mock.patch.object(sreg, "load_registry", return_value=known):
+            r = client.get("/observability/health/cross-series", auth=AUTH)
+            self.assertEqual(r.status_code, 200)
+            body = r.json()
+            self.assertEqual(body["projection"], "cross_series_health")
+            self.assertEqual(body["summary"], {"healthy": 1, "attention": 0, "unknown": 0, "total": 1})
+            self.assertEqual(body["attention"], [])
+        self.assertEqual(client.get("/observability/health/cross-series").status_code, 401)
+
 
 class _IntelFakeS3:
     def __init__(self):

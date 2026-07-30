@@ -193,5 +193,49 @@ class PublisherHealthTest(unittest.TestCase):
         self.assertEqual(obs.publisher_health(registry)["records"][0]["health"], obs.HEALTHY)
 
 
+class CrossSeriesHealthTest(unittest.TestCase):
+    SOC = "publishers/edenseek/title_groups/society_universe/series/society_of_killers"
+
+    def test_tree_of_one(self):
+        proj = obs.cross_series_health(reg.build_registry([_e("issue_001")], generated_at="t1"))
+        self.assertEqual(proj["projection"], "cross_series_health")
+        self.assertEqual(proj["registry_generated_at"], "t1")
+        self.assertEqual(proj["summary"], {"healthy": 1, "attention": 0, "unknown": 0, "total": 1})
+        self.assertEqual(proj["by_health"]["healthy"], [self.SOC])
+        self.assertEqual(proj["by_health"]["attention"], [])
+        self.assertEqual(proj["attention"], [])
+
+    def test_platform_distribution_and_attention_set(self):
+        proj = obs.cross_series_health(reg.build_registry([
+            _e("issue_001", series_id="s_a"),                                  # healthy
+            _e("issue_001", series_id="s_b", audit_state=reg.AUDIT_UNPROCESSED),  # attention
+            _e("issue_001", series_id="s_c", revision=None),                   # unknown
+        ]))
+        self.assertEqual(proj["summary"], {"healthy": 1, "attention": 1, "unknown": 1, "total": 3})
+        self.assertEqual(len(proj["by_health"]["healthy"]), 1)
+        self.assertEqual(len(proj["by_health"]["attention"]), 1)
+        self.assertEqual(len(proj["by_health"]["unknown"]), 1)
+        # attention set = the non-healthy series only (actionable), each carrying its issue_counts
+        self.assertEqual({r["series_id"] for r in proj["attention"]}, {"s_b", "s_c"})
+        self.assertTrue(all("issue_counts" in r for r in proj["attention"]))
+
+    def test_recomputes_from_series_health(self):
+        # recompute-from-below: cross-series is a pure function of Series Health
+        registry = reg.build_registry([
+            _e("issue_001", series_id="s_a"),
+            _e("issue_001", series_id="s_b", audit_state=reg.AUDIT_FAILED)])
+        series = obs.series_health(registry)
+        cross = obs.cross_series_health(registry)
+        self.assertEqual(cross["summary"], series["summary"])
+        self.assertEqual([r["series_id"] for r in cross["attention"]],
+                         [r["series_id"] for r in series["records"] if r["health"] != obs.HEALTHY])
+
+    def test_empty_registry(self):
+        proj = obs.cross_series_health(reg.build_registry([]))
+        self.assertEqual(proj["summary"], {"healthy": 0, "attention": 0, "unknown": 0, "total": 0})
+        self.assertEqual(proj["by_health"], {"healthy": [], "attention": [], "unknown": []})
+        self.assertEqual(proj["attention"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
