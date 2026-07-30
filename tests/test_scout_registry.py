@@ -14,8 +14,11 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import io  # noqa: E402
 import json  # noqa: E402
+import os  # noqa: E402
+from unittest import mock  # noqa: E402
 import scout_registry as reg  # noqa: E402
 import scout_context as sc  # noqa: E402
+import scout_report_publisher as srp  # noqa: E402
 import scout_revision_ledger as srl  # noqa: E402
 import audit_review  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
@@ -148,6 +151,10 @@ class _RegFakeS3:
             raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
         return {"Body": io.BytesIO(self.store[(Bucket, Key)]), "VersionId": "v"}
 
+    def put_object(self, Bucket, Key, Body, ContentType=None):  # noqa: N803
+        self.store[(Bucket, Key)] = Body if isinstance(Body, bytes) else Body.encode()
+        return {"VersionId": "v"}
+
     def list_objects_v2(self, Bucket, Prefix, ContinuationToken=None):  # noqa: N803
         keys = [k for (b, k) in self.store if b == Bucket and k.startswith(Prefix)]
         return {"Contents": [{"Key": k} for k in sorted(keys)], "IsTruncated": False}
@@ -234,6 +241,65 @@ class ResolveTest(unittest.TestCase):
         self.assertEqual(r["count"], 1)
         self.assertIn(P1, r["entries"])
         self.assertEqual(r["entries"][P1]["publication"]["state"], "edenseek_approved")
+
+
+class PersistTest(unittest.TestCase):
+    REGISTRY_KEY = ("edenseek-scout", "registry/registry.json")
+
+    def _registry(self):
+        return reg.build_registry(
+            [reg.build_entry(issue_prefix=P1, identity=IDENT1, publication_state="edenseek_approved")],
+            generated_at="t1")
+
+    def test_persist_and_load_roundtrip(self):
+        s3 = _RegFakeS3()
+        registry = self._registry()
+        out = reg.persist_registry(registry, client=s3, context=_ctx())
+        self.assertEqual(out["key"], "registry/registry.json")
+        self.assertEqual(out["count"], 1)
+        self.assertIn(self.REGISTRY_KEY, s3.store)
+        self.assertEqual(reg.load_registry(client=s3, context=_ctx()), registry)  # byte-faithful roundtrip
+
+    def test_load_absent_returns_empty_registry(self):
+        empty = reg.load_registry(client=_RegFakeS3(), context=_ctx())
+        self.assertEqual(empty["count"], 0)
+        self.assertEqual(empty["entries"], {})
+        self.assertEqual(empty["registry_version"], reg.REGISTRY_VERSION)
+
+    def test_rebuild_registry_end_to_end(self):
+        # seed authoritative sources so resolve produces a real entry, then rebuild persists it.
+        store = {
+            ("edenseek-publishing", f"{P1}/approved/published.json"): _pointer_bytes(),
+            ("edenseek-publishing", f"{P1}/reviews/{REVIEW_ID}/platform_approval.json"): _pa_bytes(),
+            ("edenseek-scout", f"{P1}/reports/report_index.json"): _index_bytes(
+                [{"published_revision_id": REVISION_ID, "run_seq": 3, "run_id": "run_x",
+                  "report_id": "rep3"}]),
+        }
+        s3 = _RegFakeS3(store)
+        reg.rebuild_registry([_ctx()], client=s3, generated_at="t1")
+        loaded = reg.load_registry(client=s3, context=_ctx())
+        self.assertEqual(loaded["count"], 1)
+        e = loaded["entries"][P1]
+        self.assertEqual(e["publication"]["published_revision_id"], REVISION_ID)
+        self.assertEqual(e["publication"]["state"], "edenseek_approved")
+        self.assertEqual(e["audit"]["audit_state"], reg.AUDIT_AUDITED)
+
+    def test_persist_writes_only_scout_bucket(self):
+        s3 = _RegFakeS3()
+        reg.persist_registry(self._registry(), client=s3, context=_ctx())
+        self.assertTrue(all(bkt == "edenseek-scout" for (bkt, _k) in s3.store))
+        self.assertEqual(set(s3.store), {self.REGISTRY_KEY})
+
+    def test_persist_context_equals_env(self):
+        registry = self._registry()
+        a = _RegFakeS3()
+        with mock.patch.dict(os.environ, {srp.BUCKET_ENV: "edenseek-scout",
+                                          srp.REGION_ENV: "us-west-2"}, clear=False):
+            reg.persist_registry(registry, client=a)                       # env target
+        b = _RegFakeS3()
+        with mock.patch.dict(os.environ, {}, clear=True):                  # env cleared
+            reg.persist_registry(registry, client=b, context=_ctx())       # context target
+        self.assertEqual(a.store, b.store)  # byte-identical object at the same key
 
 
 if __name__ == "__main__":

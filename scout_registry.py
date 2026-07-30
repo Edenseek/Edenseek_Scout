@@ -5,13 +5,14 @@ hierarchy-keyed per-issue entries**. The publisher/series/issue "tree" is a quer
 that flat model — never a nested-storage commitment.
 
 Phase 2 (behavior-neutral so far). Increment 1 introduced the Registry **data model + pure
-projection/view functions**. Increment 2 adds **read-only resolvers** (``resolve_entry`` /
-``resolve_registry``) that derive a Registry from authoritative Publisher objects (current revision +
-platform-approval state) and Scout's own index/ledger (audit linkage). There is still **no
-persistence and no production consumer** — nothing in the running pipeline reads, resolves, or
-persists a Registry. Later increments (per ADR-0001 D7) persist the Registry (tree-of-one), then add
-Discovery to populate it publisher-wide, then point the scheduler at it. Introducing this changes no
-production behavior.
+projection/view functions**. Increment 2 added **read-only resolvers** (``resolve_entry`` /
+``resolve_registry``). Increment 3 adds **persistence** (``persist_registry`` / ``load_registry`` /
+``rebuild_registry``) of the derived projection to a single latest-state object at the Scout-bucket
+root ``registry/registry.json`` (like the benchmark platform projection) — overwrite + readback
+SHA-256 verified, rebuildable by re-resolving. There is still **no production consumer** — nothing in
+the running pipeline resolves or persists a Registry. Later increments (per ADR-0001 D7) add Discovery
+to populate it publisher-wide, then point the scheduler at it. Introducing this changes no production
+behavior.
 
 Invariants this module must always uphold (ADR-0001):
 - **D3 — derived projection.** A Registry is rebuildable from the Publisher's authoritative objects
@@ -30,15 +31,30 @@ Invariants this module must always uphold (ADR-0001):
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from typing import Any, Mapping, Optional
 
+from botocore.exceptions import BotoCoreError, ClientError
+
+from logging_config import logger
 import audit_s3_source
 import scout_report_index
+import scout_report_publisher
 import scout_revision_ledger
 from scout_context import IssueContext  # leaf import (scout_context depends on nothing Scout-side)
 
+
+class ScoutRegistryError(Exception):
+    """Raised when the Registry cannot be configured, read, or persisted."""
+
+
 REGISTRY_VERSION = "v1"
+
+# The Registry is a platform-wide flat projection -> a single latest-state object at the Scout-bucket
+# root (peer of ``benchmark/platform.json``), NOT per-issue and NOT immutable history.
+REGISTRY_ARTIFACT_KEY = "registry/registry.json"
 
 # Publisher publication state is a Publisher FACT that Scout records verbatim; Scout never invents it.
 STATE_UNKNOWN = "unknown"
@@ -235,3 +251,68 @@ def resolve_registry(contexts, *, client=None, generated_at: Optional[str] = Non
     READ-ONLY; the derived projection (D3), rebuildable by re-resolving."""
     entries = [resolve_entry(c, client=client) for c in contexts]
     return build_registry(entries, generated_at=generated_at)
+
+
+# --------------------------------------------------------------------------- #
+# Persistence (Phase 2 · Increment 3): write/read the derived projection to a single Scout-bucket-root
+# object. Latest-state (overwrite) + readback SHA-256 verified; rebuildable. No production consumer yet.
+# --------------------------------------------------------------------------- #
+def _target(client, context: Optional[IssueContext]):
+    """Resolve ``(client, bucket)`` for the Scout-bucket-root Registry object.
+
+    The Registry is platform-wide, so only the Scout bucket + region are needed (no per-issue prefix).
+    An explicit context supplies both; otherwise they come from the environment (byte-for-byte the
+    ``scout_benchmark`` env pattern).
+    """
+    if context is not None:
+        bucket, region = context.scout_bucket, context.scout_region
+    else:
+        bucket = os.getenv(scout_report_publisher.BUCKET_ENV)
+        if not bucket:
+            raise ScoutRegistryError(
+                f"Scout Repository bucket not configured: set {scout_report_publisher.BUCKET_ENV}.")
+        region = os.getenv(scout_report_publisher.REGION_ENV, scout_report_publisher.DEFAULT_REGION)
+    client = client or scout_report_publisher._s3_client(region)
+    return client, bucket
+
+
+def persist_registry(registry: Mapping[str, Any], *, client=None,
+                     context: Optional[IssueContext] = None) -> dict:
+    """Write the derived Registry projection to ``registry/registry.json`` (latest-state overwrite),
+    then read it back and byte-verify. Writes only ``edenseek-scout``. Returns the write summary."""
+    client, bucket = _target(client, context)
+    body = scout_report_publisher._dumps(registry)
+    scout_report_publisher._put(client, bucket, REGISTRY_ARTIFACT_KEY, body, "application/json")
+    scout_report_publisher._verify_readback(client, bucket, REGISTRY_ARTIFACT_KEY, body)
+    logger.info("Registry persisted + verified: s3://%s/%s (%d issue(s))",
+                bucket, REGISTRY_ARTIFACT_KEY, registry.get("count", 0))
+    return {"bucket": bucket, "key": REGISTRY_ARTIFACT_KEY,
+            "sha256": hashlib.sha256(body).hexdigest(), "count": registry.get("count", 0)}
+
+
+def load_registry(*, client=None, context: Optional[IssueContext] = None) -> dict:
+    """Read the persisted Registry (read-only). Returns an empty Registry when none exists yet."""
+    client, bucket = _target(client, context)
+    try:
+        body = client.get_object(Bucket=bucket, Key=REGISTRY_ARTIFACT_KEY)["Body"].read()
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "NotFound"):
+            return build_registry([])
+        raise ScoutRegistryError(
+            f"Unable to read Registry s3://{bucket}/{REGISTRY_ARTIFACT_KEY}: {e}") from e
+    except BotoCoreError as e:
+        raise ScoutRegistryError(
+            f"Unable to read Registry s3://{bucket}/{REGISTRY_ARTIFACT_KEY}: {e}") from e
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError as e:
+        raise ScoutRegistryError(
+            f"Registry is not valid JSON (s3://{bucket}/{REGISTRY_ARTIFACT_KEY}): {e}") from e
+
+
+def rebuild_registry(contexts, *, client=None, generated_at: Optional[str] = None) -> dict:
+    """Resolve the Registry over ``contexts`` and persist it — the derived, rebuildable projection end
+    to end. The persist target (bucket/region) comes from the first context (all share the Scout bucket)."""
+    registry = resolve_registry(contexts, client=client, generated_at=generated_at)
+    target_context = contexts[0] if contexts else None
+    return persist_registry(registry, client=client, context=target_context)
