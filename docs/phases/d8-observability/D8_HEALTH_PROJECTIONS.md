@@ -24,9 +24,9 @@ Health vocabulary: `healthy` / `attention` / `unknown`, with machine reasons (`n
 ## Projection roadmap (each a later additive increment; no boundary change)
 | Projection | Status | Composition |
 |------------|--------|-------------|
-| **Issue Health** | ✅ Increment 1 (merged) | `assess_issue` over `registry.entries` |
-| Series Health | planned | `roll_up` over issues grouped by `series_id` (Registry `rollup`) |
-| Publisher Health | planned | `roll_up` over series/issues by `publisher_id` |
+| **Issue Health** | ✅ Increment 1 (merged, prod-certified) | `assess_issue` over `registry.entries` |
+| **Series Health** | ✅ Increment 2 | `roll_up` over Issue Health grouped by `series_id` (composes `issue_health`) |
+| **Publisher Health** | ✅ Increment 2 | `roll_up` over Series Health grouped by `publisher_id` (composes `series_health`) |
 | Cross-Series Health | planned | comparison/rollup across series (Registry `tree_view`) |
 | Retrieval Health | planned | Registry + retrieval-readiness signals (still read-only, Registry-anchored) |
 | Trend Health | planned | health over the report index/benchmark history (time series) |

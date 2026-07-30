@@ -6,8 +6,15 @@ Issue / Series / Publisher / Cross-Series / Trend / Retrieval health — each a 
 the Registry. It introduces **no new data source**, performs **no Publisher read**, makes **no mutation**;
 it is advisory only (Charter §4).
 
-Increment 1 implements the first concrete projection, **Issue Health**, plus the shared primitives the
-later projections reuse:
+The projections form a hierarchy where **each level is a deterministic projection computed SOLELY from the
+level beneath it** — Issue Health is the primitive; Series Health aggregates Issue Health; Publisher Health
+aggregates Series Health; later levels (Cross-Series / Trend / Recommendations) build on those certified
+projections. ``roll_up`` is a monotone max over ``attention > unknown > healthy``, so it is associative:
+composing the levels yields the same result as rolling the leaves directly — the hierarchy is coherent by
+construction.
+
+Increment 1 implemented **Issue Health**; Increment 2 adds **Series Health** and **Publisher Health** as
+aggregations. All share the primitives:
 - ``assess_issue`` — the atomic per-issue health rule (the leaf assessment every projection starts from);
 - ``roll_up`` — the parent-from-children rule (how Series/Publisher/Cross-Series health will aggregate);
 - ``_summary`` — health counts; and a common projection envelope (``projection`` name + ``summary`` +
@@ -137,3 +144,74 @@ def issue_health(registry: Mapping[str, Any]) -> dict:
         "summary": _summary(r["health"] for r in records),
         "records": records,
     }
+
+
+def _envelope(projection: str, registry: Mapping[str, Any], records: list) -> dict:
+    return {
+        "projection": projection,
+        "health_version": HEALTH_VERSION,
+        "registry_version": registry.get("registry_version"),
+        "registry_generated_at": registry.get("generated_at"),
+        "summary": _summary(r["health"] for r in records),
+        "records": records,
+    }
+
+
+def _series_prefix(publisher_id, title_group_id, series_id) -> str:
+    return f"publishers/{publisher_id}/title_groups/{title_group_id}/series/{series_id}"
+
+
+def series_health(registry: Mapping[str, Any]) -> dict:
+    """**Series Health** — a deterministic aggregation *of Issue Health*.
+
+    Composes the level beneath (``issue_health``), groups the issue records by
+    ``(publisher_id, title_group_id, series_id)``, and ``roll_up``s each group's issue healths into the
+    series health (+ child issue counts). Pure; no new input beyond the Registry.
+    """
+    issue = issue_health(registry)
+    groups: dict[tuple, list] = {}
+    for rec in issue["records"]:
+        key = (rec.get("publisher_id"), rec.get("title_group_id"), rec.get("series_id"))
+        groups.setdefault(key, []).append(rec)
+
+    records = []
+    for (pub, tg, series), issues in sorted(groups.items(), key=lambda kv: tuple(x or "" for x in kv[0])):
+        healths = [i["health"] for i in issues]
+        records.append({
+            "series_prefix": _series_prefix(pub, tg, series),
+            "publisher_id": pub, "title_group_id": tg, "series_id": series,
+            "health": roll_up(healths),
+            "issue_counts": _summary(healths),
+            "issues": [i["issue_id"] for i in issues],
+        })
+    return _envelope("series_health", registry, records)
+
+
+def publisher_health(registry: Mapping[str, Any]) -> dict:
+    """**Publisher Health** — a deterministic aggregation *of Series Health*.
+
+    Composes the level beneath (``series_health``), groups the series records by ``publisher_id``, and
+    ``roll_up``s each publisher's series healths into the publisher health (+ series counts, and a rollup of
+    issue counts for visibility). Because ``roll_up`` is associative, this equals rolling all a publisher's
+    issues directly — the hierarchy is coherent.
+    """
+    series = series_health(registry)
+    groups: dict[str, list] = {}
+    for rec in series["records"]:
+        groups.setdefault(rec.get("publisher_id"), []).append(rec)
+
+    records = []
+    for pub, series_recs in sorted(groups.items(), key=lambda kv: kv[0] or ""):
+        series_healths = [s["health"] for s in series_recs]
+        issue_counts = {HEALTHY: 0, ATTENTION: 0, UNKNOWN: 0, "total": 0}
+        for s in series_recs:
+            for k in issue_counts:
+                issue_counts[k] += s["issue_counts"].get(k, 0)
+        records.append({
+            "publisher_id": pub,
+            "health": roll_up(series_healths),
+            "series_counts": _summary(series_healths),
+            "issue_counts": issue_counts,
+            "series": [s["series_id"] for s in series_recs],
+        })
+    return _envelope("publisher_health", registry, records)

@@ -383,6 +383,28 @@ def get_observability_health(username: str = Depends(require_auth)):
         raise HTTPException(status_code=503, detail=f"Observability health unavailable: {e}")
 
 
+@app.get("/observability/health/series")
+def get_observability_health_series(username: str = Depends(require_auth)):
+    """Read-only **Series Health** projection (ADR-0001 D8): a deterministic aggregation of Issue Health by
+    series (roll-up over each series' issues). Advisory; Registry-derived; mutates nothing."""
+    try:
+        return scout_observability.series_health(scout_registry.load_registry())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Series health error: {e}")
+        raise HTTPException(status_code=503, detail=f"Series health unavailable: {e}")
+
+
+@app.get("/observability/health/publisher")
+def get_observability_health_publisher(username: str = Depends(require_auth)):
+    """Read-only **Publisher Health** projection (ADR-0001 D8): a deterministic aggregation of Series Health
+    by publisher. Advisory; Registry-derived; mutates nothing."""
+    try:
+        return scout_observability.publisher_health(scout_registry.load_registry())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Publisher health error: {e}")
+        raise HTTPException(status_code=503, detail=f"Publisher health unavailable: {e}")
+
+
 @app.get("/reports/latest")
 def get_latest_report(username: str = Depends(require_auth)):
     """The current/latest persisted immutable Scout delta report (read-only)."""
