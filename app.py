@@ -28,6 +28,7 @@ import scout_benchmark
 import scout_archive
 import scout_intelligence
 import scout_registry
+import scout_observability
 import scout_schema
 import scout_report_publisher
 from logging_config import logger
@@ -368,6 +369,18 @@ def get_registry_tree(username: str = Depends(require_auth)):
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Registry tree error: {e}")
         raise HTTPException(status_code=503, detail=f"Registry tree unavailable: {e}")
+
+
+@app.get("/observability/health")
+def get_observability_health(username: str = Depends(require_auth)):
+    """Read-only **Issue Health** projection (ADR-0001 D8): deterministic health derived SOLELY from the
+    persisted Registry — per-issue health (healthy / attention / unknown + reasons) + a platform summary.
+    Advisory only; mutates nothing; no Publisher access. The first of the D8 Health Projections."""
+    try:
+        return scout_observability.issue_health(scout_registry.load_registry())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Observability health error: {e}")
+        raise HTTPException(status_code=503, detail=f"Observability health unavailable: {e}")
 
 
 @app.get("/reports/latest")
