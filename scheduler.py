@@ -1,9 +1,11 @@
 """APScheduler wiring (Phase D2 automation).
 
 Registers the daily dataset-audit job (which produces all reports incl. the
-Daily Digest and appends an audit-history snapshot). The legacy strategic-report
-job is kept but disabled by default. The scheduler is in-process; deploy with a
-single worker (cross-process safety is deferred). Job callbacks never re-raise,
+Daily Digest and appends an audit-history snapshot). The legacy strategic-report,
+delta-audit reconciliation, and Registry-rebuild jobs are kept but disabled by
+default (opt-in via env flags); the latter two orchestrate the certified pipelines
+and change no audit/Registry/Discovery behavior. The scheduler is in-process; deploy
+with a single worker (cross-process safety is deferred). Job callbacks never re-raise,
 so a failed run is logged without killing the scheduler.
 """
 import os
@@ -40,6 +42,19 @@ def _reconcile_interval_minutes():
     except ValueError:
         m = 15
     return m if m > 0 else 15
+
+
+def _registry_rebuild_enabled():
+    # OFF by default — orchestration is not activated on the production VM in this increment.
+    return _flag("SCOUT_REGISTRY_REBUILD_ENABLED", "false")
+
+
+def _registry_rebuild_interval_minutes():
+    try:
+        m = int(os.getenv("SCOUT_REGISTRY_REBUILD_INTERVAL_MINUTES", "60"))
+    except ValueError:
+        m = 60
+    return m if m > 0 else 60
 
 
 def _audit_cron():
@@ -84,6 +99,20 @@ def scheduled_delta_reconcile():
                     f"(revision {result.get('revision_id')})")
     except Exception as e:
         logger.exception(f"Delta-audit reconciliation failed: {e}")
+
+
+def scheduled_registry_rebuild():
+    """Rebuild the derived Registry from authoritative Publisher data via Discovery -> the certified
+    resolve/persist pipeline (``scout_registry.rebuild_discovered``). **Orchestration only** — it changes
+    no Registry or Discovery behavior. Idempotent (a rebuildable projection). Never re-raises."""
+    logger.info("Scheduled Registry rebuild triggered")
+    try:
+        import scout_registry  # lazy import (keeps scheduler import light)
+        result = scout_registry.rebuild_discovered()
+        logger.info(f"Registry rebuild: {result.get('discovered')} issue(s) discovered, "
+                    f"{result.get('count')} in Registry")
+    except Exception as e:
+        logger.exception(f"Scheduled Registry rebuild failed: {e}")
 
 
 def register_jobs(sched):
@@ -140,6 +169,25 @@ def register_jobs(sched):
         logger.info(f"Registered delta-audit reconciliation job (every {minutes} min)")
     else:
         logger.info("Delta-audit reconciliation job disabled (SCOUT_DELTA_RECONCILE_ENABLED=false)")
+
+    # Registry rebuild (Discovery -> certified rebuild). OFF by default — orchestration only; it changes
+    # no Registry/Discovery behavior. When enabled it calls the certified publisher-wide rebuild.
+    if _registry_rebuild_enabled():
+        minutes = _registry_rebuild_interval_minutes()
+        sched.add_job(
+            scheduled_registry_rebuild,
+            trigger="interval",
+            minutes=minutes,
+            id="scheduled_registry_rebuild",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=900,
+        )
+        registered.append("scheduled_registry_rebuild")
+        logger.info(f"Registered Registry rebuild job (every {minutes} min)")
+    else:
+        logger.info("Registry rebuild job disabled (SCOUT_REGISTRY_REBUILD_ENABLED=false)")
 
     return registered
 
