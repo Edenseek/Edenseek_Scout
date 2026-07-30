@@ -9,8 +9,10 @@ Registry.
 """
 import io
 import json
+import os
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -143,6 +145,32 @@ class FeedsRebuildTest(unittest.TestCase):
         # only the Registry object was written to the Scout bucket (resolution was read-only)
         self.assertEqual([k for (b, k) in s3.puts], ["registry/registry.json"])
         self.assertTrue(all(b == "edenseek-scout" for (b, _k) in s3.puts))
+
+
+class RebuildDiscoveredTest(unittest.TestCase):
+    """The governed publisher-wide one-shot: scout_registry.rebuild_discovered (Discovery -> rebuild)."""
+
+    def test_rebuild_discovered_publisher_wide(self):
+        s3 = _full_store()
+        with mock.patch.dict(os.environ, ENV, clear=True):
+            out = reg.rebuild_discovered(client=s3, generated_at="t1")
+            registry = reg.load_registry(client=s3)             # env target (scout bucket)
+        self.assertEqual(out["discovered"], 2)
+        self.assertEqual(out["count"], 2)
+        self.assertEqual(set(registry["entries"]), {I1, I2})
+        # every entry's truth derived by the certified pipeline
+        self.assertEqual(registry["entries"][I1]["publication"]["published_revision_id"], REV1)
+        self.assertEqual(registry["entries"][I1]["audit"]["audit_state"], reg.AUDIT_AUDITED)
+        self.assertEqual(registry["entries"][I2]["publication"]["state"], "edenseek_approved")
+        # single write: the Registry object only (resolution read-only)
+        self.assertEqual([k for (b, k) in s3.puts], ["registry/registry.json"])
+
+    def test_rebuild_discovered_empty_when_no_issues(self):
+        s3 = FakeS3()  # no published markers
+        with mock.patch.dict(os.environ, ENV, clear=True):
+            out = reg.rebuild_discovered(client=s3, generated_at="t1")
+        self.assertEqual(out["discovered"], 0)
+        self.assertEqual(out["count"], 0)
 
 
 if __name__ == "__main__":

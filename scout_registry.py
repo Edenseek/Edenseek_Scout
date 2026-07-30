@@ -14,8 +14,10 @@ Increment 5a adds the **governed one-shot rebuild trigger** ``rebuild_current`` 
 materializes the persisted Registry for the env-configured single issue (tree-of-one) from
 authoritative Publisher data. This is the first use of ``IssueContext.from_env()`` in a real entry
 point — but it is a **separate, human-run operational tool**, NOT the certified audit path (which is
-untouched and still runs its ``context=None`` env branches). Later increments (per ADR-0001 D7) add
-Discovery to populate the Registry publisher-wide, then point the scheduler at it.
+untouched and still runs its ``context=None`` env branches). Increment 5b added read-only publisher-wide
+Discovery; ``rebuild_discovered`` (+ the ``--discover`` CLI) is the governed one-shot that runs
+Discovery -> rebuild over ALL discovered issues — **Discovery identifies work, the Registry derives
+truth**. Pointing a scheduler at this entry is a later, separately-gated step (per ADR-0001 D7 step 4).
 
 Invariants this module must always uphold (ADR-0001):
 - **D3 — derived projection.** A Registry is rebuildable from the Publisher's authoritative objects
@@ -342,15 +344,37 @@ def rebuild_current(*, client=None, generated_at: Optional[str] = None) -> dict:
     return {**summary, "generated_at": generated_at, "entries": registry["entries"]}
 
 
+def rebuild_discovered(*, client=None, generated_at: Optional[str] = None) -> dict:
+    """Governed publisher-wide one-shot: enumerate issues via Discovery (READ-ONLY), then rebuild +
+    persist the Registry over ALL discovered issues through the certified resolve/persist pipeline.
+
+    Preserves the Phase-2 separation — **Discovery identifies work; the Registry derives truth.** Discovery
+    contributes only the set of ``IssueContext``s; every entry's state is resolved from authoritative
+    objects. Read-only on the Publisher; writes only ``registry/registry.json``.
+    """
+    import scout_discovery  # local: Registry consumes Discovery (one-directional; no import cycle)
+    generated_at = generated_at or _now_iso()
+    contexts = scout_discovery.discover_contexts(client=client)
+    if not contexts:
+        logger.warning("Registry rebuild (--discover): no auditable issues found; persisting empty Registry.")
+    registry = resolve_registry(contexts, client=client, generated_at=generated_at)
+    summary = persist_registry(registry, client=client, context=contexts[0] if contexts else None)
+    return {**summary, "generated_at": generated_at, "discovered": len(contexts),
+            "entries": registry["entries"]}
+
+
 def main(argv=None) -> int:
-    """CLI trigger for the governed one-shot rebuild — the same entry a future scheduler would call."""
+    """CLI trigger for the governed one-shot rebuild. Default: the env-configured single issue
+    (tree-of-one, via ``from_env``). ``--discover``: publisher-wide via Discovery. The same entry a
+    future scheduler would call."""
+    argv = argv if argv is not None else sys.argv[1:]
     import audit_review  # local import: the .env loader lives with the evidence layer
     audit_review._load_dotenv()
     # Prefer explicit access-key creds from .env; otherwise keep AWS_PROFILE (the VM's named profile).
     if os.environ.get("AWS_ACCESS_KEY_ID"):
         os.environ.pop("AWS_PROFILE", None)
     try:
-        summary = rebuild_current()
+        summary = rebuild_discovered() if "--discover" in argv else rebuild_current()
         print(json.dumps(summary, indent=2, ensure_ascii=False))
         return 0
     except Exception as e:  # noqa: BLE001 — CLI boundary; fail-loud with a log + exit 1
