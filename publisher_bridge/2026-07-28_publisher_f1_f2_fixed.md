@@ -34,3 +34,12 @@ Publisher fixes committed (`06a4de1` F1, `6dd94e0` F2) + Gate C package; full su
 verified 99→97 on production data. Pending founder Gate C sign-off, then 6.4 (which gives you the
 non-abstaining metadata-delta revision). Your Phase B certification stands — these fixes refine the inputs,
 they don't invalidate it.
+
+## UPDATE 2026-07-28 — Gate B hostile review PASS
+An adversarial Gate B review of both fixes **PASSED — no corrections**. F1 verified correct on all 8 live
+Issue-1 review records (each excludes exactly `panel_order` + `spread_artifacts`; `deleted` entries never
+reach the check — excluded at persistence); F2 verified forward-only with no `== "v1"` consumers; scope
+clean. Founder has accepted the hostile review. Next: founder Gate C sign-off → **6.4** fresh publication
+(the Publisher will run it once Scout's Oracle VM deployment + live cert are ready) → re-audit the NEW
+revision (non-abstaining metadata delta), not the immutable historical one. Publisher branch clean +
+pushed; a concise 6.4 execution brief is prepared (`docs/governance/week11_day6_6_4_execution_brief.md`).
