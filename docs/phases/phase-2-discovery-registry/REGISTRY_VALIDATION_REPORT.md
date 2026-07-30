@@ -15,7 +15,7 @@
 
 ---
 
-## Result: PASS (logical validation complete; 2 low-risk operator confirmations pending)
+## Result: PASS — operationally certified (2026-07-29; operator confirmations U4/U5 complete)
 
 | # | Criterion | Result | Evidence |
 |---|-----------|--------|----------|
@@ -24,8 +24,8 @@
 | V2 | **Contents correct** | ✅ | rebuilt entry == authoritative sources: revision `rev_0be8dc34…` (pointer), state **`edenseek_approved`** (verbatim `platform_approval`), audit **audited / run_seq 3 / run_833dfc915be60481 / run000003** (Scout index) |
 | V2 | **Contents complete** | ✅ | `count == discovered == #published-issues == 1`; entry set == discovered set; full identity + publication + audit blocks |
 | V3 | **Idempotent (no unintended logical diff)** | ✅ | rebuild #2 `entries` **byte-identical** to rebuild #1; only `generated_at` differs (`…03:02:38Z` → `…03:02:39Z`) — expected metadata |
-| V4 | **`/registry` reflects the rebuilt Registry** | ✅ logic + route; ⏳ live-authed body | persisted `registry/registry.json` **== rebuild #2** (readback faithful); `/registry` handler returns `load_registry()` = that object; live routes deployed + auth-gated (`/registry` & `/registry/tree` → **401 not 404**; `/health` → 200). Authed 200+body fetch **operator-pending** (session lacks prod auth) |
-| V5 | Scheduler stayed disabled | ✅ flag; ⏳ VM log | flag false (kept off); the only rebuilds were the two manual/governed runs. VM `journalctl` "job disabled" confirmation **operator-pending** |
+| V4 | **`/registry` reflects the rebuilt Registry** | ✅ | persisted `registry/registry.json` **== rebuild #2** (readback faithful); `/registry` handler returns `load_registry()` = that object; live routes deployed + auth-gated (`/registry` & `/registry/tree` → **401 not 404**; `/health` → 200). **Operator-confirmed (U4 PASS):** authed `/registry` returned Registry v1, `count 1`, `issue_001` + expected approved revision |
+| V5 | Scheduler stayed disabled | ✅ | flag false; the only rebuilds were the two manual/governed runs. **Operator-confirmed (U5 PASS):** prod logs show `SCOUT_REGISTRY_REBUILD_ENABLED=false`, Registry-rebuild job disabled, no scheduled rebuild executed |
 
 ## Evidence detail
 
@@ -58,18 +58,20 @@ publication: rev_0be8dc34 / review rev_0be8dc342ab3 / state edenseek_approved
 audit:       audited / run_seq 3 / run_833dfc915be60481 / run000003
 ```
 
-## Operator-pending confirmations (optional, to fully close V4-live / V5)
-On the VM, authed against the live service (they only *confirm* what is already verified):
-```bash
-curl -s -u "$U:$P" https://scout.edenseek.com/registry | python -m json.tool     # expect count 1 + the entry above
-curl -s -u "$U:$P" https://scout.edenseek.com/registry/tree                       # expect edenseek -> … -> issue_001
-journalctl -u edenseek-scout | grep -i "registry rebuild job"                     # expect "disabled"
-```
+## Operator confirmations — COMPLETE (PASS, 2026-07-29)
+Both live production checks were run by the operator and passed:
+- **U4 PASS** — authed `GET /registry` returned Registry v1, `count 1`, `issue_001` + the expected approved
+  revision (matches the rebuilt Registry above).
+- **U5 PASS** — prod logs confirm `SCOUT_REGISTRY_REBUILD_ENABLED=false`; the Registry-rebuild job remains
+  disabled with no scheduled rebuild executed.
+
+V4-live and V5 are closed. (Commands used are in `REGISTRY_VALIDATION_PLAN.md` §V4/V5.)
 
 ## Verdict
 The **Registry lifecycle is validated in production**: it rebuilds correctly from live Publisher data,
 derives complete + correct contents from authoritative objects, is logically idempotent across consecutive
 rebuilds, and the persisted Registry (which `/registry` serves) faithfully reflects the rebuild. All success
-criteria are **MET**; the two live confirmations above are operator-pending and low-risk. **The scheduler
-was not activated.** Scheduler activation remains a separate operational certification, unblocked by this
-report.
+criteria are **MET and operator-confirmed** (U4/U5 PASS, 2026-07-29) — **Registry Validation is
+operationally certified.** **The scheduler was not activated.** Scheduler Activation remains a separate
+operational milestone (`SCHEDULER_ACTIVATION_PLAN.md`), gated on explicit founder approval + a chosen
+production cadence.
