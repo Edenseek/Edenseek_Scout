@@ -9,10 +9,13 @@ projection/view functions**. Increment 2 added **read-only resolvers** (``resolv
 ``resolve_registry``). Increment 3 adds **persistence** (``persist_registry`` / ``load_registry`` /
 ``rebuild_registry``) of the derived projection to a single latest-state object at the Scout-bucket
 root ``registry/registry.json`` (like the benchmark platform projection) — overwrite + readback
-SHA-256 verified, rebuildable by re-resolving. There is still **no production consumer** — nothing in
-the running pipeline resolves or persists a Registry. Later increments (per ADR-0001 D7) add Discovery
-to populate it publisher-wide, then point the scheduler at it. Introducing this changes no production
-behavior.
+SHA-256 verified, rebuildable by re-resolving. Increment 4 exposed a read-only ``GET /registry``.
+Increment 5a adds the **governed one-shot rebuild trigger** ``rebuild_current`` (+ a CLI) that
+materializes the persisted Registry for the env-configured single issue (tree-of-one) from
+authoritative Publisher data. This is the first use of ``IssueContext.from_env()`` in a real entry
+point — but it is a **separate, human-run operational tool**, NOT the certified audit path (which is
+untouched and still runs its ``context=None`` env branches). Later increments (per ADR-0001 D7) add
+Discovery to populate the Registry publisher-wide, then point the scheduler at it.
 
 Invariants this module must always uphold (ADR-0001):
 - **D3 — derived projection.** A Registry is rebuildable from the Publisher's authoritative objects
@@ -34,6 +37,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
+from datetime import datetime, timezone
 from typing import Any, Mapping, Optional
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -316,3 +321,42 @@ def rebuild_registry(contexts, *, client=None, generated_at: Optional[str] = Non
     registry = resolve_registry(contexts, client=client, generated_at=generated_at)
     target_context = contexts[0] if contexts else None
     return persist_registry(registry, client=client, context=target_context)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def rebuild_current(*, client=None, generated_at: Optional[str] = None) -> dict:
+    """Governed one-shot: rebuild + persist the Registry for the env-configured single issue
+    (tree-of-one). Builds the ``IssueContext`` from the environment (``IssueContext.from_env``), resolves
+    it from authoritative Publisher data + Scout's index/ledger, and persists ``registry/registry.json``.
+
+    Read-only on the Publisher; writes only ``edenseek-scout``. This is a **separate operational tool** —
+    it is NOT part of the certified audit path. Returns the persist summary + the resolved entries.
+    """
+    context = IssueContext.from_env()
+    generated_at = generated_at or _now_iso()
+    registry = resolve_registry([context], client=client, generated_at=generated_at)
+    summary = persist_registry(registry, client=client, context=context)
+    return {**summary, "generated_at": generated_at, "entries": registry["entries"]}
+
+
+def main(argv=None) -> int:
+    """CLI trigger for the governed one-shot rebuild — the same entry a future scheduler would call."""
+    import audit_review  # local import: the .env loader lives with the evidence layer
+    audit_review._load_dotenv()
+    # Prefer explicit access-key creds from .env; otherwise keep AWS_PROFILE (the VM's named profile).
+    if os.environ.get("AWS_ACCESS_KEY_ID"):
+        os.environ.pop("AWS_PROFILE", None)
+    try:
+        summary = rebuild_current()
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        return 0
+    except Exception as e:  # noqa: BLE001 — CLI boundary; fail-loud with a log + exit 1
+        logger.exception("Registry rebuild failed: %s", e)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

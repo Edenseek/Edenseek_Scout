@@ -301,6 +301,38 @@ class PersistTest(unittest.TestCase):
             reg.persist_registry(registry, client=b, context=_ctx())       # context target
         self.assertEqual(a.store, b.store)  # byte-identical object at the same key
 
+    def _full_env(self):
+        return {sc.APPROVED_BUCKET_ENV: "edenseek-publishing", sc.APPROVED_PREFIX_ENV: P1 + "/approved",
+                sc.APPROVED_REGION_ENV: "us-west-2",
+                sc.SCOUT_BUCKET_ENV: "edenseek-scout", sc.SCOUT_PREFIX_ENV: P1,
+                sc.SCOUT_REGION_ENV: "us-west-2"}
+
+    def test_rebuild_current_governed_one_shot(self):
+        # from_env() builds the single-issue context; resolve reads authoritative sources; persist writes.
+        store = {
+            ("edenseek-publishing", f"{P1}/approved/published.json"): _pointer_bytes(),
+            ("edenseek-publishing", f"{P1}/reviews/{REVIEW_ID}/platform_approval.json"): _pa_bytes(),
+            ("edenseek-scout", f"{P1}/reports/report_index.json"): _index_bytes(
+                [{"published_revision_id": REVISION_ID, "run_seq": 3, "run_id": "run_x",
+                  "report_id": "rep3"}]),
+        }
+        s3 = _RegFakeS3(store)
+        with mock.patch.dict(os.environ, self._full_env(), clear=True):
+            out = reg.rebuild_current(client=s3, generated_at="t1")
+        self.assertEqual(out["key"], "registry/registry.json")
+        self.assertEqual(out["count"], 1)
+        self.assertEqual(out["generated_at"], "t1")
+        # persisted registry loads back with the resolved tree-of-one entry
+        loaded = reg.load_registry(client=s3, context=_ctx())
+        e = loaded["entries"][P1]
+        self.assertEqual(e["publication"]["published_revision_id"], REVISION_ID)
+        self.assertEqual(e["publication"]["state"], "edenseek_approved")
+        self.assertEqual(e["audit"]["audit_state"], reg.AUDIT_AUDITED)
+        # writes confined to the Scout bucket
+        self.assertTrue(all(bkt == "edenseek-scout" for (bkt, k) in s3.store
+                            if k == "registry/registry.json"))
+        self.assertIn(("edenseek-scout", "registry/registry.json"), s3.store)
+
 
 if __name__ == "__main__":
     unittest.main()
