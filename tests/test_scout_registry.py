@@ -12,8 +12,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+import io  # noqa: E402
+import json  # noqa: E402
 import scout_registry as reg  # noqa: E402
 import scout_context as sc  # noqa: E402
+import scout_revision_ledger as srl  # noqa: E402
+import audit_review  # noqa: E402
+from botocore.exceptions import ClientError  # noqa: E402
 
 PUB = "publishers/edenseek/title_groups/society_universe/series/society_of_killers/issues"
 P1 = f"{PUB}/issue_001"
@@ -127,6 +132,108 @@ class ViewsTest(unittest.TestCase):
             list(tree["edenseek"]["title_groups"]["society_universe"]["series"]
                  ["society_of_killers"]["issues"]),
             ["issue_001"])
+
+
+REVISION_ID = "rev_0be8dc342ab3aaaaaaaaaaaa"
+REVIEW_ID = "rev_0be8dc342ab3"  # == audit_review._derive_review_id(REVISION_ID); drift-guarded below
+
+
+class _RegFakeS3:
+    """Minimal read-only in-memory S3: get_object over a {(bucket,key): bytes} store."""
+    def __init__(self, store=None):
+        self.store = dict(store or {})
+
+    def get_object(self, Bucket, Key):  # noqa: N803
+        if (Bucket, Key) not in self.store:
+            raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        return {"Body": io.BytesIO(self.store[(Bucket, Key)]), "VersionId": "v"}
+
+    def list_objects_v2(self, Bucket, Prefix, ContinuationToken=None):  # noqa: N803
+        keys = [k for (b, k) in self.store if b == Bucket and k.startswith(Prefix)]
+        return {"Contents": [{"Key": k} for k in sorted(keys)], "IsTruncated": False}
+
+
+def _ctx():
+    return sc.IssueContext.for_prefixes(
+        approved_bucket="edenseek-publishing", approved_prefix=P1 + "/approved",
+        scout_bucket="edenseek-scout", scout_prefix=P1)
+
+
+def _pointer_bytes():
+    return json.dumps({"published_pointer_version": "v1", "revision_id": REVISION_ID,
+                       "revision_key": f"{P1}/processing/workspace/{REVISION_ID}/snap.json"}).encode()
+
+
+def _pa_bytes(state="edenseek_approved"):
+    return json.dumps({"platform_approval_version": "v1", "canonical_dataset_state": state}).encode()
+
+
+def _index_bytes(entries):
+    return json.dumps({"report_index_version": "v1", "issue_prefix": P1,
+                       "latest": {"run_seq": entries[-1]["run_seq"]} if entries else {},
+                       "count": len(entries), "entries": entries}).encode()
+
+
+class ResolveTest(unittest.TestCase):
+    def test_review_id_matches_audit_review(self):  # drift guard
+        self.assertEqual(reg._resolve_review_id(REVISION_ID),
+                         audit_review._derive_review_id(REVISION_ID))
+        self.assertEqual(reg._resolve_review_id(REVISION_ID), REVIEW_ID)
+
+    def _full_store(self):
+        entry = {"published_revision_id": REVISION_ID, "run_seq": 3, "run_id": "run_x",
+                 "report_id": "scoutdelta::issue_001::rev::run000003"}
+        return {
+            ("edenseek-publishing", f"{P1}/approved/published.json"): _pointer_bytes(),
+            ("edenseek-publishing", f"{P1}/reviews/{REVIEW_ID}/platform_approval.json"): _pa_bytes(),
+            ("edenseek-scout", f"{P1}/reports/report_index.json"): _index_bytes([entry]),
+        }
+
+    def test_resolve_entry_full_authoritative(self):
+        e = reg.resolve_entry(_ctx(), client=_RegFakeS3(self._full_store()), resolved_at="t0")
+        self.assertEqual(e["issue_prefix"], P1)
+        self.assertEqual(e["publication"]["published_revision_id"], REVISION_ID)
+        self.assertEqual(e["publication"]["review_id"], REVIEW_ID)
+        self.assertEqual(e["publication"]["state"], "edenseek_approved")  # verbatim Publisher fact
+        self.assertEqual(e["audit"], {"audit_state": reg.AUDIT_AUDITED, "run_seq": 3,
+                                      "run_id": "run_x",
+                                      "report_id": "scoutdelta::issue_001::rev::run000003"})
+        self.assertEqual(e["resolved_at"], "t0")
+
+    def test_missing_platform_approval_is_creator_approved(self):
+        store = self._full_store()
+        del store[("edenseek-publishing", f"{P1}/reviews/{REVIEW_ID}/platform_approval.json")]
+        e = reg.resolve_entry(_ctx(), client=_RegFakeS3(store))
+        self.assertEqual(e["publication"]["state"], reg.STATE_CREATOR_APPROVED)
+
+    def test_audit_unprocessed_when_no_index_entry(self):
+        store = {k: v for k, v in self._full_store().items()
+                 if k != ("edenseek-scout", f"{P1}/reports/report_index.json")}
+        e = reg.resolve_entry(_ctx(), client=_RegFakeS3(store))
+        self.assertEqual(e["audit"]["audit_state"], reg.AUDIT_UNPROCESSED)
+
+    def test_audit_failed_from_ledger(self):
+        store = {k: v for k, v in self._full_store().items()
+                 if k != ("edenseek-scout", f"{P1}/reports/report_index.json")}
+        store[("edenseek-scout", f"{P1}/reports/report_index.json")] = _index_bytes([])
+        store[("edenseek-scout", f"{P1}/ledger/processed_revisions.json")] = json.dumps(
+            {"entries": {"k": {"revision_id": REVISION_ID, "status": srl.STATUS_FAILED,
+                               "run_seq": None, "run_id": None, "report_id": None}}}).encode()
+        e = reg.resolve_entry(_ctx(), client=_RegFakeS3(store))
+        self.assertEqual(e["audit"]["audit_state"], reg.AUDIT_FAILED)
+
+    def test_unpublished_when_no_pointer(self):
+        e = reg.resolve_entry(_ctx(), client=_RegFakeS3({}))  # no published.json
+        self.assertIsNone(e["publication"]["published_revision_id"])
+        self.assertEqual(e["publication"]["state"], reg.STATE_UNKNOWN)
+        self.assertEqual(e["audit"]["audit_state"], reg.AUDIT_UNPROCESSED)
+        self.assertEqual(e["issue_prefix"], P1)  # still a tree-of-one entry
+
+    def test_resolve_registry_flat_tree_of_one(self):
+        r = reg.resolve_registry([_ctx()], client=_RegFakeS3(self._full_store()), generated_at="t1")
+        self.assertEqual(r["count"], 1)
+        self.assertIn(P1, r["entries"])
+        self.assertEqual(r["entries"][P1]["publication"]["state"], "edenseek_approved")
 
 
 if __name__ == "__main__":

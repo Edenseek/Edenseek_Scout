@@ -4,11 +4,14 @@ A **derived, rebuildable projection** of the Publisher repository hierarchy, sto
 hierarchy-keyed per-issue entries**. The publisher/series/issue "tree" is a query/rollup VIEW over
 that flat model — never a nested-storage commitment.
 
-Phase 2 · Increment 1 (behavior-neutral). This module introduces the Registry **data model + pure
-projection/view functions only**. It performs **no I/O** and has **no consumers** — nothing reads,
-resolves, or persists a Registry yet. Later increments (per ADR-0001 D7) seed the Registry from
-authoritative facts (the tree-of-one), then add Discovery to populate it publisher-wide, then point
-the scheduler at it. Introducing this model changes no production behavior.
+Phase 2 (behavior-neutral so far). Increment 1 introduced the Registry **data model + pure
+projection/view functions**. Increment 2 adds **read-only resolvers** (``resolve_entry`` /
+``resolve_registry``) that derive a Registry from authoritative Publisher objects (current revision +
+platform-approval state) and Scout's own index/ledger (audit linkage). There is still **no
+persistence and no production consumer** — nothing in the running pipeline reads, resolves, or
+persists a Registry. Later increments (per ADR-0001 D7) persist the Registry (tree-of-one), then add
+Discovery to populate it publisher-wide, then point the scheduler at it. Introducing this changes no
+production behavior.
 
 Invariants this module must always uphold (ADR-0001):
 - **D3 — derived projection.** A Registry is rebuildable from the Publisher's authoritative objects
@@ -20,19 +23,27 @@ Invariants this module must always uphold (ADR-0001):
   are pure VIEWS over the flat entries.
 - **Facts vs. observations (Principle P1).** Publisher publication facts (revision / review / state)
   are recorded verbatim; Scout's audit linkage is an observation over Scout's own ledger/index.
-- **Leaf.** Imports only the standard library + ``scout_context`` (itself a leaf), so higher layers
-  can depend on the Registry without an import cycle.
+- **Layering.** The pure model depends only on the standard library + ``scout_context`` (a leaf). The
+  Increment-2 resolvers additionally read via ``audit_s3_source`` + ``scout_report_index`` +
+  ``scout_revision_ledger`` — none of which import the Registry, so there is no import cycle. The
+  Registry sits above the Audit-layer readers.
 """
 from __future__ import annotations
 
+import json
 from typing import Any, Mapping, Optional
 
+import audit_s3_source
+import scout_report_index
+import scout_revision_ledger
 from scout_context import IssueContext  # leaf import (scout_context depends on nothing Scout-side)
 
 REGISTRY_VERSION = "v1"
 
 # Publisher publication state is a Publisher FACT that Scout records verbatim; Scout never invents it.
 STATE_UNKNOWN = "unknown"
+# Published but no platform_approval.json present yet (mirrors review_contract_adapter semantics).
+STATE_CREATOR_APPROVED = "creator_approved"
 
 # Scout-derived audit-linkage state — an observation over Scout's own ledger/index for the issue.
 AUDIT_UNPROCESSED = "unprocessed"
@@ -136,3 +147,91 @@ def tree_view(registry: Mapping[str, Any]) -> dict:
             e.get("series_id"), {"series_id": e.get("series_id"), "issues": {}})
         ser["issues"][e.get("issue_id")] = prefix
     return tree
+
+
+# --------------------------------------------------------------------------- #
+# Resolution (Phase 2 · Increment 2): resolve a Registry entry from AUTHORITATIVE objects + Scout's
+# own index/ledger. READ-ONLY; no persistence; no production consumer yet.
+# --------------------------------------------------------------------------- #
+def _resolve_review_id(published_revision_id: str) -> str:
+    """The deterministic ``reviews/{review_id}/`` address for a published revision.
+
+    Mirrors ``audit_review._derive_review_id`` (drift-guarded by test) so the resolved
+    ``platform_approval.json`` key matches the one Scout's evidence layer reads.
+    """
+    return "rev_" + published_revision_id.split("_", 1)[1][:12]
+
+
+def _resolve_publication_state(client, context: IssueContext, review_id: str) -> str:
+    """Resolve the Publisher publication-state FACT from ``platform_approval.json`` (authoritative).
+
+    Records the verbatim ``canonical_dataset_state`` when present (Principle P1). A missing
+    platform_approval ⇒ published-but-not-platform-approved (``creator_approved``);
+    denied/error/unparseable ⇒ ``unknown``. Tolerant — never raises.
+    """
+    issue_root = context.approved_prefix[: -len("/approved")]
+    key = f"{issue_root}/reviews/{review_id}/platform_approval.json"
+    probe = audit_s3_source.probe_object(client, context.approved_bucket, key)
+    if probe["status"] == "missing":
+        return STATE_CREATOR_APPROVED
+    if probe["status"] != "read":
+        return STATE_UNKNOWN
+    try:
+        return json.loads(probe["body"]).get("canonical_dataset_state") or STATE_UNKNOWN
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return STATE_UNKNOWN
+
+
+def _resolve_audit_linkage(client, context: IssueContext, published_revision_id: Optional[str]) -> dict:
+    """Resolve Scout's OWN audit linkage for the issue from the index (+ ledger) — an observation,
+    kept separate from Publisher facts. Read-only; tolerant of an absent index/ledger."""
+    try:
+        index = scout_report_index.load_index(client, context=context)
+    except scout_report_index.ScoutReportIndexError:
+        return _empty_audit()
+    cur = next((e for e in (index.get("entries") or [])
+                if e.get("published_revision_id") == published_revision_id), None)
+    if cur is not None:
+        return {"audit_state": AUDIT_AUDITED, "run_seq": cur.get("run_seq"),
+                "run_id": cur.get("run_id"), "report_id": cur.get("report_id")}
+    # Not audited under the current revision — was the last attempt on it a recorded failure?
+    try:
+        led = scout_revision_ledger.load_ledger(client, context=context)
+    except scout_revision_ledger.ScoutRevisionLedgerError:
+        return _empty_audit()
+    for e in (led.get("entries") or {}).values():
+        if (e.get("revision_id") == published_revision_id
+                and e.get("status") == scout_revision_ledger.STATUS_FAILED):
+            return {"audit_state": AUDIT_FAILED, "run_seq": e.get("run_seq"),
+                    "run_id": e.get("run_id"), "report_id": e.get("report_id")}
+    return _empty_audit()
+
+
+def resolve_entry(context: IssueContext, *, client=None, resolved_at: Optional[str] = None) -> dict:
+    """Resolve one issue's Registry entry from authoritative objects (current revision + platform-
+    approval state) and Scout's own index/ledger (audit linkage). **READ-ONLY.**
+
+    A resolvable-but-unpublished issue (no current pointer) yields a fact-free entry (revision
+    ``None``, state ``unknown``, audit ``unprocessed``) rather than raising. The derived projection is
+    rebuildable by re-resolving.
+    """
+    client = client or audit_s3_source.s3_client(context.approved_region)
+    try:
+        pointer = audit_s3_source.resolve_current_revision(client, context=context)
+        revision_id = pointer["revision_id"]
+    except audit_s3_source.ScoutS3SourceError:
+        return build_entry(issue_prefix=context.scout_prefix, identity=context.identity,
+                           resolved_at=resolved_at)
+    review_id = _resolve_review_id(revision_id)
+    state = _resolve_publication_state(client, context, review_id)
+    audit = _resolve_audit_linkage(client, context, revision_id)
+    return build_entry(issue_prefix=context.scout_prefix, identity=context.identity,
+                       published_revision_id=revision_id, review_id=review_id,
+                       publication_state=state, audit=audit, resolved_at=resolved_at)
+
+
+def resolve_registry(contexts, *, client=None, generated_at: Optional[str] = None) -> dict:
+    """Resolve a flat Registry over the given issue contexts (tree-of-one today = a one-element list).
+    READ-ONLY; the derived projection (D3), rebuildable by re-resolving."""
+    entries = [resolve_entry(c, client=client) for c in contexts]
+    return build_registry(entries, generated_at=generated_at)
