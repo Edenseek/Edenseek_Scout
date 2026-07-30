@@ -27,6 +27,7 @@ import scout_report_index
 import scout_benchmark
 import scout_archive
 import scout_intelligence
+import scout_registry
 import scout_schema
 import scout_report_publisher
 from logging_config import logger
@@ -344,6 +345,29 @@ def get_metadata_intelligence(username: str = Depends(require_auth)):
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Metadata intelligence error: {e}")
         raise HTTPException(status_code=503, detail=f"Metadata intelligence unavailable: {e}")
+
+
+@app.get("/registry")
+def get_registry(username: str = Depends(require_auth)):
+    """Read-only Registry: the derived, flat hierarchy-keyed projection of per-issue state
+    (ADR-0001 D3/D6), as persisted at ``registry/registry.json``. Observational; mutates nothing.
+    Returns an empty Registry (count 0) when none has been persisted yet."""
+    try:
+        return scout_registry.load_registry()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Registry error: {e}")
+        raise HTTPException(status_code=503, detail=f"Registry unavailable: {e}")
+
+
+@app.get("/registry/tree")
+def get_registry_tree(username: str = Depends(require_auth)):
+    """Read-only publisher -> title_group -> series -> issue rollup VIEW over the flat Registry
+    (D6: the tree is a view, not storage). Tree-of-one today."""
+    try:
+        return scout_registry.tree_view(scout_registry.load_registry())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Registry tree error: {e}")
+        raise HTTPException(status_code=503, detail=f"Registry tree unavailable: {e}")
 
 
 @app.get("/reports/latest")

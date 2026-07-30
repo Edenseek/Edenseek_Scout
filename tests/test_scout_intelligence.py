@@ -15,6 +15,7 @@ import json  # noqa: E402
 from unittest import mock  # noqa: E402
 import scout_intelligence as si  # noqa: E402
 import scout_benchmark as sb  # noqa: E402
+import scout_registry as sreg  # noqa: E402
 import scout_schema as ss  # noqa: E402
 import scout_report_publisher as srp  # noqa: E402
 import scout_context  # noqa: E402
@@ -153,6 +154,28 @@ class TestEndpoints(unittest.TestCase):
 
     def test_intelligence_requires_auth(self):
         self.assertEqual(client.get("/intelligence/geometry").status_code, 401)
+
+    def test_registry_endpoints_serve_persisted_projection(self):
+        known = sreg.build_registry([sreg.build_entry(
+            issue_prefix="publishers/edenseek/title_groups/tg/series/soc/issues/issue_001",
+            identity={"publisher_id": "edenseek", "title_group_id": "tg",
+                      "series_id": "soc", "issue_id": "issue_001"},
+            publication_state="edenseek_approved")], generated_at="t1")
+        with mock.patch.object(sreg, "load_registry", return_value=known):
+            r = client.get("/registry", auth=AUTH)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.json(), known)                    # serves the persisted flat projection
+            t = client.get("/registry/tree", auth=AUTH)
+            self.assertEqual(t.status_code, 200)
+            self.assertIn("edenseek", t.json())                  # pure D6 rollup view
+
+    def test_registry_requires_auth(self):
+        self.assertEqual(client.get("/registry").status_code, 401)
+        self.assertEqual(client.get("/registry/tree").status_code, 401)
+
+    def test_registry_graceful_without_s3(self):
+        # unconfigured/absent -> 200 (empty) or 503; read-only, never a 500 / write attempt
+        self.assertIn(client.get("/registry", auth=AUTH).status_code, (200, 503))
 
 
 class _IntelFakeS3:

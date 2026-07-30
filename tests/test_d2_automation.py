@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler  # noqa: E402
 import dataset_auditor  # noqa: E402
 import scheduler as sched_mod  # noqa: E402
 import scout_audit  # noqa: E402
+import scout_registry  # noqa: E402
 
 _AUDIT_ENV = ("SCOUT_AUDIT_ENABLED", "SCOUT_LEGACY_JOB_ENABLED",
               "SCOUT_AUDIT_HOUR", "SCOUT_AUDIT_MINUTE", "SCOUT_AUDIT_TZ")
@@ -74,6 +75,53 @@ class TestScheduledAudit(_EnvMixin, unittest.TestCase):
         dataset_auditor.run_dataset_audit = boom
         # Must not raise — scheduler stays alive.
         sched_mod.scheduled_audit()
+
+
+class TestRegistryRebuildJob(_EnvMixin, unittest.TestCase):
+    """Opt-in Registry-rebuild job: OFF by default (byte-for-byte scheduler), orchestrates the certified
+    rebuild_discovered when enabled, and never re-raises."""
+
+    def setUp(self):
+        super().setUp()
+        self._reg_saved = os.environ.get("SCOUT_REGISTRY_REBUILD_ENABLED")
+        os.environ["SCOUT_AUDIT_ENABLED"] = "false"  # isolate from the audit job
+
+    def tearDown(self):
+        if self._reg_saved is None:
+            os.environ.pop("SCOUT_REGISTRY_REBUILD_ENABLED", None)
+        else:
+            os.environ["SCOUT_REGISTRY_REBUILD_ENABLED"] = self._reg_saved
+        super().tearDown()
+
+    def test_off_by_default(self):
+        os.environ.pop("SCOUT_REGISTRY_REBUILD_ENABLED", None)
+        self.assertNotIn("scheduled_registry_rebuild", self._ids())
+
+    def test_registered_when_enabled(self):
+        os.environ["SCOUT_REGISTRY_REBUILD_ENABLED"] = "true"
+        self.assertIn("scheduled_registry_rebuild", self._ids())
+
+    def test_job_calls_certified_rebuild_discovered(self):
+        calls = []
+        orig = scout_registry.rebuild_discovered
+        scout_registry.rebuild_discovered = lambda: calls.append(1) or {"discovered": 1, "count": 1}
+        try:
+            sched_mod.scheduled_registry_rebuild()
+        finally:
+            scout_registry.rebuild_discovered = orig
+        self.assertEqual(len(calls), 1)
+
+    def test_failure_is_caught_not_raised(self):
+        orig = scout_registry.rebuild_discovered
+
+        def boom():
+            raise RuntimeError("rebuild failed")
+
+        scout_registry.rebuild_discovered = boom
+        try:
+            sched_mod.scheduled_registry_rebuild()  # must not raise — scheduler stays alive
+        finally:
+            scout_registry.rebuild_discovered = orig
 
 
 class TestCLI(_EnvMixin, unittest.TestCase):
