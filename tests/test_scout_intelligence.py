@@ -177,6 +177,28 @@ class TestEndpoints(unittest.TestCase):
         # unconfigured/absent -> 200 (empty) or 503; read-only, never a 500 / write attempt
         self.assertIn(client.get("/registry", auth=AUTH).status_code, (200, 503))
 
+    def test_observability_health_endpoint(self):
+        known = sreg.build_registry([sreg.build_entry(
+            issue_prefix="publishers/edenseek/title_groups/tg/series/soc/issues/issue_001",
+            identity={"publisher_id": "edenseek", "title_group_id": "tg",
+                      "series_id": "soc", "issue_id": "issue_001"},
+            published_revision_id="rev_x", review_id="rev_x", publication_state="edenseek_approved",
+            audit={"audit_state": "audited", "run_seq": 3, "run_id": "r", "report_id": "rep"})],
+            generated_at="t1")
+        with mock.patch.object(sreg, "load_registry", return_value=known):
+            r = client.get("/observability/health", auth=AUTH)
+            self.assertEqual(r.status_code, 200)
+            body = r.json()
+            self.assertEqual(body["projection"], "issue_health")
+            self.assertEqual(body["summary"], {"healthy": 1, "attention": 0, "unknown": 0, "total": 1})
+            self.assertEqual(body["records"][0]["health"], "healthy")
+
+    def test_observability_health_requires_auth(self):
+        self.assertEqual(client.get("/observability/health").status_code, 401)
+
+    def test_observability_health_graceful(self):
+        self.assertIn(client.get("/observability/health", auth=AUTH).status_code, (200, 503))
+
 
 class _IntelFakeS3:
     def __init__(self):
