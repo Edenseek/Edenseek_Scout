@@ -46,6 +46,11 @@ Routing stays a single `/observability/health` until a second projection justifi
   (`INCREMENT_1_DEPLOYMENT_VALIDATION_PLAN.md`).
 
 ## Invariants future projections must preserve
-Registry-derived only · deterministic/pure · read-only · advisory (Charter §4) · no new data source · no
-Publisher read/write · Publisher/Scout boundary unchanged · certification-first, one additive increment at a
-time.
+- **Recomputable-from-below (binding).** Every level is a deterministic function of the level beneath it —
+  it can always be recomputed solely from that layer (Issue ← Registry; Series ← Issue; Publisher ← Series;
+  future Cross-Series/Trend/Recommendations ← the certified layers beneath them). This gives explainability,
+  reproducibility, independent testing, and deterministic certification. `roll_up` is a monotone max
+  (associative), so composing the levels equals rolling the leaves directly — proven by the coherence test.
+- Registry-derived only · deterministic/pure · read-only · advisory (Charter §4) · no new data source · no
+  Publisher read/write · Publisher/Scout boundary unchanged · certification-first, one additive increment at
+  a time · preserve already-certified endpoints; grow the surface additively.
