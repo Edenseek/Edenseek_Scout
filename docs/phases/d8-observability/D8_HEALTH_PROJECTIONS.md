@@ -31,7 +31,19 @@ Health vocabulary: `healthy` / `attention` / `unknown`, with machine reasons (`n
 | Retrieval Health | planned | Registry + retrieval-readiness signals (still read-only, Registry-anchored) |
 | Trend Health | planned | health over the report index/benchmark history (time series) |
 
-Routing stays a single `/observability/health` until a second projection justifies a refactor (agreed).
+API: `/observability/health` (Issue Health, certified) preserved; the namespace grows additively —
+`/observability/health/series`, `/publisher`, `/cross-series` (each preserving the ones before it).
+
+## The deterministic computation graph
+The projections form a **deterministic computation graph rooted in the Certified Registry**, in two
+dimensions:
+- **Vertical composition** — Issue → Series → Publisher (each level rolls up the level beneath).
+- **Horizontal composition** — Cross-Series (a platform-wide comparison across series).
+
+Every value is explainable by **walking back through the deterministic projections to certified Publisher
+facts** — the property that keeps future Trend Analysis and AI Recommendations auditable (they operate over
+certified, explainable projections, never raw or inferred data). This is `PRINCIPLES.md` **P2
+(Recompute-from-Below)** in practice.
 
 ## Increment 1 — certification record (CODE-COMPLETE)
 - **Capability:** `GET /observability/health` — per-issue health + platform summary, derived from the Registry.
