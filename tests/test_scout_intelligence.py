@@ -199,6 +199,33 @@ class TestEndpoints(unittest.TestCase):
     def test_observability_health_graceful(self):
         self.assertIn(client.get("/observability/health", auth=AUTH).status_code, (200, 503))
 
+    def test_observability_rollup_endpoints(self):
+        known = sreg.build_registry([sreg.build_entry(
+            issue_prefix="publishers/edenseek/title_groups/tg/series/soc/issues/issue_001",
+            identity={"publisher_id": "edenseek", "title_group_id": "tg",
+                      "series_id": "soc", "issue_id": "issue_001"},
+            published_revision_id="rev_x", review_id="rev_x", publication_state="edenseek_approved",
+            audit={"audit_state": "audited", "run_seq": 3, "run_id": "r", "report_id": "rep"})],
+            generated_at="t1")
+        with mock.patch.object(sreg, "load_registry", return_value=known):
+            s = client.get("/observability/health/series", auth=AUTH)
+            self.assertEqual(s.status_code, 200)
+            self.assertEqual(s.json()["projection"], "series_health")
+            self.assertEqual(s.json()["records"][0]["health"], "healthy")
+            self.assertEqual(s.json()["records"][0]["series_id"], "soc")
+            p = client.get("/observability/health/publisher", auth=AUTH)
+            self.assertEqual(p.status_code, 200)
+            self.assertEqual(p.json()["projection"], "publisher_health")
+            self.assertEqual(p.json()["records"][0]["health"], "healthy")
+            self.assertEqual(p.json()["records"][0]["publisher_id"], "edenseek")
+            # the certified Issue Health endpoint is unchanged
+            i = client.get("/observability/health", auth=AUTH)
+            self.assertEqual(i.json()["projection"], "issue_health")
+
+    def test_observability_rollup_endpoints_require_auth(self):
+        self.assertEqual(client.get("/observability/health/series").status_code, 401)
+        self.assertEqual(client.get("/observability/health/publisher").status_code, 401)
+
 
 class _IntelFakeS3:
     def __init__(self):
