@@ -181,6 +181,7 @@ def _normalize_generated_geometry(generated_panel_geometry):
             # spread-to-spread instead of against page panels; page-space rows carry no flags.
             "flags": {"is_spread": True} if is_spread else {},
             "page_range": row.get("page_range"),
+            "order": row.get("order"),   # automated reading order within the page (for order fidelity)
         }
     return canon
 
@@ -202,6 +203,16 @@ def _normalize_approved_geometry(approved_geometry):
     ``isSpreadPanel`` and are handled identically."""
     if not isinstance(approved_geometry, dict):
         raise ReviewContractError("approved_geometry must be a JSON object (artifact_id map)")
+    # The human-approved reading order per page (``panel_order`` = {page: [ordered artifact_ids]}).
+    # Previously skipped as a structural sibling; captured here as each panel's position so the delta
+    # can measure reading-order fidelity (generated order vs approved order among matched panels).
+    _panel_order = approved_geometry.get("panel_order")
+    order_of = {}
+    if isinstance(_panel_order, dict):
+        for _ids in _panel_order.values():
+            if isinstance(_ids, list):
+                for _i, _aid in enumerate(_ids):
+                    order_of[_aid] = _i
     canon = {}
     for artifact_id, entry in approved_geometry.items():
         if artifact_id in APPROVED_GEOMETRY_STRUCTURAL_KEYS:
@@ -239,6 +250,7 @@ def _normalize_approved_geometry(approved_geometry):
                 entry.get("coordinate_space") if isinstance(entry, dict) else None),
             "flags": flags,
             "page_range": page_range,
+            "order": order_of.get(artifact_id),   # human-approved reading position within the page
         }
     return canon
 

@@ -105,6 +105,39 @@ class TestGeometryDelta(unittest.TestCase):
         # total benchmark set = 4 page + 1 spread = 5 -> 4 after deleting one page panel
         self.assertEqual(d["approved_panel_count"], 4)
 
+    def test_reading_order_and_per_page_diagnostics(self):
+        """Two matched panels the human RE-SEQUENCED (approved panel_order reversed) -> order
+        agreement 0; the per-page diagnostics report density + the reading-order fidelity."""
+        top = {"x": 0, "y": 0, "width": 1.0, "height": 0.5}
+        bot = {"x": 0, "y": 0.5, "width": 1.0, "height": 0.5}
+        r = {
+            "review_report_version": "v1", "issue_identity": fx.IDENTITY, "review_id": "rev_t",
+            "generated_geometry": {"property_id": "x", "issue_number": 1, "total_pages": 1,
+                "total_story_pages": 1, "total_panels": 2, "panels": [
+                    {"panel_key": "society_of_killers_1_1::p1", "page_number": 1, "order": 1,
+                     "bbox": [0, 0, 1, 1], "bounds": top, "coordinate_space": "page"},
+                    {"panel_key": "society_of_killers_1_1::p2", "page_number": 1, "order": 2,
+                     "bbox": [0, 0, 1, 1], "bounds": bot, "coordinate_space": "page"}]},
+            "generated_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+            "approved_geometry": {
+                "society_of_killers_1_1::p1": {**top, "approved": True},
+                "society_of_killers_1_1::p2": {**bot, "approved": True},
+                # human-approved reading order is REVERSED vs automation
+                "panel_order": {"1": ["society_of_killers_1_1::p2", "society_of_killers_1_1::p1"]}},
+            "approved_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+            "provenance": {"published_revision_id": "rev_taaaa",
+                           "generated_vs_approved": {"state": "generated_publication",
+                                                     "generated_snapshot_revision_id": "rev_g"}},
+        }
+        d = compute_geometry_delta(adapt_review(r))
+        self.assertEqual(d["precision"], 1.0)                       # both panels detected
+        self.assertEqual(d["diagnostics"]["order"]["agreement"], 0.0)   # but the order is reversed
+        self.assertEqual(d["diagnostics"]["order"]["discordant"], 1)
+        pg = d["diagnostics"]["per_page"][0]
+        self.assertEqual(pg["page_number"], 1)
+        self.assertEqual(pg["density"], 2)
+        self.assertEqual(pg["order_agreement"], 0.0)
+
     def test_manual_not_applicable(self):
         d = compute_geometry_delta(adapt_review(fx.review_manual()))
         self.assertFalse(d["applicable"])

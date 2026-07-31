@@ -140,6 +140,101 @@ def _seg_accuracy(stratum):
             "meets_target": score >= GEOMETRY_ACCURACY_TARGET_LOW}
 
 
+# Provisional panel-size buckets by normalized page area (v1 — subject to review). A "small" panel
+# is <=3% of the page; "large" is the splash-ish end. Named so recall-by-size is reproducible.
+PANEL_SIZE_BUCKETS = (("small", 0.0, 0.03), ("medium", 0.03, 0.12), ("large", 0.12, 1.0001))
+
+
+def _order_agreement(order_pairs):
+    """Reading-order fidelity over matched panels: the fraction of concordant panel pairs between the
+    automated ``order`` and the human-approved order (a Kendall-tau concordance). 1.0 = automation
+    sequenced the panels it detected in the same relative order the human approved; <2 comparable
+    pairs -> 1.0 (nothing to disagree on). Order-error = 1 - this."""
+    ranked = [(g, a) for g, a in order_pairs if g is not None and a is not None]
+    n = len(ranked)
+    conc = disc = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            gi, ai = ranked[i]
+            gj, aj = ranked[j]
+            if gi == gj or ai == aj:
+                continue
+            conc += 1 if (gi < gj) == (ai < aj) else 0
+            disc += 1 if (gi < gj) != (ai < aj) else 0
+    tot = conc + disc
+    return {"concordant": conc, "discordant": disc, "comparable_pairs": tot,
+            "agreement": round(conc / tot, 6) if tot else 1.0}
+
+
+def _diagnostics(gen_page, appr_page, approved, page, iou_threshold):
+    """Per-page geometry diagnostics + panel-size stratification — the correlation variables that
+    show WHERE and HOW automation diverges (density, per-page recall/accuracy, reading-order
+    fidelity, intra-page overlap, recall by panel size). Deterministic; page-stratum only."""
+    def _pg(entry_map, key):
+        e = entry_map.get(key)
+        return e.get("page_number") if e else None
+
+    by = lambda: {}
+    pairs_by, false_by, miss_by, appr_by, gen_by, del_by = by(), by(), by(), by(), by(), by()
+    for p in page["matched_pairs"]:
+        pairs_by.setdefault(_pg(appr_page, p["approved_id"]), []).append(p)
+    for g in page["false_artifact_ids"]:
+        false_by.setdefault(_pg(gen_page, g), []).append(g)
+    for a in page["missing_artifact_ids"]:
+        miss_by.setdefault(_pg(appr_page, a), []).append(a)
+    for aid, e in appr_page.items():
+        appr_by.setdefault(e.get("page_number"), []).append(aid)
+    for gid, e in gen_page.items():
+        gen_by.setdefault(e.get("page_number"), []).append(gid)
+    for aid, e in approved.items():
+        if e["flags"].get("deleted") and not e["flags"].get("is_spread"):
+            del_by.setdefault(e.get("page_number"), []).append(aid)
+
+    pages = []
+    for pg in sorted(set(appr_by) | set(gen_by), key=lambda x: (x is None, str(x))):
+        appr_ids, gen_ids = appr_by.get(pg, []), gen_by.get(pg, [])
+        pairs = pairs_by.get(pg, [])
+        e_sum = round(sum(p["iou"] for p in pairs), 6)
+        credited = len({p["generated_id"] for p in pairs})
+        denom = len(appr_ids) + (len(gen_ids) - credited)
+        ov = sum(1 for i in range(len(gen_ids)) for j in range(i + 1, len(gen_ids))
+                 if _iou(gen_page[gen_ids[i]]["bbox"], gen_page[gen_ids[j]]["bbox"]) >= iou_threshold)
+        oa = _order_agreement([(gen_page[p["generated_id"]].get("order"),
+                                appr_page[p["approved_id"]].get("order")) for p in pairs])
+        pages.append({
+            "page_number": pg,
+            "density": len(appr_ids),                # human-approved panels on the page
+            "generated_panels": len(gen_ids),
+            "matched": len(pairs),
+            "recall": _rate(len(pairs), len(appr_ids)),
+            "segmentation_accuracy": _rate(e_sum, denom),
+            "order_agreement": oa["agreement"],
+            "generated_overlap_pairs": ov,
+            "false": len(false_by.get(pg, [])),
+            "missing": len(miss_by.get(pg, [])),
+            "deleted_approved": len(del_by.get(pg, [])),
+        })
+
+    matched_appr = {p["approved_id"] for p in page["matched_pairs"]}
+    size = {}
+    for name, lo, hi in PANEL_SIZE_BUCKETS:
+        ids = [aid for aid, e in appr_page.items() if lo <= (e["bbox"][2] * e["bbox"][3]) < hi]
+        m = sum(1 for aid in ids if aid in matched_appr)
+        size[name] = {"approved_panels": len(ids), "matched": m,
+                      "recall": _rate(m, len(ids)), "area_range": [lo, hi]}
+
+    order_all = _order_agreement([(gen_page[p["generated_id"]].get("order"),
+                                   appr_page[p["approved_id"]].get("order")) for p in page["matched_pairs"]])
+    return {
+        "per_page": pages,
+        "order": order_all,
+        "generated_overlap_pairs": sum(p["generated_overlap_pairs"] for p in pages),
+        "panel_size_recall": size,
+        "size_bucket_version": "v1",
+        "deleted_approved_panels": sum(p["deleted_approved"] for p in pages),
+    }
+
+
 def _combine(*strata):
     """Micro-average combine of strata: sum counts + earned credit, concatenate id lists / pairs."""
     _ids = ("false_artifact_ids", "missing_artifact_ids", "split_artifact_ids",
@@ -249,6 +344,8 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
         "spread_missing_artifact_ids": spread["missing_artifact_ids"],
         # ---- per-stratum breakdown (page vs spread sub-groups) ----
         "strata": {"page": _stratum_metrics(page), "spread": _stratum_metrics(spread)},
+        # ---- per-page diagnostics + panel-size stratification + reading-order fidelity ----
+        "diagnostics": _diagnostics(gen_page, appr_page, approved, page, iou_threshold),
         # Raw counts + numerator/denominator pairs so every rate is independently reproducible.
         "benchmark": {
             "true_matches": total["matched_approved"],
@@ -266,6 +363,9 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
             "missing_panels": len(total["missing_artifact_ids"]),
             "missing_page_panels": len(page["missing_artifact_ids"]),
             "spread_missing_panels": len(spread["missing_artifact_ids"]),
+            "reading_order_agreement": _order_agreement(
+                [(gen_page[p["generated_id"]].get("order"), appr_page[p["approved_id"]].get("order"))
+                 for p in page["matched_pairs"]]),
             "unchanged_geometry_panels": total["unchanged"],
             "total_human_geometry_corrections": total_corrections,
             "pages_evaluated": pages,
