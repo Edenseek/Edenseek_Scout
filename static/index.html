@@ -286,7 +286,7 @@ function geomSummary(rep){
   return `<div class="card analysis">
     <div class="ahead"><div><span class="alabel">Currently analyzing</span> &nbsp;<code class="rid">${esc(rid.slice(-9)||"—")}</code></div><div class="rfull">${esc(rid)}</div></div>
     <div class="statrow">${cell("Publisher",esc(ii.publisher_id||"—"))}${cell("Series",esc(ii.series_id||"—"))}${cell("Issue",esc(ii.issue_id||"—"))}${cell("Measured",esc(md||"—"))}${cell("Geometry",esc(g.geometry_match_version||"—"))}</div>
-    <div class="statrow">${cell("Precision "+info('Precision'),pct(g.precision),1)}${cell("Recall "+info('Recall'),pct(g.recall),1)}${cell("Segmentation accuracy",pct((g.segmentation_accuracy||{}).score),1)}${cell("Reading-order fidelity",o.agreement!=null?pct(o.agreement):"—",1)}</div></div>`;
+    <div class="statrow">${cell("Precision "+info('Precision'),pct(g.precision),1)}${cell("Recall "+info('Recall'),pct(g.recall),1)}${cell("Segmentation accuracy",pct((g.segmentation_accuracy||{}).score),1)}${cell("Reading-order fidelity",o.agreement!=null?pct(o.agreement):"—",1)}${cell("Metadata accuracy",(rep.metadata_metrics||{}).metadata_accuracy!=null?pct((rep.metadata_metrics||{}).metadata_accuracy):"—",1)}</div></div>`;
 }
 function geomScatter(pp,W,H){
   const pad={l:32,r:12,t:10,b:30},iw=W-pad.l-pad.r,ih=H-pad.t-pad.b,maxD=Math.max(6,...pp.map(p=>p.density||0));
@@ -320,6 +320,19 @@ function renderGeomDiag(diag){
     <div class="grid g2"><div class="chartcard"><div class="head"><span class="title">Accuracy by page complexity <span class="samples">· ${diag.per_page.length} pages</span></span></div>${geomScatter(diag.per_page,460,210)}${scatterNote()}</div>
     <div class="card"><h3>Reading-order fidelity</h3><div class="big ok">${oa}%</div><div class="sub">${o.concordant||0} concordant / ${o.discordant||0} discordant pairs</div><div class="section-h" style="margin:14px 0 6px">Recall by panel size</div>${bars}</div></div>
     ${tbl}</tbody></table></div>`;
+}
+/* Metadata quality — headline acceptance + the per-field EDITORIAL BURDEN (where the editing work is). */
+function renderMetaDiag(rep){
+  const md=document.getElementById("metadiag"); if(!md)return;
+  const ma=(((rep||{}).delta_report||{}).metadata_benchmark||{}).metadata_accuracy;
+  if(!ma||!(ma.editorial_burden||[]).length){md.innerHTML=`<p class="status">Metadata accuracy appears once a Metadata Accuracy v1 report is persisted.</p>`;return;}
+  const eb=ma.editorial_burden,top=eb[0],acc=ma.acceptance||{};
+  const lever=top.edited?`<b>${esc(top.field)}</b> carries the most editing — ${(top.edit_share*100).toFixed(0)}% of all edits, ${(top.acceptance_rate*100).toFixed(0)}% accepted. Improving that prompt first cuts the most publisher work.`:`Editing is minimal and evenly spread — no single field dominates.`;
+  let tbl=`<div class="tblwrap"><table><thead><tr><th>field</th><th class="n">accepted</th><th class="n">edited</th><th class="n">edit share</th><th class="n">effort</th><th>method</th></tr></thead><tbody>`;
+  eb.forEach(x=>{tbl+=`<tr><td>${esc(x.field)}</td><td class="n">${(x.acceptance_rate*100).toFixed(1)}%</td><td class="n">${x.edited}</td><td class="n">${(x.edit_share*100).toFixed(0)}%</td><td class="n">${x.edit_effort.toFixed(2)}</td><td class="mono" style="font-size:11px">${esc(x.effort_method||"—")}</td></tr>`;});
+  md.innerHTML=`<div class="grid g2" style="margin-bottom:12px"><div class="card"><h3>Metadata acceptance ${info('Metadata accepted / unchanged rate')}</h3><div class="big ok">${pct(acc.rate)}</div><div class="sub">${acc.numerator||0}/${acc.denominator||0} fields taken with no edit · target 75–90% · ${ma.total_edited_fields||0} edits total</div></div>
+    <div class="card"><h3>Top lever</h3><div class="lever" style="margin:6px 0 0">${lever}</div></div></div>
+    <div class="section-h" style="margin-top:4px">Editorial burden — where the editing work concentrates <span class="samples">effort: set-Jaccard for lists, token-Jaccard for text · 1.0 = full replacement</span></div>${tbl}</tbody></table></div>`;
 }
 
 async function engView(){
@@ -359,6 +372,7 @@ async function intelView(){
     <div class="searchbar"><input id="q" placeholder="precision<0.90  metadata_unchanged_rate>=0.60  finding:geometry.false_panels  issue:issue_001  severity:WARNING" oninput="runSearch()"/></div>
     <div class="hint">try: <code onclick="setQ('precision<0.95')">precision&lt;0.95</code> <code onclick="setQ('severity:WARNING')">severity:WARNING</code> <code onclick="setQ('finding:geometry.false_panels')">finding:geometry.false_panels</code> <code onclick="setQ('kind:failed_run')">kind:failed_run</code></div>
     <div class="section-h">Geometry diagnostics</div><div id="geomdiag"><p class="status">Loading…</p></div>
+    <div class="section-h">Metadata quality</div><div id="metadiag"><p class="status">Loading…</p></div>
     <div class="section-h">Compare over time</div><div id="cmp"><p class="status">Loading…</p></div>
     <div class="section-h">Methodology boundaries</div><ul class="att" id="bndlist"></ul>`;
   try{
@@ -366,6 +380,7 @@ async function intelView(){
     const rep=await loadLatestReport();
     document.getElementById("analysis").innerHTML=geomSummary(rep);
     renderGeomDiag(reportGeom(rep).diagnostics||null);
+    renderMetaDiag(rep);
     document.getElementById("cmp").innerHTML=cmpTable(a.records.filter(r=>r.record_kind==="report"));
     const items=[]; a.records.filter(r=>r.record_kind==="report"&&r.methodology_boundary).forEach(r=>{
       if(r.methodology_boundary.geometry)items.push(`<li class="boundary"><span class="sev INFO">BND</span><div><div class="txt"><b>Geometry methodology changed</b></div><div class="meta">at ${esc(r.report_id?r.report_id.slice(-9):"")} · key ${esc(r.geometry_comparability_key)}</div></div></li>`);
