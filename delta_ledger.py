@@ -24,10 +24,8 @@ def build_correction_ledger(geometry_delta, metadata_delta):
         for aid in geometry_delta["missing_page_artifact_ids"]:
             add(aid, "geometry", "missing_panel",
                 "approved page panel with no matching automated panel (recall gap)", thr)
-        for aid in geometry_delta["spread_missing_artifact_ids"]:
-            add(aid, "geometry", "spread_missing_panel",
-                "approved spread panel is drawn (no auto page-space counterpart); always missing",
-                {"note": "spread-canvas geometry via stage_geometry"})
+        # Spread panels are excluded from the page delta and compared spread-to-spread in the spread
+        # frame (Increment 2); they are not page-delta corrections, so no op is emitted here.
         for aid in geometry_delta["false_artifact_ids"]:
             add(aid, "geometry", "false_panel",
                 "automated panel with no matching approved panel (precision gap)", thr)

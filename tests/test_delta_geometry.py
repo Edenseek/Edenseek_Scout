@@ -39,11 +39,15 @@ class TestGeometryDelta(unittest.TestCase):
     def test_real_fixture_matches_missing_and_spread(self):
         d = compute_geometry_delta(adapt_review(fx.review_generated()))
         self.assertTrue(d["applicable"])
-        self.assertEqual(d["precision"], 1.0)                 # all 3 generated matched
-        self.assertEqual(d["recall"], 0.6)                    # 3 matched of 5 (3 page + NEW + spread)
+        self.assertEqual(d["precision"], 1.0)                 # all 3 generated page panels matched
+        self.assertEqual(d["recall"], 0.75)                   # 3 of 4 page panels (3 + the NEW); spreads excluded
         self.assertIn("11::NEW::1", d["missing_page_artifact_ids"])
-        self.assertEqual(d["spread_missing_artifact_ids"], ["spread_12_13::p1"])
-        self.assertIn("spread_12_13::p1", d["missing_artifact_ids"])
+        # spreads are pending (spread-frame comparison, Increment 2) — never counted as missing
+        self.assertEqual(d["spread_missing_artifact_ids"], [])
+        self.assertNotIn("spread_12_13::p1", d["missing_artifact_ids"])
+        pend = d["spreads_pending_comparison"]
+        self.assertEqual(pend["approved_spread_artifact_ids"], ["spread_12_13::p1"])
+        self.assertEqual(pend["generated_spread_count"], 0)
         self.assertEqual(d["false_count"], 0)
 
     def test_split(self):
@@ -72,8 +76,8 @@ class TestGeometryDelta(unittest.TestCase):
         r = fx.review_generated()
         r["approved_geometry"]["society_of_killers_1_3::p1"]["deleted"] = True
         d = compute_geometry_delta(adapt_review(r))
-        # one fewer panel in the benchmark set (was 5 incl spread; now 4)
-        self.assertEqual(d["approved_panel_count"], 4)
+        # page-only benchmark set: 4 page panels (1_10, 1_3, 1_7, 11::NEW) -> 3 after deleting one
+        self.assertEqual(d["approved_panel_count"], 3)
 
     def test_manual_not_applicable(self):
         d = compute_geometry_delta(adapt_review(fx.review_manual()))

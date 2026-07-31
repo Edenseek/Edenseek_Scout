@@ -167,11 +167,16 @@ def _normalize_generated_geometry(generated_panel_geometry):
         artifact_id = _require(row, "panel_key", src)
         if not isinstance(artifact_id, str):
             raise ReviewContractError(f"{src}.panel_key must be a string")
+        coord = row.get("coordinate_space")
         canon[artifact_id] = {
             "bbox": _normalize_bbox(_require(row, "bounds", src), src + ".bounds"),
             "page_number": _derive_page_number(artifact_id, row.get("page_number")),
-            "coordinate_space": row.get("coordinate_space"),
-            "flags": {},  # generated side carries no approval flags
+            "coordinate_space": coord,
+            # Generated spreads (spread-canvas frame) are flagged so the geometry delta excludes them
+            # from the page-panel comparison and matches them spread-to-spread instead (Increment 2);
+            # page-space rows carry no flags. page_range is carried for that future spread matching.
+            "flags": {"is_spread": True} if coord == "spread" else {},
+            "page_range": row.get("page_range"),
         }
     return canon
 

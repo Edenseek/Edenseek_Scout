@@ -15,9 +15,10 @@ IOU_THRESHOLD = 0.5
 # Version of the geometry MATCHING rules (per-page IoU overlap match + split/merge/false/missing
 # definitions). A comparability axis for the geometry benchmark: a change here (or to
 # IOU_THRESHOLD) means new geometry metrics are not directly comparable to older ones.
-# v2: matching is SCOPED TO THE PAGE — bounds are normalized per page, so a same-position panel
-# on another page is a different panel and must not match (see
-# docs/phases/geometry-correctness/CROSS_PAGE_MATCHING_DEFECT.md).
+# v2: (a) matching is SCOPED TO THE PAGE — bounds are normalized per page, so a same-position panel
+# on another page is a different panel and must not match; (b) SPREAD panels (either side) are
+# EXCLUDED from the page precision/recall and reported as spreads_pending_comparison — spread-to-
+# spread matching lands in Increment 2. See docs/phases/geometry-correctness/CROSS_PAGE_MATCHING_DEFECT.md.
 GEOMETRY_MATCH_VERSION = "v2"
 
 
@@ -47,14 +48,18 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
 
     generated = canonical_review["generated"]["geometry"]
     approved = canonical_review["approved"]["geometry"]
-    # Benchmark set excludes deleted approved panels. Spread panels are DRAWN — they have no
-    # generated (auto page-space) counterpart — so they are never IoU-matched; they are always
-    # approved-only / missing. They still count in the recall denominator (automation missed them).
+    # Only PAGE panels take part in the page precision/recall (deleted approved panels excluded).
+    # SPREAD panels (either side) live in the spread-canvas frame and are compared spread-to-spread
+    # there — deferred to Increment 2. They are EXCLUDED from the page delta (never counted as a
+    # false or a missing panel) and reported under ``spreads_pending_comparison`` so the page metric
+    # is honest and never regresses when spreads are present.
     approved_page = sorted(aid for aid, e in approved.items()
                            if not e["flags"].get("deleted") and not e["flags"].get("is_spread"))
     approved_spread = sorted(aid for aid, e in approved.items()
                              if not e["flags"].get("deleted") and e["flags"].get("is_spread"))
-    generated_ids = sorted(generated.keys())
+    generated_page = sorted(gid for gid, e in generated.items() if not e["flags"].get("is_spread"))
+    generated_spread = sorted(gid for gid, e in generated.items() if e["flags"].get("is_spread"))
+    generated_ids = generated_page
 
     gen_matches = {gid: [] for gid in generated_ids}   # gid -> approved page ids it overlaps
     app_matches = {aid: [] for aid in approved_page}    # page aid -> generated ids overlapping it
@@ -76,10 +81,10 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
     merge = [g for g in generated_ids if len(gen_matches[g]) > 1]    # 1 automated -> many approved
     missing_page = [a for a in approved_page if not app_matches[a]]  # page panel automation missed
     false_panels = [g for g in generated_ids if not gen_matches[g]]  # automation with no approval
-    missing = missing_page + approved_spread                        # spreads are always missing
+    missing = missing_page                          # page-only; spreads are pending, not missing
 
-    n_gen = len(generated_ids)
-    n_app = len(approved_page) + len(approved_spread)   # spreads count against recall
+    n_gen = len(generated_ids)                       # page panels only
+    n_app = len(approved_page)                       # page panels only
 
     # Panels the human left unchanged: a clean 1:1 match (approved page panel with exactly one
     # automated match, whose automated panel maps only to it — neither split nor merge).
@@ -113,10 +118,20 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
         "false_rate": _rate(len(false_panels), n_gen),  # == 1 - precision
         "missing_artifact_ids": missing,
         "missing_page_artifact_ids": missing_page,
-        "spread_missing_artifact_ids": approved_spread,
+        # Spreads are not "missing" — they are deferred to the spread-frame comparison (Increment 2).
+        # Kept as an empty list for backward-compatible consumers; see spreads_pending_comparison.
+        "spread_missing_artifact_ids": [],
         "false_artifact_ids": false_panels,
         "split_artifact_ids": split,
         "merge_artifact_ids": merge,
+        "spreads_pending_comparison": {
+            "note": ("spread panels are compared spread-to-spread in the spread frame (Increment 2); "
+                     "excluded from page precision/recall here — neither false nor missing"),
+            "generated_spread_count": len(generated_spread),
+            "approved_spread_count": len(approved_spread),
+            "generated_spread_artifact_ids": generated_spread,
+            "approved_spread_artifact_ids": approved_spread,
+        },
         # Raw counts + numerator/denominator pairs so every rate is independently reproducible.
         "benchmark": {
             "true_matches": len(matched_approved),          # approved page panels correctly detected
@@ -131,7 +146,7 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
             "false_panels": len(false_panels),
             "missing_panels": len(missing),
             "missing_page_panels": len(missing_page),
-            "spread_missing_panels": len(approved_spread),
+            "spread_missing_panels": 0,   # spreads deferred to Increment 2 (not counted as missing)
             "unchanged_geometry_panels": unchanged,
             "total_human_geometry_corrections": total_corrections,
             "pages_evaluated": pages,
