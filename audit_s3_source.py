@@ -46,6 +46,7 @@ from pathlib import Path
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
+import scout_runtime
 from logging_config import logger
 
 # The three files that constitute the active Approved-Dataset contract, embedded
@@ -84,6 +85,8 @@ def is_configured():
 def _s3_client(region):
     # Isolated for test injection. Credentials resolve through the standard AWS
     # chain — the least-privilege, read-only ``edenseek-scout-app`` identity.
+    # Runtime safety boundary: refuse a real client in test mode / unopted development.
+    scout_runtime.guard_real_s3_client()
     return boto3.client("s3", region_name=region)
 
 

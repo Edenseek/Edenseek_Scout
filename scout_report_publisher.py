@@ -34,6 +34,7 @@ import os
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
+import scout_runtime
 from logging_config import logger
 import audit_reports
 
@@ -82,6 +83,8 @@ def _s3_client(region):
     # Isolated for test injection. Credentials resolve through the standard AWS
     # chain — the read/write ``edenseek-scout-app`` identity (sole writer to
     # edenseek-scout; see Repository Ownership Principle).
+    # Runtime safety boundary: refuse a real client in test mode / unopted development.
+    scout_runtime.guard_real_s3_client()
     return boto3.client("s3", region_name=region)
 
 
