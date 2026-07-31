@@ -51,12 +51,12 @@ understated.
   clean new `run_id`, never a corruption of archived v1 reports).
 - **Tests:** add a cross-page positional-collision case that fails under v1 and passes under v2.
 
-Increment 1 also **excludes spreads (both sides) from the page delta** and reports them under
-`spreads_pending_comparison` (adapter flags generated spreads via `coordinate_space="spread"`), so
-the page precision/recall is honest and never regresses when spreads are present — no spread is
-counted as false or missing. **Increment 2** adds the actual spread-to-spread matching in the spread
-frame; **Increment 3** adds the quality-weighted `E/(A+FP)` accuracy + per-panel resize diagnostics
-on the corrected foundation.
+Increment 1 also **excludes spreads (both sides) from the page delta** so the page number is honest
+and never regresses. **Increment 2 (done)** adds the actual **spread-to-spread matching in the
+spread frame** (scoped by `page_range`): the delta is now **stratified** into page + spread
+sub-groups with a micro-averaged whole-issue total. Live `rev_0be8dc34`: page 0.9459/0.5556,
+spread 0.5714/0.2353, **total 0.8431/0.4433** (vs the inflated v1 0.941/0.608). **Increment 3** adds
+the quality-weighted `E/(A+FP)` accuracy + per-panel resize diagnostics on this corrected foundation.
 
 ## Identity is (page, panel)
 

@@ -30,9 +30,9 @@ class TestDeltaAuditor(unittest.TestCase):
         rep = run_delta_audit(fx.review_generated(), fx.platform_approval())
         ops = {(e["artifact_id"], e["stage"], e["operation"]) for e in rep["correction_ledger"]}
         self.assertIn(("11::NEW::1", "geometry", "missing_panel"), ops)
-        # spreads are deferred to the spread-frame comparison (Increment 2) -> not a page-delta correction
-        self.assertNotIn(("spread_12_13::p1", "geometry", "spread_missing_panel"), ops)
-        self.assertEqual(rep["geometry_delta"]["spreads_pending_comparison"]["approved_spread_count"], 1)
+        # the approved spread has no generated counterpart -> a real spread-frame miss
+        self.assertIn(("spread_12_13::p1", "geometry", "spread_missing_panel"), ops)
+        self.assertEqual(rep["geometry_delta"]["strata"]["spread"]["approved_panel_count"], 1)
         # panel_3 carries field corrections (tags edited + chars/summary edited);
         # panel_7 is a clean accept (null tags, chars/summary accepted) -> NOT a correction
         self.assertIn(("society_of_killers_1_3::p1", "metadata", "fields_corrected"), ops)

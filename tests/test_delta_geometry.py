@@ -36,19 +36,45 @@ def _mk_review(gen_bounds_by_key, approved_geom, page_number=1):
 
 
 class TestGeometryDelta(unittest.TestCase):
-    def test_real_fixture_matches_missing_and_spread(self):
+    def test_real_fixture_page_and_spread_strata(self):
         d = compute_geometry_delta(adapt_review(fx.review_generated()))
         self.assertTrue(d["applicable"])
-        self.assertEqual(d["precision"], 1.0)                 # all 3 generated page panels matched
-        self.assertEqual(d["recall"], 0.75)                   # 3 of 4 page panels (3 + the NEW); spreads excluded
+        # TOTAL (page + spread): 3 generated, 5 approved (4 page + 1 spread), 3 matched
+        self.assertEqual(d["precision"], 1.0)
+        self.assertEqual(d["recall"], 0.6)
+        # page stratum: 3 of 4 page panels matched
+        self.assertEqual(d["strata"]["page"]["recall"], 0.75)
         self.assertIn("11::NEW::1", d["missing_page_artifact_ids"])
-        # spreads are pending (spread-frame comparison, Increment 2) — never counted as missing
-        self.assertEqual(d["spread_missing_artifact_ids"], [])
-        self.assertNotIn("spread_12_13::p1", d["missing_artifact_ids"])
-        pend = d["spreads_pending_comparison"]
-        self.assertEqual(pend["approved_spread_artifact_ids"], ["spread_12_13::p1"])
-        self.assertEqual(pend["generated_spread_count"], 0)
+        # spread stratum: the approved spread has no generated counterpart -> a real spread miss
+        self.assertEqual(d["strata"]["spread"]["recall"], 0.0)
+        self.assertEqual(d["spread_missing_artifact_ids"], ["spread_12_13::p1"])
         self.assertEqual(d["false_count"], 0)
+
+    def test_spread_matches_in_spread_frame(self):
+        """A generated spread and an approved spread on the same page_range that overlap are matched
+        in the spread frame — not compared against page panels."""
+        r = {
+            "review_report_version": "v1", "issue_identity": fx.IDENTITY, "review_id": "rev_t",
+            "generated_geometry": {"property_id": "x", "issue_number": 1, "total_pages": 2,
+                "total_story_pages": 2, "total_panels": 1, "panels": [
+                    {"panel_key": "spread_4_5::p1", "page_number": 4, "page_range": [4, 5], "order": 1,
+                     "bbox": [0, 0, 1, 1], "bounds": {"x": 0.1, "y": 0.1, "width": 0.5, "height": 0.5},
+                     "coordinate_space": "spread"}]},
+            "generated_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+            "approved_geometry": {
+                "spread_4_5::p1": {"isSpreadPanel": True, "page_range": [4, 5],
+                                   "stage_geometry": {"x": 0.1, "y": 0.1, "width": 0.5, "height": 0.5}}},
+            "approved_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+            "provenance": {"published_revision_id": "rev_taaaa",
+                           "generated_vs_approved": {"state": "generated_publication",
+                                                     "generated_snapshot_revision_id": "rev_g"}},
+        }
+        d = compute_geometry_delta(adapt_review(r))
+        self.assertEqual(d["strata"]["spread"]["precision"], 1.0)   # the generated spread matched
+        self.assertEqual(d["strata"]["spread"]["recall"], 1.0)      # the approved spread matched
+        self.assertEqual(d["spread_missing_artifact_ids"], [])
+        self.assertEqual(d["strata"]["page"]["generated_panel_count"], 0)  # not in the page pool
+        self.assertEqual(d["precision"], 1.0)                       # whole-issue total
 
     def test_split(self):
         r = _mk_review({"g1": {"x": 0, "y": 0, "width": 1, "height": 1},
@@ -76,8 +102,8 @@ class TestGeometryDelta(unittest.TestCase):
         r = fx.review_generated()
         r["approved_geometry"]["society_of_killers_1_3::p1"]["deleted"] = True
         d = compute_geometry_delta(adapt_review(r))
-        # page-only benchmark set: 4 page panels (1_10, 1_3, 1_7, 11::NEW) -> 3 after deleting one
-        self.assertEqual(d["approved_panel_count"], 3)
+        # total benchmark set = 4 page + 1 spread = 5 -> 4 after deleting one page panel
+        self.assertEqual(d["approved_panel_count"], 4)
 
     def test_manual_not_applicable(self):
         d = compute_geometry_delta(adapt_review(fx.review_manual()))
