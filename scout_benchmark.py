@@ -36,6 +36,7 @@ BENCHMARK_PROJECTION_VERSION = "v1"
 GEOMETRY_METRICS = {
     "precision": ("ratios", "precision"),
     "recall": ("ratios", "recall"),
+    "segmentation_accuracy": ("ratios", "segmentation_accuracy"),
     "split_rate": ("ratios", "split_rate"),
     "merge_rate": ("ratios", "merge_rate"),
     "false_rate": ("ratios", "false_rate"),

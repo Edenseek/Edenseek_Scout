@@ -110,6 +110,37 @@ class TestGeometryDelta(unittest.TestCase):
         self.assertFalse(d["applicable"])
         self.assertEqual(d["reason"], "manual_publication")
 
+    def test_segmentation_accuracy_and_resize_diagnostics(self):
+        """Quality-weighted E/(A+FP): a single page panel automation drew 50% too short (IoU 0.5)
+        earns partial credit 0.5 of 1 approved panel -> accuracy 0.5; resize diagnostics expose it."""
+        r = _mk_review(
+            {"society_of_killers_1_1::p1": {"x": 0, "y": 0, "width": 1.0, "height": 0.5}},
+            {"society_of_killers_1_1::p1": {"x": 0, "y": 0, "width": 1.0, "height": 1.0}})
+        d = compute_geometry_delta(adapt_review(r))
+        sa = d["segmentation_accuracy"]
+        self.assertEqual(sa["numerator"], 0.5)          # earned credit = IoU 0.5 (partial)
+        self.assertEqual(sa["denominator"], 1)          # 1 approved + 0 false
+        self.assertEqual(sa["score"], 0.5)
+        self.assertFalse(sa["meets_target"])            # 0.5 < 0.95
+        pair = d["strata"]["page"]["matched_pairs"][0]
+        self.assertEqual(pair["iou"], 0.5)
+        self.assertEqual(pair["area_ratio"], 0.5)       # generated area 0.5 / approved 1.0
+        self.assertEqual(pair["dh_pct"], -0.5)          # height 50% under approved
+        self.assertEqual(pair["dw_pct"], 0.0)           # width exact
+
+    def test_false_panel_penalizes_accuracy(self):
+        """A false automated panel enters the denominator (A + FP): one perfect match + one false
+        panel -> accuracy 1.0/(1+1) = 0.5."""
+        r = _mk_review(
+            {"1::p1": {"x": 0, "y": 0, "width": 0.4, "height": 0.4},
+             "1::pX": {"x": 0.9, "y": 0.9, "width": 0.05, "height": 0.05}},   # no approved overlap
+            {"1::p1": {"x": 0, "y": 0, "width": 0.4, "height": 0.4}})
+        d = compute_geometry_delta(adapt_review(r))
+        sa = d["segmentation_accuracy"]
+        self.assertEqual(sa["numerator"], 1.0)          # the one match is exact
+        self.assertEqual(sa["denominator"], 2)          # 1 approved + 1 false
+        self.assertEqual(sa["score"], 0.5)
+
     def test_no_cross_page_match(self):
         """Regression for the cross-page matching defect (GEOMETRY_MATCH_VERSION v2): panels with
         identical per-page normalized coordinates on DIFFERENT pages must not match each other.

@@ -7,10 +7,16 @@ Stage-1(automated)-vs-Stage-2(approved) geometry metrics of
 precision / recall / split / merge / missing / false. Advisory only — the approved geometry
 is the Human Approval Benchmark; automation is scored against it.
 """
+import statistics
+
 from review_contract_adapter import APPLICABILITY_MANUAL
 
 # Fixed IoU match threshold (named constant so the delta is reproducible and reviewable).
 IOU_THRESHOLD = 0.5
+
+# Target band for the quality-weighted segmentation accuracy the pipeline drives toward.
+GEOMETRY_ACCURACY_TARGET_LOW = 0.95
+GEOMETRY_ACCURACY_TARGET_HIGH = 0.99
 
 # Version of the geometry MATCHING rules (per-page IoU overlap match + split/merge/false/missing
 # definitions). A comparability axis for the geometry benchmark: a change here (or to
@@ -40,45 +46,110 @@ def _rate(numer, denom):
     return round(numer / denom, 6) if denom else 0.0
 
 
+def _resize_diag(approved_id, generated_id, iou, abox, gbox):
+    """Per matched-panel geometry discrepancy — how the human resized/moved the automated box: the
+    IoU (match quality / partial credit), the area ratio (generated/approved), and per-edge deltas.
+    All in the shared normalized frame; a positive width/height error = automation drew it too big,
+    negative = too small."""
+    ax, ay, aw, ah = abox
+    gx, gy, gw, gh = gbox
+    area_a, area_g = aw * ah, gw * gh
+
+    def _pct(g_v, a_v):
+        return round((g_v - a_v) / a_v, 6) if a_v else None
+
+    return {
+        "approved_id": approved_id, "generated_id": generated_id,
+        "iou": round(iou, 6),
+        "area_ratio": round(area_g / area_a, 6) if area_a else None,
+        "dx": round(gx - ax, 6), "dy": round(gy - ay, 6),
+        "dw_pct": _pct(gw, aw), "dh_pct": _pct(gh, ah),
+    }
+
+
 def _match_stratum(gen, appr, scope_of, iou_threshold):
     """IoU-match one stratum (page or spread) WITHIN a scope, so a panel only matches others in the
     same page/spread. ``scope_of(entry)`` yields the scope key (page_number for page panels; the
     page_range tuple for spreads — their coordinates are normalized per page / per spread canvas and
     would otherwise collide). Returns counts + artifact-id lists in the shared delta vocabulary.
+
+    Also computes, per matched approved panel, the quality of its BEST (highest-IoU) generated match
+    — continuous IoU (partial credit) + resize diagnostics — and the stratum's earned credit
+    E = sum of those qualities (the numerator of the quality-weighted segmentation accuracy).
     Deterministic: ids processed in sorted order."""
     gen_ids, app_ids = sorted(gen), sorted(appr)
     gm = {g: [] for g in gen_ids}
     am = {a: [] for a in app_ids}
+    best = {}   # approved id -> (iou, generated id) of its best (highest-IoU) match
     for g in gen_ids:
         gb, gk = gen[g]["bbox"], scope_of(gen[g])
         for a in app_ids:
-            if scope_of(appr[a]) == gk and _iou(gb, appr[a]["bbox"]) >= iou_threshold:
+            if scope_of(appr[a]) != gk:
+                continue
+            iou = _iou(gb, appr[a]["bbox"])
+            if iou >= iou_threshold:
                 gm[g].append(a)
                 am[a].append(g)
+                if a not in best or iou > best[a][0]:
+                    best[a] = (iou, g)
+    matched_app = [a for a in app_ids if am[a]]
+    pairs = [_resize_diag(a, best[a][1], best[a][0], appr[a]["bbox"], gen[best[a][1]]["bbox"])
+             for a in matched_app]
     return {
         "n_gen": len(gen_ids),
         "n_app": len(app_ids),
         "matched_generated": sum(1 for g in gen_ids if gm[g]),
-        "matched_approved": sum(1 for a in app_ids if am[a]),
+        "matched_approved": len(matched_app),
         "false_artifact_ids": [g for g in gen_ids if not gm[g]],       # automation, no approval
         "missing_artifact_ids": [a for a in app_ids if not am[a]],     # approval, automation missed
         "split_artifact_ids": [a for a in app_ids if len(am[a]) > 1],  # 1 approved <- many automated
         "merge_artifact_ids": [g for g in gen_ids if len(gm[g]) > 1],  # 1 automated -> many approved
         "unchanged": sum(1 for a in app_ids
                          if len(am[a]) == 1 and len(gm[am[a][0]]) == 1),
+        "earned_credit": round(sum(best[a][0] for a in matched_app), 6),
+        "matched_pairs": pairs,
     }
 
 
+def _resize_bias(pairs):
+    """Aggregate (systematic) resize bias over matched panels — surfaces e.g. 'boxes consistently
+    ~15% too narrow'. Mean + median of the area ratio and per-edge width/height error."""
+    def _agg(key):
+        vals = [p[key] for p in pairs if p.get(key) is not None]
+        return ({"mean": round(statistics.fmean(vals), 6), "median": round(statistics.median(vals), 6)}
+                if vals else None)
+    return {"matched": len(pairs), "area_ratio": _agg("area_ratio"),
+            "dw_pct": _agg("dw_pct"), "dh_pct": _agg("dh_pct")}
+
+
+def _seg_accuracy(stratum):
+    """Quality-weighted segmentation accuracy = E / (A + FP): earned IoU credit over the union of the
+    approved set (each worth 1.0) and the false automated panels. 1.0 only at perfect reproduction
+    (every approved panel matched at IoU 1, nothing missing, nothing false); monotonic — the score
+    the 95-99% target tracks."""
+    earned = stratum["earned_credit"]
+    denom = stratum["n_app"] + len(stratum["false_artifact_ids"])   # A + FP (soft-Jaccard union)
+    score = _rate(earned, denom)
+    return {"numerator": earned, "denominator": denom, "score": score,
+            "target_low": GEOMETRY_ACCURACY_TARGET_LOW, "target_high": GEOMETRY_ACCURACY_TARGET_HIGH,
+            "meets_target": score >= GEOMETRY_ACCURACY_TARGET_LOW}
+
+
 def _combine(*strata):
-    """Micro-average combine of strata: sum counts, concatenate id lists (order-stable)."""
+    """Micro-average combine of strata: sum counts + earned credit, concatenate id lists / pairs."""
+    _ids = ("false_artifact_ids", "missing_artifact_ids", "split_artifact_ids",
+            "merge_artifact_ids", "matched_pairs")
     out = {k: 0 for k in ("n_gen", "n_app", "matched_generated", "matched_approved", "unchanged")}
-    for k in ("false_artifact_ids", "missing_artifact_ids", "split_artifact_ids", "merge_artifact_ids"):
+    out["earned_credit"] = 0.0
+    for k in _ids:
         out[k] = []
     for s in strata:
         for k in ("n_gen", "n_app", "matched_generated", "matched_approved", "unchanged"):
             out[k] += s[k]
-        for k in ("false_artifact_ids", "missing_artifact_ids", "split_artifact_ids", "merge_artifact_ids"):
+        out["earned_credit"] += s["earned_credit"]
+        for k in _ids:
             out[k] += s[k]
+    out["earned_credit"] = round(out["earned_credit"], 6)
     return out
 
 
@@ -125,11 +196,14 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
             "approved_panel_count": s["n_app"],
             "precision": _rate(s["matched_generated"], s["n_gen"]),
             "recall": _rate(s["matched_approved"], s["n_app"]),
+            "segmentation_accuracy": _seg_accuracy(s),   # quality-weighted E/(A+FP)
             "split_rate": _rate(len(s["split_artifact_ids"]), s["n_app"]),
             "merge_rate": _rate(len(s["merge_artifact_ids"]), s["n_gen"]),
             "false_count": len(s["false_artifact_ids"]),
             "missing_count": len(s["missing_artifact_ids"]),
             "unchanged_geometry_panels": s["unchanged"],
+            "resize_bias": _resize_bias(s["matched_pairs"]),
+            "matched_pairs": s["matched_pairs"],   # per-panel IoU + resize diagnostics
             "missing_artifact_ids": s["missing_artifact_ids"],
             "false_artifact_ids": s["false_artifact_ids"],
             "split_artifact_ids": s["split_artifact_ids"],
@@ -146,6 +220,8 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
         "approved_spread_count": spread["n_app"],
         "precision": _rate(total["matched_generated"], total["n_gen"]),
         "recall": _rate(total["matched_approved"], total["n_app"]),
+        "segmentation_accuracy": _seg_accuracy(total),   # headline quality-weighted E/(A+FP)
+        "resize_bias": _resize_bias(total["matched_pairs"]),
         "split_rate": _rate(len(total["split_artifact_ids"]), total["n_app"]),
         "merge_rate": _rate(len(total["merge_artifact_ids"]), total["n_gen"]),
         "missing_count": len(total["missing_artifact_ids"]),
@@ -186,6 +262,8 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
             "ratios": {
                 "precision": _ratio(total["matched_generated"], total["n_gen"]),
                 "recall": _ratio(total["matched_approved"], total["n_app"]),
+                "segmentation_accuracy": _ratio(total["earned_credit"],
+                                                total["n_app"] + len(total["false_artifact_ids"])),
                 "split_rate": _ratio(len(total["split_artifact_ids"]), total["n_app"]),
                 "merge_rate": _ratio(len(total["merge_artifact_ids"]), total["n_gen"]),
                 "false_rate": _ratio(len(total["false_artifact_ids"]), total["n_gen"]),

@@ -55,8 +55,14 @@ Increment 1 also **excludes spreads (both sides) from the page delta** so the pa
 and never regresses. **Increment 2 (done)** adds the actual **spread-to-spread matching in the
 spread frame** (scoped by `page_range`): the delta is now **stratified** into page + spread
 sub-groups with a micro-averaged whole-issue total. Live `rev_0be8dc34`: page 0.9459/0.5556,
-spread 0.5714/0.2353, **total 0.8431/0.4433** (vs the inflated v1 0.941/0.608). **Increment 3** adds
-the quality-weighted `E/(A+FP)` accuracy + per-panel resize diagnostics on this corrected foundation.
+spread 0.5714/0.2353, **total 0.8431/0.4433** (vs the inflated v1 0.941/0.608).
+
+**Increment 3 (done)** adds the **quality-weighted segmentation accuracy** `E/(A+FP)` (continuous IoU
+partial credit; the headline the 0.95–0.99 target tracks) + per-panel **resize diagnostics** (IoU,
+area ratio, per-edge deltas) and a systematic **resize bias** aggregate, per stratum + total,
+registered in the benchmark. Live `rev_0be8dc34`: accuracy page 0.522, spread 0.173, **total 0.389**;
+resize bias median 1.0 (matched boxes near-exact) — so the gap is **detection/recall, not sizing**,
+worst on spreads. That is the concrete, data-grounded pipeline recommendation.
 
 ## Identity is (page, panel)
 
