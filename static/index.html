@@ -263,7 +263,7 @@ function chart(title,series,bnds,legend,metaArr){
 let latestDiag=undefined;
 async function loadLatestDiag(){
   if(latestDiag!==undefined)return latestDiag;
-  try{const rep=await getJSON("/reports/latest");latestDiag=((rep||{}).geometry_delta||{}).diagnostics||null;}
+  try{const rep=await getJSON("/reports/latest");latestDiag=(((rep||{}).delta_report||{}).geometry_delta||{}).diagnostics||null;}
   catch(e){latestDiag=null;}
   return latestDiag;
 }
