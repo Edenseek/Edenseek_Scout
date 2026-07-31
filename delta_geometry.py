@@ -107,6 +107,9 @@ def _match_stratum(gen, appr, scope_of, iou_threshold):
         "unchanged": sum(1 for a in app_ids
                          if len(am[a]) == 1 and len(gm[am[a][0]]) == 1),
         "earned_credit": round(sum(best[a][0] for a in matched_app), 6),
+        # distinct automated panels actually credited (one per approved best-match). n_gen minus this
+        # = automated panels that earn nothing: false panels AND over-segmentation excess.
+        "credited_generated": len({best[a][1] for a in matched_app}),
         "matched_pairs": pairs,
     }
 
@@ -124,13 +127,15 @@ def _resize_bias(pairs):
 
 def _seg_accuracy(stratum):
     """Quality-weighted segmentation accuracy = E / (A + FP): earned IoU credit over the union of the
-    approved set (each worth 1.0) and the false automated panels. 1.0 only at perfect reproduction
-    (every approved panel matched at IoU 1, nothing missing, nothing false); monotonic — the score
-    the 95-99% target tracks."""
+    approved set (each worth 1.0) and every automated panel that earns nothing. FP counts BOTH false
+    panels (no overlap) AND over-segmentation excess (extra automated boxes for one approved panel),
+    so the score is 1.0 ONLY at a true 1:1 reproduction (every approved panel matched at IoU 1, no
+    missing, no false, no duplicates); monotonic — the score the 95-99% target tracks."""
     earned = stratum["earned_credit"]
-    denom = stratum["n_app"] + len(stratum["false_artifact_ids"])   # A + FP (soft-Jaccard union)
+    fp = stratum["n_gen"] - stratum["credited_generated"]   # false + over-segmentation excess
+    denom = stratum["n_app"] + fp                            # soft-Jaccard union
     score = _rate(earned, denom)
-    return {"numerator": earned, "denominator": denom, "score": score,
+    return {"numerator": earned, "denominator": denom, "false_or_excess": fp, "score": score,
             "target_low": GEOMETRY_ACCURACY_TARGET_LOW, "target_high": GEOMETRY_ACCURACY_TARGET_HIGH,
             "meets_target": score >= GEOMETRY_ACCURACY_TARGET_LOW}
 
@@ -139,12 +144,14 @@ def _combine(*strata):
     """Micro-average combine of strata: sum counts + earned credit, concatenate id lists / pairs."""
     _ids = ("false_artifact_ids", "missing_artifact_ids", "split_artifact_ids",
             "merge_artifact_ids", "matched_pairs")
-    out = {k: 0 for k in ("n_gen", "n_app", "matched_generated", "matched_approved", "unchanged")}
+    counts = ("n_gen", "n_app", "matched_generated", "matched_approved", "unchanged",
+              "credited_generated")
+    out = {k: 0 for k in counts}
     out["earned_credit"] = 0.0
     for k in _ids:
         out[k] = []
     for s in strata:
-        for k in ("n_gen", "n_app", "matched_generated", "matched_approved", "unchanged"):
+        for k in counts:
             out[k] += s[k]
         out["earned_credit"] += s["earned_credit"]
         for k in _ids:
@@ -174,9 +181,14 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
     appr_spread = {a: e for a, e in approved.items()
                    if not e["flags"].get("deleted") and e["flags"].get("is_spread")}
 
+    def _spread_scope(e):
+        # scope spreads by their page_range; if a spread lacks page_range, fall back to its own id so
+        # two page_range-less spreads never collapse into one scope and falsely match.
+        pr = e.get("page_range")
+        return tuple(pr) if pr else ("__spread_id__", e.get("artifact_id"))
+
     page = _match_stratum(gen_page, appr_page, lambda e: e.get("page_number"), iou_threshold)
-    spread = _match_stratum(gen_spread, appr_spread,
-                            lambda e: tuple(e.get("page_range") or []), iou_threshold)
+    spread = _match_stratum(gen_spread, appr_spread, _spread_scope, iou_threshold)
     total = _combine(page, spread)
 
     summary = (canonical_review.get("generated") or {}).get("summary") or {}
@@ -262,8 +274,9 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
             "ratios": {
                 "precision": _ratio(total["matched_generated"], total["n_gen"]),
                 "recall": _ratio(total["matched_approved"], total["n_app"]),
-                "segmentation_accuracy": _ratio(total["earned_credit"],
-                                                total["n_app"] + len(total["false_artifact_ids"])),
+                "segmentation_accuracy": _ratio(
+                    total["earned_credit"],
+                    total["n_app"] + (total["n_gen"] - total["credited_generated"])),
                 "split_rate": _ratio(len(total["split_artifact_ids"]), total["n_app"]),
                 "merge_rate": _ratio(len(total["merge_artifact_ids"]), total["n_gen"]),
                 "false_rate": _ratio(len(total["false_artifact_ids"]), total["n_gen"]),

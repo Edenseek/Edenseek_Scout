@@ -127,11 +127,15 @@ own reports; it never mutates Publisher data, sets canonical state, or moves aud
 independently reproducible — never a bare percentage:
 
 - counts: `true_matches`, `matched_generated`, `matched_approved`, `generated_panels_evaluated`,
-  `approved_panels_evaluated`, `approved_page_panels`, `approved_spread_panels`, `panel_splits`,
-  `panel_merges`, `false_panels`, `missing_panels`, `missing_page_panels`, `spread_missing_panels`,
-  `unchanged_geometry_panels`, `total_human_geometry_corrections`, `pages_evaluated`.
+  `approved_panels_evaluated`, `page_generated_panels`, `page_approved_panels`,
+  `spread_generated_panels`, `spread_approved_panels`, `panel_splits`, `panel_merges`,
+  `false_panels`, `missing_panels`, `missing_page_panels`, `spread_missing_panels`,
+  `unchanged_geometry_panels`, `total_human_geometry_corrections`, `pages_evaluated`. (Geometry
+  `v2` stratifies into page/spread sub-groups + a `strata` block; the whole-issue counts are the
+  micro-averaged total.)
 - rates with backing: `corrections_per_page`, `unchanged_geometry_rate`, and `ratios{precision,
-  recall, split_rate, merge_rate, false_rate, missing_rate, unchanged_geometry_rate}` where each is
+  recall, segmentation_accuracy, split_rate, merge_rate, false_rate, missing_rate,
+  unchanged_geometry_rate}` where each is
   `{numerator, denominator, rate}`.
 
 ## 8. Report identity + provenance (persisted envelope)

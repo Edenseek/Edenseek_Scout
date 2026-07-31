@@ -19,6 +19,7 @@ Default is ``development`` (deny-by-default). The deployed VM MUST set
 ``SCOUT_RUNTIME_MODE=production``. Leaf module: stdlib only, no Scout imports, no cycle.
 """
 import os
+import sys
 
 MODE_ENV = "SCOUT_RUNTIME_MODE"
 ALLOW_REAL_S3_ENV = "SCOUT_ALLOW_REAL_S3"
@@ -52,10 +53,22 @@ def real_s3_allowed():
     return (os.getenv(ALLOW_REAL_S3_ENV, "") or "").strip().lower() in _TRUTHY  # development: opt-in
 
 
+def _under_test_runner():
+    """True when running under a unit-test runner (unittest/pytest imported). Independent of how the
+    suite is launched, so the test boundary holds even when the ``tests`` package bootstrap does not
+    run (e.g. ``unittest discover -s tests``) or a workstation has left ``SCOUT_ALLOW_REAL_S3`` set.
+    The application never imports unittest/pytest, so this is never true in production."""
+    return any(m in sys.modules for m in ("unittest", "pytest", "_pytest"))
+
+
 def guard_real_s3_client():
-    """Choke-point called by EVERY real boto3 S3 client factory. Raises ``ScoutSafetyError``
-    unless the current runtime mode permits a real client. A test process (mode=test) can never
-    pass this — tests must inject a fake/stub client."""
+    """Choke-point called by EVERY real boto3 S3 client factory. Raises ``ScoutSafetyError`` unless
+    the current runtime mode permits a real client. A test process can NEVER pass this — tests must
+    inject a fake/stub client — regardless of mode or a stray opt-in."""
+    if _under_test_runner():
+        raise ScoutSafetyError(
+            "Refusing to create a real S3 client from a test process (a unit-test runner is loaded). "
+            "Tests must inject a fake/stub client.")
     if not real_s3_allowed():
         raise ScoutSafetyError(
             f"Refusing to create a real S3 client in runtime mode={mode()!r}. "

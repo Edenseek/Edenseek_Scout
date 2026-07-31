@@ -94,14 +94,16 @@ def _f(value, default=0.0):
 
 
 def _derive_page_number(artifact_id, carried):
-    """The 1-based page a page-panel belongs to — the scope within which its geometry may be
-    compared. Panel coordinates are normalized **per page**, so a same-position panel on another
-    page is a different panel; matching must be page-scoped (see delta_geometry v2 and
+    """The page scope a page-panel belongs to — the scope within which its geometry may be compared.
+    Panel coordinates are normalized **per page**, so a same-position panel on another page is a
+    different panel; matching must be page-scoped (see delta_geometry v2 and
     docs/phases/geometry-correctness/).
 
-    Prefer the Publisher-carried ``page_number``; else derive from the artifact-id identity, which
-    encodes the page (``<property>_<issue>_<page>::pN`` and ``<page>::NEW::N``). Fail-fast if the
-    page cannot be established — Scout never silently compares panels across an unknown page.
+    Prefer the Publisher-carried ``page_number`` (int); else derive from the artifact-id identity,
+    which encodes the page (``<property>_<issue>_<page>::pN`` and ``<page>::NEW::N``). If the id
+    carries no numeric page (e.g. a ``cover`` label), fall back to the id's page component **as a
+    string scope** so panels on that page still group together — never aborting the whole delta over
+    one un-numbered page. Both sides use the same id scheme, so matched panels share the scope.
     """
     if carried is not None:
         try:
@@ -114,9 +116,7 @@ def _derive_page_number(artifact_id, carried):
     nums = [tok for tok in head.split("_") if tok.isdigit()]
     if nums:
         return int(nums[-1])                   # "<property>_<issue>_<page>" -> trailing = page
-    raise ReviewContractError(
-        f"cannot establish page_number for artifact {artifact_id!r} (no carried page_number and "
-        "the id does not encode a page) — refusing to compare geometry across an unknown page")
+    return head                                # non-numeric page label -> group by page component
 
 
 def _normalize_bbox(raw, source):
@@ -168,14 +168,18 @@ def _normalize_generated_geometry(generated_panel_geometry):
         if not isinstance(artifact_id, str):
             raise ReviewContractError(f"{src}.panel_key must be a string")
         coord = row.get("coordinate_space")
+        is_spread = coord == "spread"
         canon[artifact_id] = {
+            "artifact_id": artifact_id,
             "bbox": _normalize_bbox(_require(row, "bounds", src), src + ".bounds"),
-            "page_number": _derive_page_number(artifact_id, row.get("page_number")),
+            # Page panels get a page scope; spreads are matched by page_range, not page_number, so
+            # (like the approved side) leave theirs as carried — symmetric handling.
+            "page_number": (row.get("page_number") if is_spread
+                            else _derive_page_number(artifact_id, row.get("page_number"))),
             "coordinate_space": coord,
-            # Generated spreads (spread-canvas frame) are flagged so the geometry delta excludes them
-            # from the page-panel comparison and matches them spread-to-spread instead (Increment 2);
-            # page-space rows carry no flags. page_range is carried for that future spread matching.
-            "flags": {"is_spread": True} if coord == "spread" else {},
+            # Generated spreads (spread-canvas frame) are flagged so the geometry delta matches them
+            # spread-to-spread instead of against page panels; page-space rows carry no flags.
+            "flags": {"is_spread": True} if is_spread else {},
             "page_range": row.get("page_range"),
         }
     return canon
@@ -225,9 +229,10 @@ def _normalize_approved_geometry(approved_geometry):
                 f"{src}: not a recognized panel geometry (no x/y/width/height and not a spread) "
                 "— unexpected approved_geometry member; refusing to reinterpret")
         canon[artifact_id] = {
+            "artifact_id": artifact_id,
             "bbox": bbox,
-            # Page panels get a guaranteed page_number (matching is page-scoped); spreads are
-            # matched in the spread frame (Increment 2), not by page_number, so leave theirs as-is.
+            # Page panels get a guaranteed page scope (matching is page-scoped); spreads are matched
+            # by page_range, not page_number, so leave theirs as carried.
             "page_number": (entry.get("page_number") if is_spread
                             else _derive_page_number(artifact_id, entry.get("page_number"))),
             "coordinate_space": "spread" if is_spread else (

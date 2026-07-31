@@ -128,6 +128,42 @@ class TestGeometryDelta(unittest.TestCase):
         self.assertEqual(pair["dh_pct"], -0.5)          # height 50% under approved
         self.assertEqual(pair["dw_pct"], 0.0)           # width exact
 
+    def test_over_segmentation_penalizes_accuracy(self):
+        """Automation drew TWO identical boxes for ONE approved panel (over-segmentation). The extra
+        box earns no credit and enters the denominator, so accuracy is 0.5, not a false 1.0."""
+        r = _mk_review(
+            {"1::p1": {"x": 0, "y": 0, "width": 0.5, "height": 0.5},
+             "1::p2": {"x": 0, "y": 0, "width": 0.5, "height": 0.5}},   # duplicate of p1
+            {"1::p1": {"x": 0, "y": 0, "width": 0.5, "height": 0.5}})
+        d = compute_geometry_delta(adapt_review(r))
+        self.assertIn("1::p1", d["split_artifact_ids"])   # 1 approved <- 2 automated
+        sa = d["segmentation_accuracy"]
+        self.assertEqual(sa["numerator"], 1.0)            # best match is exact
+        self.assertEqual(sa["denominator"], 2)            # 1 approved + 1 over-seg excess
+        self.assertEqual(sa["false_or_excess"], 1)
+        self.assertEqual(sa["score"], 0.5)
+
+    def test_non_numeric_page_does_not_abort(self):
+        """A 'cover' page id carries no numeric page — derivation falls back to the label as a scope
+        and the delta still computes (one un-numbered page must not abort the whole issue)."""
+        r = {
+            "review_report_version": "v1", "issue_identity": fx.IDENTITY, "review_id": "rev_t",
+            "generated_geometry": {"property_id": "x", "issue_number": 1, "total_pages": 1,
+                "total_story_pages": 1, "total_panels": 1, "panels": [
+                    {"panel_key": "cover::p1", "order": 1, "bbox": [0, 0, 1, 1],
+                     "bounds": {"x": 0, "y": 0, "width": 1.0, "height": 1.0}, "coordinate_space": "page"}]},
+            "generated_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+            "approved_geometry": {"cover::p1": {"x": 0, "y": 0, "width": 1.0, "height": 1.0}},
+            "approved_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+            "provenance": {"published_revision_id": "rev_taaaa",
+                           "generated_vs_approved": {"state": "generated_publication",
+                                                     "generated_snapshot_revision_id": "rev_g"}},
+        }
+        d = compute_geometry_delta(adapt_review(r))
+        self.assertTrue(d["applicable"])          # did NOT abort on the non-numeric 'cover' page
+        self.assertEqual(d["precision"], 1.0)     # matched within the 'cover' scope
+        self.assertEqual(d["recall"], 1.0)
+
     def test_false_panel_penalizes_accuracy(self):
         """A false automated panel enters the denominator (A + FP): one perfect match + one false
         panel -> accuracy 1.0/(1+1) = 0.5."""
