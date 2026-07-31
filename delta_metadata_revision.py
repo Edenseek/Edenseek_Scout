@@ -50,6 +50,17 @@ _DISTANCE_CATEGORIES = set(WEIGHTS)  # everything scored; abstention/unsupported
 _EDIT_CATEGORIES = ("minor_wording_edit", "moderate_rewrite", "major_rewrite",
                     "complete_replacement", "added", "removed")
 
+# ---- Metadata Headline Accuracy v1 ----
+# Headline = field ACCEPTANCE rate (fields the human took with NO edit) — the "few edits to the
+# publisher's satisfaction" metric: field-agnostic, deterministic, and it moves exactly with human
+# editing effort. Target band 0.75-0.90. The per-field EDITORIAL BURDEN (which field costs the most
+# edits) is the signal that drives prompt improvement / reduces publisher work. Edit-effort per field
+# uses a DATA-DRIVEN distance (set-Jaccard where the field is a list/dict, token-Jaccard for text), so
+# it stays correct as fields change — never keyed on a specific field name.
+METADATA_ACCURACY_VERSION = "v1"
+METADATA_ACCURACY_TARGET_LOW = 0.75
+METADATA_ACCURACY_TARGET_HIGH = 0.90
+
 
 def _is_empty(v):
     return v is None or v == "" or v == [] or v == {}
@@ -195,6 +206,61 @@ def _aggregate(tally, distances, weighted_sum, gen_populated, app_populated, art
     }
 
 
+def _field_effort(records_for_field):
+    """Type-appropriate edit effort over a field's EDITED records: set-Jaccard for list/dict fields
+    (chosen from the DATA — set_jaccard present), token-Jaccard for text. Field-agnostic: the basis
+    follows the value shape, so a new field gets the right method automatically. Returns (mean, method)."""
+    vals, method = [], None
+    for r in records_for_field:
+        if r.get("category") not in _EDIT_CATEGORIES:
+            continue
+        m = r.get("measures") or {}
+        if m.get("set_jaccard_distance") is not None:
+            vals.append(m["set_jaccard_distance"]); method = "set_jaccard"
+        elif m.get("token_jaccard_distance") is not None:
+            vals.append(m["token_jaccard_distance"]); method = method or "token_jaccard"
+    return (round(statistics.fmean(vals), 6) if vals else 0.0), method
+
+
+def _metadata_accuracy(global_agg, per_field_out, records):
+    """Metadata Headline Accuracy v1. Headline = field ACCEPTANCE rate (accepted / comparable) — the
+    deterministic 'few edits to satisfaction' metric. Plus the per-field EDITORIAL BURDEN (which field
+    costs the most edits + its share of total edits + edit effort) — the actionable signal for closing
+    the gap / reducing publisher work. Derived purely from the certified revision-distance benchmark."""
+    comparable = global_agg["comparable_fields"]
+    accepted = global_agg["counts"]["accepted_unchanged"]
+    rate = round(accepted / comparable, 6) if comparable else 0.0
+    recs_by_field = {}
+    for r in records:
+        recs_by_field.setdefault(r.get("field"), []).append(r)
+    total_edited = sum(pf["comparable_fields"] - pf["counts"]["accepted_unchanged"]
+                       for pf in per_field_out.values())
+    per_field = {}
+    for f, pf in per_field_out.items():
+        cf, acc = pf["comparable_fields"], pf["counts"]["accepted_unchanged"]
+        edited = cf - acc
+        effort, method = _field_effort(recs_by_field.get(f, []))
+        per_field[f] = {
+            "comparable_fields": cf, "accepted": acc,
+            "acceptance_rate": round(acc / cf, 6) if cf else 0.0,
+            "edited": edited,
+            "edit_share": round(edited / total_edited, 6) if total_edited else 0.0,
+            "edit_effort": effort, "effort_method": method,
+        }
+    burden = sorted(({"field": f, **v} for f, v in per_field.items()),
+                    key=lambda x: (-x["edited"], -x["edit_effort"], x["field"]))
+    return {
+        "version": METADATA_ACCURACY_VERSION,
+        "acceptance": {"numerator": accepted, "denominator": comparable, "rate": rate},
+        "target_low": METADATA_ACCURACY_TARGET_LOW, "target_high": METADATA_ACCURACY_TARGET_HIGH,
+        "meets_target": rate >= METADATA_ACCURACY_TARGET_LOW,
+        "comparable_fields": comparable,
+        "total_edited_fields": total_edited,
+        "per_field": per_field,
+        "editorial_burden": burden,   # ranked: where the publisher's editing work concentrates
+    }
+
+
 def compute_metadata_benchmark(canonical_review):
     """Deterministic metadata revision-distance benchmark for one canonical review.
 
@@ -265,8 +331,9 @@ def compute_metadata_benchmark(canonical_review):
         "comparable_artifacts": comparable_artifacts,
         "artifact_removed_at_approval": generated_only,
         "artifact_added_at_approval": approved_only,
-        "global": _aggregate(g_tally, distances, weighted_sum, gen_pop, app_pop, comparable_artifacts),
+        "global": (_g := _aggregate(g_tally, distances, weighted_sum, gen_pop, app_pop, comparable_artifacts)),
         "per_field": per_field_out,
+        "metadata_accuracy": _metadata_accuracy(_g, per_field_out, records),
         "records": records,   # references + hashes only — never raw generated/approved text
     }
 
@@ -276,8 +343,13 @@ def benchmark_headline(benchmark):
     if not benchmark.get("applicable"):
         return {"applicable": False, "reason": benchmark.get("reason")}
     g = benchmark["global"]
+    ma = benchmark.get("metadata_accuracy") or {}
     return {
         "applicable": True,
+        # Metadata Headline Accuracy v1 — the field acceptance rate (the "few edits" number).
+        "metadata_accuracy_version": ma.get("version"),
+        "metadata_accuracy": (ma.get("acceptance") or {}).get("rate"),
+        "metadata_accuracy_meets_target": ma.get("meets_target"),
         "comparable_fields": g["comparable_fields"],
         "fields_generated": g["fields_generated"],
         "fields_approved": g["fields_approved"],

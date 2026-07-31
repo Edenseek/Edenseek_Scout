@@ -72,6 +72,24 @@ class TestClassifier(unittest.TestCase):
         self.assertTrue(0.0 <= g["average_revision_distance"] <= 1.0)
         self.assertTrue(0.0 <= g["weighted_editorial_intervention_score"]["score"] <= 1.0)
 
+    def test_metadata_accuracy_v1(self):
+        b = dmr.compute_metadata_benchmark(adapt_review(fx.review_generated()))
+        ma = b["metadata_accuracy"]
+        self.assertEqual(ma["version"], "v1")
+        # headline = field acceptance rate (accepted / comparable), field-agnostic
+        self.assertEqual(ma["acceptance"]["numerator"], b["global"]["counts"]["accepted_unchanged"])
+        self.assertEqual(ma["acceptance"]["denominator"], b["global"]["comparable_fields"])
+        self.assertEqual(ma["meets_target"], ma["acceptance"]["rate"] >= 0.75)
+        # per-field editorial burden covers all fields and is ranked by edits (where the work is)
+        self.assertEqual(set(ma["per_field"]), set(dmr.FIELDS))
+        edits = [x["edited"] for x in ma["editorial_burden"]]
+        self.assertEqual(edits, sorted(edits, reverse=True))
+        self.assertEqual(sum(x["edited"] for x in ma["editorial_burden"]), ma["total_edited_fields"])
+        # effort method is data-driven: a list field edited -> set_jaccard; text field -> token_jaccard
+        chars = ma["per_field"]["entities.characters"]
+        if chars["edited"]:
+            self.assertEqual(chars["effort_method"], "set_jaccard")
+
     def test_records_are_references_and_hashes_only(self):
         b = dmr.compute_metadata_benchmark(adapt_review(fx.review_generated()))
         self.assertTrue(b["records"])

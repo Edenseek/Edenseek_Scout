@@ -42,7 +42,7 @@ GEOMETRY_AXES = ("task", "metric_definition_version", "geometry_detector_version
                  "iou_threshold", "normalization_version")
 METADATA_AXES = ("task", "metric_definition_version", "metadata_prompt_version", "metadata_model",
                  "metadata_schema_version", "metadata_revision_distance_version",
-                 "normalization_version", "evaluation_version")
+                 "metadata_accuracy_version", "normalization_version", "evaluation_version")
 
 
 class ScoutReportIndexError(Exception):
@@ -82,6 +82,7 @@ def metadata_axes(body):
         "metadata_model": mp.get("model"),
         "metadata_schema_version": f"{mp.get('generated_schema_version')}/{mp.get('approved_schema_version')}",
         "metadata_revision_distance_version": prov.get("metadata_revision_distance_version"),
+        "metadata_accuracy_version": (body.get("metadata_metrics") or {}).get("metadata_accuracy_version"),
         "normalization_version": prov.get("normalization_version"),
         "evaluation_version": body.get("evaluation_version"),
     }
