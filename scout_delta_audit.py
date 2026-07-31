@@ -123,7 +123,11 @@ def build_report_body(view):
     metadata_metrics = benchmark_headline(mb)
     # Compact metadata aggregate (counts + numerators/denominators, WITHOUT the per-field records)
     # carried on the report/entry so higher-level projections aggregate from counts, not percentages.
-    metadata_benchmark = ({"applicable": True, "comparable_artifacts": mb.get("comparable_artifacts"),
+    # The block spreads the fresh-only `global`, so its sample-size uses the matching fresh artifact
+    # count (not the all-common one) to stay internally consistent when preserved outputs exist.
+    metadata_benchmark = ({"applicable": True,
+                           "comparable_artifacts": mb.get("fresh_comparable_artifacts",
+                                                          mb.get("comparable_artifacts")),
                            **mb["global"]} if mb.get("applicable") else {"applicable": False})
     # Dual time: event (Publisher publication) vs measurement (Scout). completed_at (measurement) is
     # stamped by the publisher; event/certified come from the evidence + Platform Approval.

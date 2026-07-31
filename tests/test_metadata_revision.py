@@ -22,10 +22,200 @@ import scout_delta_audit as sda  # noqa: E402
 import scout_report_index as sri  # noqa: E402
 
 _ALLOWED_RECORD_KEYS = {"artifact_id", "field", "category", "distance", "generated_sha256",
-                        "approved_sha256", "generated_empty", "approved_empty", "measures"}
+                        "approved_sha256", "generated_empty", "approved_empty",
+                        "generated_disposition", "measures"}
+
+# A fresh per-output generation_provenance (Publisher enhancement #1), sibling of `output`.
+_FRESH_PROV = {"model": "gpt-4.1-mini", "prompt_version": "v1",
+               "prompt_sha256": "sha256:3b5dea34", "temperature": 0, "mode": "text"}
 _ALLOWED_MEASURE_KEYS = {"char_levenshtein", "char_levenshtein_norm", "token_jaccard_distance",
                          "set_jaccard_distance", "len_ratio", "structural_equal",
                          "generated_type", "approved_type"}
+
+
+def _generated_with_prov(dispositions=None, provenance_by_id=None):
+    """``fx.review_generated()`` with per-output ``generation_provenance`` + disposition injected on
+    every generated output. ``dispositions``/``provenance_by_id`` override per artifact_id; defaults
+    are all-``fresh`` with ``_FRESH_PROV``."""
+    r = fx.review_generated()
+    for o in r["generated_metadata"]["llm_enrichment_outputs"]:
+        aid = o["artifact_id"]
+        o["generation_provenance"] = (provenance_by_id or {}).get(aid, _FRESH_PROV)
+        o["metadata_generation_provenance"] = (dispositions or {}).get(aid, "fresh")
+    return r
+
+
+def _report_body(rep):
+    """Wrap a delta report into the minimal view build_report_body needs (mirrors TestIntegration)."""
+    view = {
+        "audit_timestamp": "2026-07-31T00:00:00Z", "publisher_commit": "p", "scout_commit": "s",
+        "evidence": {"issue_identity": fx.IDENTITY, "summary": {}, "objects": [],
+                     "manifest_version": "v1", "publisher_provenance": {}},
+        "findings": [{"code": "x", "severity": "PASS", "title": "t", "detail": "d"}],
+        "delta_summary": {"geometry": {"status": "computed", "precision": 1.0, "recall": 0.5,
+                                       "split_rate": 0, "merge_rate": 0, "missing": 0,
+                                       "spread_missing": 1, "false": 0},
+                          "metadata": {"status": "computed", "compared": 2}},
+        "delta_report": rep, "delta_report_sha256": "x",
+    }
+    return sda.build_report_body(view)
+
+
+class TestProvenanceV2(unittest.TestCase):
+    """Publisher enhancement #1 (model/prompt provenance) + #2 (fresh/preserved flag) → adapter v2."""
+
+    def test_adapter_tolerates_and_reads_provenance_siblings(self):
+        # The additive sibling keys must NOT trip fail-fast, and must not change compared content.
+        c = adapt_review(_generated_with_prov())
+        base = adapt_review(fx.review_generated())
+        aid = "society_of_killers_1_3::p1"
+        self.assertEqual(c["generated"]["metadata"][aid]["fields"],
+                         base["generated"]["metadata"][aid]["fields"])
+        self.assertEqual(c["generated"]["metadata"][aid]["generation_disposition"], "fresh")
+
+    def test_provenance_identity_from_fresh_outputs(self):
+        mp = adapt_review(_generated_with_prov())["metadata_provenance"]
+        self.assertEqual(mp["model"], "gpt-4.1-mini")
+        self.assertEqual(mp["prompt_version"], "v1")
+        self.assertEqual(mp["prompt_sha256"], "sha256:3b5dea34")
+        self.assertEqual(mp["provenance_source"], "per_output_fresh")
+        self.assertFalse(mp["provenance_heterogeneous"])
+
+    def test_legacy_revision_yields_null_provenance(self):
+        mp = adapt_review(fx.review_generated())["metadata_provenance"]   # no provenance emitted
+        self.assertIsNone(mp["model"])
+        self.assertIsNone(mp["prompt_version"])
+        self.assertIsNone(mp["prompt_sha256"])
+        self.assertEqual(mp["provenance_source"], "legacy_or_absent")
+        self.assertEqual(mp["fresh_output_count"], 0)
+
+    def test_heterogeneous_fresh_provenance_is_surfaced_not_collapsed(self):
+        prov_b = dict(_FRESH_PROV, model="gpt-4o")
+        mp = adapt_review(_generated_with_prov(
+            provenance_by_id={"society_of_killers_1_3::p1": prov_b}))["metadata_provenance"]
+        # disagreeing models -> a deterministic mixed marker (NOT None, so the axis key stays distinct)
+        self.assertTrue(mp["model"].startswith("mixed:"))
+        self.assertTrue(mp["provenance_heterogeneous"])
+        self.assertEqual(mp["prompt_version"], "v1")    # prompt_version still agrees -> resolved
+
+    def test_heterogeneous_mixes_get_distinct_axis_keys(self):
+        # Same mix -> same marker; a DIFFERENT mix -> a different marker. Two heterogeneous reports
+        # must never silently share a comparability key.
+        m1 = adapt_review(_generated_with_prov(provenance_by_id={
+            "society_of_killers_1_3::p1": dict(_FRESH_PROV, model="gpt-4o")}))["metadata_provenance"]["model"]
+        m1b = adapt_review(_generated_with_prov(provenance_by_id={
+            "society_of_killers_1_3::p1": dict(_FRESH_PROV, model="gpt-4o")}))["metadata_provenance"]["model"]
+        m2 = adapt_review(_generated_with_prov(provenance_by_id={
+            "society_of_killers_1_3::p1": dict(_FRESH_PROV, model="claude-3")}))["metadata_provenance"]["model"]
+        self.assertEqual(m1, m1b)          # deterministic per mix
+        self.assertNotEqual(m1, m2)        # different mix -> different marker
+
+    def test_headline_is_fresh_only_and_self_consistent(self):
+        # Reviewer finding #1: with a preserved output present, EVERY headline rate must be fresh-only,
+        # so accepted_unchanged_rate == the acceptance headline and comparable_fields == its denominator.
+        aid = "society_of_killers_1_10::p1"
+        b = dmr.compute_metadata_benchmark(adapt_review(_generated_with_prov(
+            dispositions={aid: "preserved_approved"})))
+        h = dmr.benchmark_headline(b)
+        ma = b["metadata_accuracy"]
+        self.assertEqual(h["accepted_unchanged_rate"], ma["acceptance"]["rate"])
+        self.assertEqual(h["unchanged_metadata_rate"], ma["acceptance"]["rate"])
+        self.assertEqual(h["comparable_fields"], ma["acceptance"]["denominator"])
+        # the surfaced `global` is now fresh-only (== the headline denominator), and DIFFERS from the
+        # retained all-common descriptive block — proving no inflated surface survives.
+        self.assertEqual(h["comparable_fields"], b["global"]["comparable_fields"])
+        self.assertNotEqual(h["comparable_fields"], b["global_all_common"]["comparable_fields"])
+
+    def test_body_metadata_benchmark_is_fresh_only(self):
+        # Reviewer finding A: the field the index entry + Metadata Intelligence trend consume
+        # (body["metadata_benchmark"], spread from mb["global"]) must be fresh-only, not preserved-inflated.
+        import scout_delta_audit as sda2
+        aid = "society_of_killers_1_10::p1"
+        rep = run_delta_audit(_generated_with_prov(dispositions={aid: "preserved_approved"}),
+                              fx.platform_approval())
+        mb = rep["metadata_benchmark"]
+        self.assertEqual(mb["global"]["comparable_fields"], mb["metadata_accuracy"]["acceptance"]["denominator"])
+        self.assertNotEqual(mb["global"]["comparable_fields"], mb["global_all_common"]["comparable_fields"])
+        body = _report_body(rep)
+        self.assertEqual(body["metadata_benchmark"]["comparable_fields"],
+                         mb["metadata_accuracy"]["acceptance"]["denominator"])
+
+    def test_all_preserved_withholds_target(self):
+        # Reviewer finding B: a zero-fresh revision must not read as "0% accepted / target failed".
+        r = _generated_with_prov(dispositions={a: "preserved_approved" for a in
+                                               ("society_of_killers_1_10::p1", "society_of_killers_1_3::p1",
+                                                "society_of_killers_1_7::p1")})
+        ma = dmr.compute_metadata_benchmark(adapt_review(r))["metadata_accuracy"]
+        self.assertEqual(ma["acceptance"]["denominator"], 0)
+        self.assertIsNone(ma["meets_target"])
+        self.assertFalse(ma["provisional"])            # coverage is "all", not partial
+        self.assertEqual(ma["disposition_coverage"], "all")
+
+    def test_partial_coverage_is_provisional_and_target_withheld(self):
+        # Reviewer finding #2: an under-flagged (contract-violating) revision must not emit a trustworthy
+        # meets_target. Flag every output except the fully-accepted one.
+        r = fx.review_generated()
+        for o in r["generated_metadata"]["llm_enrichment_outputs"]:
+            o["generation_provenance"] = _FRESH_PROV
+            if o["artifact_id"] != "society_of_killers_1_10::p1":
+                o["metadata_generation_provenance"] = "fresh"
+        b = dmr.compute_metadata_benchmark(adapt_review(r))
+        ma = b["metadata_accuracy"]
+        self.assertEqual(ma["disposition_coverage"], "partial")
+        self.assertTrue(ma["provisional"])
+        self.assertIsNone(ma["meets_target"])
+        self.assertIsNone(dmr.benchmark_headline(b)["metadata_accuracy_meets_target"])
+
+    def test_preserved_provenance_ignored_for_axis(self):
+        # A preserved output keeps a PRIOR run's model; it must not drive this run's axis.
+        prov_old = {"model": "old-model", "prompt_version": "v0", "prompt_sha256": "sha256:old"}
+        mp = adapt_review(_generated_with_prov(
+            dispositions={"society_of_killers_1_3::p1": "preserved_approved"},
+            provenance_by_id={"society_of_killers_1_3::p1": prov_old}))["metadata_provenance"]
+        self.assertEqual(mp["model"], "gpt-4.1-mini")   # from the fresh outputs only
+        self.assertEqual(mp["prompt_version"], "v1")
+
+    def test_prompt_sha256_is_a_metadata_axis(self):
+        self.assertIn("metadata_prompt_sha256", sri.METADATA_AXES)
+        body = _report_body(run_delta_audit(_generated_with_prov(), fx.platform_approval()))
+        axes = sri.metadata_axes(body)
+        self.assertEqual(axes["metadata_prompt_sha256"], "sha256:3b5dea34")
+        self.assertEqual(axes["metadata_model"], "gpt-4.1-mini")
+        self.assertEqual(axes["metadata_prompt_version"], "v1")
+
+    def test_v2_excludes_preserved_from_denominator(self):
+        aid = "society_of_killers_1_10::p1"   # 4 scored fields: tags/chars/summary accepted, dialogue added
+        base = dmr.compute_metadata_benchmark(adapt_review(_generated_with_prov()))["metadata_accuracy"]
+        ma = dmr.compute_metadata_benchmark(adapt_review(_generated_with_prov(
+            dispositions={aid: "preserved_approved"})))["metadata_accuracy"]
+        self.assertEqual(ma["excluded_preserved_artifacts"], [aid])
+        self.assertEqual(ma["excluded_preserved_field_count"], 4)
+        self.assertEqual(ma["acceptance"]["denominator"], base["acceptance"]["denominator"] - 4)
+        self.assertEqual(ma["acceptance"]["numerator"], base["acceptance"]["numerator"] - 3)
+
+    def test_preserved_prior_success_also_excluded(self):
+        aid = "society_of_killers_1_10::p1"
+        ma = dmr.compute_metadata_benchmark(adapt_review(_generated_with_prov(
+            dispositions={aid: "preserved_prior_success"})))["metadata_accuracy"]
+        self.assertIn(aid, ma["excluded_preserved_artifacts"])
+
+    def test_v2_all_fresh_equals_legacy_number(self):
+        # v2 is backward-identical: explicit-all-fresh == no-flags-at-all.
+        a = dmr.compute_metadata_benchmark(adapt_review(_generated_with_prov()))["metadata_accuracy"]
+        b = dmr.compute_metadata_benchmark(adapt_review(fx.review_generated()))["metadata_accuracy"]
+        self.assertEqual(a["acceptance"], b["acceptance"])
+
+    def test_disposition_coverage_signal(self):
+        legacy = dmr.compute_metadata_benchmark(adapt_review(fx.review_generated()))["metadata_accuracy"]
+        self.assertEqual(legacy["disposition_coverage"], "none")
+        allflagged = dmr.compute_metadata_benchmark(adapt_review(_generated_with_prov()))["metadata_accuracy"]
+        self.assertEqual(allflagged["disposition_coverage"], "all")
+        # a contract-violating partial emission (flag on some outputs, absent on others) is surfaced
+        r = fx.review_generated()
+        outs = r["generated_metadata"]["llm_enrichment_outputs"]
+        outs[0]["metadata_generation_provenance"] = "fresh"   # only one output flagged
+        partial = dmr.compute_metadata_benchmark(adapt_review(r))["metadata_accuracy"]
+        self.assertEqual(partial["disposition_coverage"], "partial")
 
 
 class TestClassifier(unittest.TestCase):
@@ -72,13 +262,19 @@ class TestClassifier(unittest.TestCase):
         self.assertTrue(0.0 <= g["average_revision_distance"] <= 1.0)
         self.assertTrue(0.0 <= g["weighted_editorial_intervention_score"]["score"] <= 1.0)
 
-    def test_metadata_accuracy_v1(self):
+    def test_metadata_accuracy_v2(self):
         b = dmr.compute_metadata_benchmark(adapt_review(fx.review_generated()))
         ma = b["metadata_accuracy"]
-        self.assertEqual(ma["version"], "v1")
-        # headline = field acceptance rate (accepted / comparable), field-agnostic
+        self.assertEqual(ma["version"], "v2")
+        self.assertEqual(ma["denominator_basis"], "fresh_generated_outputs_only")
+        # BACKWARD-IDENTICAL on all-fresh data: with no disposition flag every scored field is fresh,
+        # so v2's fresh-only acceptance equals the global accepted/comparable (the v1 number).
         self.assertEqual(ma["acceptance"]["numerator"], b["global"]["counts"]["accepted_unchanged"])
         self.assertEqual(ma["acceptance"]["denominator"], b["global"]["comparable_fields"])
+        self.assertEqual(ma["excluded_preserved_field_count"], 0)
+        self.assertEqual(ma["excluded_preserved_artifacts"], [])
+        self.assertEqual(ma["disposition_coverage"], "none")   # legacy fixture: no flags
+        self.assertFalse(ma["provisional"])
         self.assertEqual(ma["meets_target"], ma["acceptance"]["rate"] >= 0.75)
         # per-field editorial burden covers all fields and is ranked by edits (where the work is)
         self.assertEqual(set(ma["per_field"]), set(dmr.FIELDS))

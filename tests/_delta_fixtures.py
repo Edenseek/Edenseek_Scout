@@ -24,9 +24,13 @@ def _gen_panel(panel_key, page_number, bbox_px, bounds):
             "width": bbox_px[2], "height": bbox_px[3]}
 
 
-def _meta_out(artifact_id, tags, characters, dialogue, summary, review_state="unreviewed"):
-    """A full nested metadata output (provenance + plumbing + the content subtree)."""
-    return {
+def _meta_out(artifact_id, tags, characters, dialogue, summary, review_state="unreviewed",
+              generation_provenance=None, disposition=None):
+    """A full nested metadata output (provenance + plumbing + the content subtree). The optional
+    ``generation_provenance`` (Publisher enhancement #1, sibling of ``output``) and ``disposition``
+    (``metadata_generation_provenance``: fresh|preserved_approved|preserved_prior_success) are added
+    only when supplied — default omitted, matching the legacy pre-provenance shape."""
+    out = {
         "artifact_id": artifact_id, "input_ref": artifact_id, "version": "v1.1",
         "metadata_locked": review_state == "approved", "metadata_review_state": review_state,
         "status": "complete",
@@ -36,6 +40,11 @@ def _meta_out(artifact_id, tags, characters, dialogue, summary, review_state="un
                    "entities": {"characters": characters},
                    "narrative": {"dialogue": dialogue, "summary": summary}},
     }
+    if generation_provenance is not None:
+        out["generation_provenance"] = generation_provenance
+    if disposition is not None:
+        out["metadata_generation_provenance"] = disposition
+    return out
 
 
 def review_generated():
