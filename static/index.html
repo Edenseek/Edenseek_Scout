@@ -325,7 +325,7 @@ function renderGeomDiag(diag){
 function renderMetaDiag(rep){
   const md=document.getElementById("metadiag"); if(!md)return;
   const ma=(((rep||{}).delta_report||{}).metadata_benchmark||{}).metadata_accuracy;
-  if(!ma||!(ma.editorial_burden||[]).length){md.innerHTML=`<p class="status">Metadata accuracy appears once a Metadata Accuracy v1 report is persisted.</p>`;return;}
+  if(!ma||!(ma.editorial_burden||[]).length){md.innerHTML=`<p class="status">Metadata accuracy appears once a Metadata Accuracy v2 report is persisted.</p>`;return;}
   const eb=ma.editorial_burden,top=eb[0],acc=ma.acceptance||{};
   const lever=top.edited?`<b>${esc(top.field)}</b> carries the most editing — ${(top.edit_share*100).toFixed(0)}% of all edits, ${(top.acceptance_rate*100).toFixed(0)}% accepted. Improving that prompt first cuts the most publisher work.`:`Editing is minimal and evenly spread — no single field dominates.`;
   let tbl=`<div class="tblwrap"><table><thead><tr><th>field</th><th class="n">accepted</th><th class="n">edited</th><th class="n">edit share</th><th class="n">effort</th><th>method</th></tr></thead><tbody>`;

@@ -50,14 +50,22 @@ _DISTANCE_CATEGORIES = set(WEIGHTS)  # everything scored; abstention/unsupported
 _EDIT_CATEGORIES = ("minor_wording_edit", "moderate_rewrite", "major_rewrite",
                     "complete_replacement", "added", "removed")
 
-# ---- Metadata Headline Accuracy v1 ----
+# ---- Metadata Headline Accuracy v2 ----
 # Headline = field ACCEPTANCE rate (fields the human took with NO edit) — the "few edits to the
 # publisher's satisfaction" metric: field-agnostic, deterministic, and it moves exactly with human
 # editing effort. Target band 0.75-0.90. The per-field EDITORIAL BURDEN (which field costs the most
 # edits) is the signal that drives prompt improvement / reduces publisher work. Edit-effort per field
 # uses a DATA-DRIVEN distance (set-Jaccard where the field is a list/dict, token-Jaccard for text), so
 # it stays correct as fields change — never keyed on a specific field name.
-METADATA_ACCURACY_VERSION = "v1"
+#
+# v2 (metadata interface evolution, NOT a content/workflow change): acceptance is measured ONLY over
+# FRESH generated outputs — the true first-pass LLM "before" state. The Publisher now emits a per-output
+# `metadata_generation_provenance` disposition (fresh | preserved_approved | preserved_prior_success);
+# `preserved_*` outputs equal prior approved content by construction, so counting them as "accepted"
+# would inflate the rate. v2 excludes them from the denominator via the emitted flag rather than the
+# invisible generate-before-approve invariant v1 implicitly relied on. Absent disposition (legacy
+# revisions with no flag) is treated as fresh, so v2 is BACKWARD-IDENTICAL to v1 on all-fresh data.
+METADATA_ACCURACY_VERSION = "v2"
 METADATA_ACCURACY_TARGET_LOW = 0.75
 METADATA_ACCURACY_TARGET_HIGH = 0.90
 
@@ -206,6 +214,26 @@ def _aggregate(tally, distances, weighted_sum, gen_populated, app_populated, art
     }
 
 
+def _aggregate_records(recs, artifacts):
+    """Re-aggregate a SUBSET of revision-distance records (e.g. the FRESH-only subset) with the same
+    numerator/denominator preservation as ``_aggregate``. Lets the certified headline be computed on
+    the fresh denominator while the all-common ``global`` block stays a faithful descriptive record."""
+    tally, distances, weighted = _empty_tally(), [], 0.0
+    gen_pop = app_pop = 0
+    for r in recs:
+        cat = r["category"]
+        tally[cat] += 1
+        if not r["generated_empty"]:
+            gen_pop += 1
+        if not r["approved_empty"]:
+            app_pop += 1
+        if cat in WEIGHTS:
+            weighted += WEIGHTS[cat]
+        if r["distance"] is not None:
+            distances.append(r["distance"])
+    return _aggregate(tally, distances, weighted, gen_pop, app_pop, artifacts)
+
+
 def _field_effort(records_for_field):
     """Type-appropriate edit effort over a field's EDITED records: set-Jaccard for list/dict fields
     (chosen from the DATA — set_jaccard present), token-Jaccard for text. Field-agnostic: the basis
@@ -222,24 +250,50 @@ def _field_effort(records_for_field):
     return (round(statistics.fmean(vals), 6) if vals else 0.0), method
 
 
-def _metadata_accuracy(global_agg, per_field_out, records):
-    """Metadata Headline Accuracy v1. Headline = field ACCEPTANCE rate (accepted / comparable) — the
-    deterministic 'few edits to satisfaction' metric. Plus the per-field EDITORIAL BURDEN (which field
-    costs the most edits + its share of total edits + edit effort) — the actionable signal for closing
-    the gap / reducing publisher work. Derived purely from the certified revision-distance benchmark."""
-    comparable = global_agg["comparable_fields"]
-    accepted = global_agg["counts"]["accepted_unchanged"]
+def _metadata_accuracy(records, fresh_global):
+    """Metadata Headline Accuracy v2. Headline = field ACCEPTANCE rate (accepted / comparable) over the
+    FRESH generated outputs only — the true first-pass LLM 'before' state. Preserved outputs
+    (``generated_disposition`` in {preserved_approved, preserved_prior_success}) equal prior approved
+    content by construction and are EXCLUDED from the denominator so they cannot inflate acceptance;
+    absent disposition (legacy revisions) is treated as fresh, making v2 backward-identical on all-fresh
+    data. ``fresh_global`` is the fresh-only ``_aggregate`` (the certified descriptive surface — the
+    report headline sources from it so it never contradicts this acceptance number). Plus the per-field
+    EDITORIAL BURDEN (which field costs the most edits + its share + edit effort). Field-agnostic; derived
+    purely from the certified revision-distance records.
+
+    Provenance-coverage gate (v2): when the disposition flag is present on only SOME outputs (``partial``,
+    a Publisher-contract violation) the fresh/preserved split cannot be trusted, so ``meets_target`` is
+    withheld (``None``) and ``provisional`` is set rather than emitting a green target off contaminated data.
+    """
+    def is_fresh(r):
+        return r.get("generated_disposition") in (None, "fresh")
+    scored = [r for r in records if r.get("category") in _DISTANCE_CATEGORIES]
+    fresh = [r for r in scored if is_fresh(r)]
+    excluded = [r for r in scored if not is_fresh(r)]
+    # Disposition coverage — the backward-compat default (absent -> fresh) is only safe when the flag is
+    # UNIFORMLY present or absent. The flag is per-artifact (present on every field-record incl.
+    # abstention/unsupported), so coverage is measured over ALL records, not only scored ones — otherwise
+    # an all-abstention-but-flagged revision would read "none". The Publisher contract emits it on every
+    # output; "partial" means a contract violation and is surfaced/gated rather than silently trusted.
+    flagged = sum(1 for r in records if r.get("generated_disposition") is not None)
+    coverage = "none" if flagged == 0 else "all" if flagged == len(records) else "partial"
+    provisional = coverage == "partial"
+
+    comparable = fresh_global["comparable_fields"]
+    accepted = fresh_global["counts"]["accepted_unchanged"]
     rate = round(accepted / comparable, 6) if comparable else 0.0
+
     recs_by_field = {}
-    for r in records:
+    for r in fresh:
         recs_by_field.setdefault(r.get("field"), []).append(r)
-    total_edited = sum(pf["comparable_fields"] - pf["counts"]["accepted_unchanged"]
-                       for pf in per_field_out.values())
+    total_edited = sum(1 for r in fresh if r.get("category") in _EDIT_CATEGORIES)
     per_field = {}
-    for f, pf in per_field_out.items():
-        cf, acc = pf["comparable_fields"], pf["counts"]["accepted_unchanged"]
-        edited = cf - acc
-        effort, method = _field_effort(recs_by_field.get(f, []))
+    for f in FIELDS:
+        frs = recs_by_field.get(f, [])
+        cf = len(frs)
+        acc = sum(1 for r in frs if r.get("category") == "accepted_unchanged")
+        edited = sum(1 for r in frs if r.get("category") in _EDIT_CATEGORIES)
+        effort, method = _field_effort(frs)
         per_field[f] = {
             "comparable_fields": cf, "accepted": acc,
             "acceptance_rate": round(acc / cf, 6) if cf else 0.0,
@@ -253,11 +307,23 @@ def _metadata_accuracy(global_agg, per_field_out, records):
         "version": METADATA_ACCURACY_VERSION,
         "acceptance": {"numerator": accepted, "denominator": comparable, "rate": rate},
         "target_low": METADATA_ACCURACY_TARGET_LOW, "target_high": METADATA_ACCURACY_TARGET_HIGH,
-        "meets_target": rate >= METADATA_ACCURACY_TARGET_LOW,
+        # Withheld (None) when coverage is partial (split untrustworthy) OR nothing was freshly generated
+        # (empty denominator — "0% accepted" would misread as an LLM failure).
+        "meets_target": (None if (provisional or comparable == 0)
+                         else rate >= METADATA_ACCURACY_TARGET_LOW),
+        "provisional": provisional,
         "comparable_fields": comparable,
         "total_edited_fields": total_edited,
         "per_field": per_field,
         "editorial_burden": burden,   # ranked: where the publisher's editing work concentrates
+        # v2 provenance exclusion — transparency for the denominator (fresh-only).
+        "denominator_basis": "fresh_generated_outputs_only",
+        "excluded_preserved_field_count": len(excluded),
+        "excluded_preserved_artifacts": sorted({r.get("artifact_id") for r in excluded}),
+        "disposition_coverage": coverage,   # none (legacy) | all (contract-conformant) | partial (violation)
+        # Fresh-only descriptive aggregate — the headline sources every rate from here (never from the
+        # all-common `global`), so the report can't carry two acceptance numbers on two denominators.
+        "aggregate": fresh_global,
     }
 
 
@@ -314,12 +380,31 @@ def compute_metadata_benchmark(canonical_review):
                 "artifact_id": aid, "field": field, "category": category, "distance": dist,
                 "generated_sha256": _sha256(gv), "approved_sha256": _sha256(av),
                 "generated_empty": _is_empty(gv), "approved_empty": _is_empty(av),
+                # Publisher-emitted per-output disposition (fresh|preserved_*); None on legacy revisions.
+                # The v2 acceptance metric excludes non-fresh outputs from its denominator.
+                "generated_disposition": g.get("generation_disposition"),
                 "measures": measures,
             })
 
-    per_field_out = {f: _aggregate(pf["tally"], pf["distances"], pf["weighted"],
-                                   pf["gen_pop"], pf["app_pop"], comparable_artifacts)
-                     for f, pf in per_field.items()}
+    per_field_all_common = {f: _aggregate(pf["tally"], pf["distances"], pf["weighted"],
+                                          pf["gen_pop"], pf["app_pop"], comparable_artifacts)
+                            for f, pf in per_field.items()}
+    global_all_common = _aggregate(g_tally, distances, weighted_sum, gen_pop, app_pop, comparable_artifacts)
+
+    # Fresh-only aggregates — the CERTIFIED surface (preserved outputs excluded). Absent disposition
+    # counts as fresh (legacy backward-compat), so on all-fresh data these equal the all-common blocks.
+    # These are what `global`/`per_field` expose so every downstream consumer (report body, index entry,
+    # Metadata Intelligence trend) reads the fresh-only number, never the preserved-inflated one.
+    def _fresh(r):
+        return r.get("generated_disposition") in (None, "fresh")
+    fresh_records = [r for r in records if _fresh(r)]
+    # Fresh SCHEMA-MATCHED artifacts (category != unsupported_schema) — mirrors comparable_artifacts, so
+    # corrections_per_artifact uses the same artifact-count basis on all-fresh data.
+    fresh_comparable_artifacts = len({r["artifact_id"] for r in fresh_records
+                                      if r["category"] != "unsupported_schema"})
+    fresh_global = _aggregate_records(fresh_records, fresh_comparable_artifacts)
+    fresh_per_field_out = {f: _aggregate_records([r for r in fresh_records if r["field"] == f],
+                                                 fresh_comparable_artifacts) for f in FIELDS}
 
     return {
         "applicable": True,
@@ -328,28 +413,44 @@ def compute_metadata_benchmark(canonical_review):
         "weights": dict(WEIGHTS),
         "distance_definition": "normalized char-level Levenshtein over canonical value rendering",
         "artifacts_common": len(common),
-        "comparable_artifacts": comparable_artifacts,
+        "comparable_artifacts": comparable_artifacts,             # all-common structural fact
+        "fresh_comparable_artifacts": fresh_comparable_artifacts,  # matches the fresh `global` sample basis
         "artifact_removed_at_approval": generated_only,
         "artifact_added_at_approval": approved_only,
-        "global": (_g := _aggregate(g_tally, distances, weighted_sum, gen_pop, app_pop, comparable_artifacts)),
-        "per_field": per_field_out,
-        "metadata_accuracy": _metadata_accuracy(_g, per_field_out, records),
+        # `global` / `per_field` are the CERTIFIED fresh-only surfaces (preserved outputs excluded) that
+        # every consumer reads. The all-common revision-distance record (includes preserved, descriptive
+        # only) is retained beside them for full auditability.
+        "global": fresh_global,
+        "per_field": fresh_per_field_out,
+        "global_all_common": global_all_common,
+        "per_field_all_common": per_field_all_common,
+        "metadata_accuracy": _metadata_accuracy(records, fresh_global),
         "records": records,   # references + hashes only — never raw generated/approved text
     }
 
 
 def benchmark_headline(benchmark):
-    """The compact per-report metadata metrics the index entry carries for search/graphs (pure)."""
+    """The compact per-report metadata metrics the index entry carries for search/graphs (pure).
+
+    v2: EVERY rate below is sourced from the fresh-only aggregate (``metadata_accuracy.aggregate``), the
+    same denominator as the acceptance headline — so the report never carries two acceptance numbers on
+    two denominators. The all-common ``global`` block stays in the full report as a descriptive record but
+    is deliberately NOT surfaced here. Falls back to ``global`` only if the fresh aggregate is absent
+    (defensive; should not happen for an applicable benchmark)."""
     if not benchmark.get("applicable"):
         return {"applicable": False, "reason": benchmark.get("reason")}
-    g = benchmark["global"]
     ma = benchmark.get("metadata_accuracy") or {}
+    g = ma.get("aggregate") or benchmark["global"]   # fresh-only surface
     return {
         "applicable": True,
-        # Metadata Headline Accuracy v1 — the field acceptance rate (the "few edits" number).
+        # Metadata Headline Accuracy v2 — the field acceptance rate (the "few edits" number), fresh-only.
         "metadata_accuracy_version": ma.get("version"),
         "metadata_accuracy": (ma.get("acceptance") or {}).get("rate"),
         "metadata_accuracy_meets_target": ma.get("meets_target"),
+        "metadata_accuracy_provisional": ma.get("provisional"),
+        "disposition_coverage": ma.get("disposition_coverage"),
+        "denominator_basis": ma.get("denominator_basis"),
+        "excluded_preserved_field_count": ma.get("excluded_preserved_field_count"),
         "comparable_fields": g["comparable_fields"],
         "fields_generated": g["fields_generated"],
         "fields_approved": g["fields_approved"],

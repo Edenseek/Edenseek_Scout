@@ -21,6 +21,8 @@ contract. See ``docs/architecture/REVIEW_RECORD_INPUT_CONTRACT.md``.
 Read-only / offline: this module only transforms already-parsed JSON dicts. It performs no
 S3, no LLM/vision, no network — deterministic over frozen inputs.
 """
+import hashlib
+
 from logging_config import logger
 
 # ---- Pinned Publisher contract versions Scout understands (fail-fast on any other) ----
@@ -290,8 +292,18 @@ def _normalize_metadata(metadata_obj, side):
     for i, out in enumerate(outputs):
         src = f"{side} metadata.llm_enrichment_outputs[{i}]"
         artifact_id = _require(out, "artifact_id", src)
-        canon[artifact_id] = {"schema_version": schema_version,
-                              "fields": _extract_content_fields(out.get("output"))}
+        gp = out.get("generation_provenance")
+        canon[artifact_id] = {
+            "schema_version": schema_version,
+            "fields": _extract_content_fields(out.get("output")),
+            # Publisher-emitted provenance facts (P1), siblings of `output` and additive: they do NOT
+            # change the compared content and are absent on legacy revisions (-> None). `generation_provenance`
+            # carries identifiers/hashes only (never prompt bodies); `generation_disposition` is the
+            # fresh|preserved_approved|preserved_prior_success flag the acceptance metric uses to exclude
+            # preserved outputs from its denominator.
+            "generation_provenance": gp if isinstance(gp, dict) else None,
+            "generation_disposition": out.get("metadata_generation_provenance"),
+        }
     return canon
 
 
@@ -304,27 +316,76 @@ def _generated_summary(generated_panel_geometry):
             "total_panels": g.get("total_panels")}
 
 
+def _fresh_generation_provenance(generated_metadata):
+    """Report-level generator identity derived from the per-output ``generation_provenance`` of the
+    FRESH generated outputs (Publisher enhancement #1). Preserved outputs keep a *prior* run's
+    provenance, so they are excluded — the comparability axis must reflect the generator that produced
+    THIS run's fresh output. When the fresh outputs disagree on a value it becomes a DETERMINISTIC
+    ``mixed:<hash-of-the-distinct-values>`` marker (not ``None``) and ``heterogeneous`` is set — so two
+    reports with *different* mixes get *different* comparability keys and are never silently joined into
+    one series, while a single mix stays stable. Returns ``None`` values when the per-output provenance is
+    absent (legacy pre-provenance revisions)."""
+    gm = generated_metadata if isinstance(generated_metadata, dict) else {}
+    outputs = gm.get("llm_enrichment_outputs")
+    fresh = []
+    if isinstance(outputs, list):
+        for out in outputs:
+            if not isinstance(out, dict):
+                continue
+            gp = out.get("generation_provenance")
+            if out.get("metadata_generation_provenance") == "fresh" and isinstance(gp, dict):
+                fresh.append(gp)
+
+    def agree(key):
+        vals = sorted({str(gp.get(key)) for gp in fresh if gp.get(key) not in (None, "")})
+        if len(vals) == 0:
+            return None, False                    # absent
+        if len(vals) == 1:
+            return vals[0], False                 # agreed
+        # heterogeneous -> a stable marker keyed on the exact distinct set (mix-distinct, never collapsed).
+        digest = hashlib.sha256("|".join(vals).encode("utf-8")).hexdigest()[:12]
+        return f"mixed:{digest}", True
+
+    model, m_h = agree("model")
+    prompt_version, pv_h = agree("prompt_version")
+    prompt_sha256, ps_h = agree("prompt_sha256")
+    return {
+        "model": model, "prompt_version": prompt_version, "prompt_sha256": prompt_sha256,
+        "fresh_output_count": len(fresh),
+        "heterogeneous": bool(m_h or pv_h or ps_h),
+    }
+
+
 def _metadata_provenance(generated_metadata, approved_metadata):
     """Metadata generation provenance for the comparability contract — enrichment schema versions
-    on both sides, plus prompt/model identifiers WHEN the Publisher emits them (else ``None``).
+    on both sides, plus the generator identity (model / prompt_version / prompt_sha256) the Publisher
+    now emits per output (enhancement #1). The identity is taken from the FRESH outputs
+    (``_fresh_generation_provenance``); a legacy top-level probe remains as a fallback so
+    pre-provenance revisions still parse (they yield ``None`` exactly as before).
 
-    Security: only identifiers/versions are captured — never prompt bodies, secrets, or credentials.
+    Security: only identifiers/versions/hashes are captured — never prompt bodies, secrets, or credentials.
     """
     gm = generated_metadata if isinstance(generated_metadata, dict) else {}
     am = approved_metadata if isinstance(approved_metadata, dict) else {}
-    # Prompt/model identifiers are optional and Publisher-emitted; probe a few known field names.
+    # Legacy top-level probe (pre-#1 emitters / absent -> None).
     def pick(obj, *names):
         for n in names:
             if isinstance(obj, dict) and obj.get(n) not in (None, ""):
                 return obj[n]
         return None
+    fresh = _fresh_generation_provenance(generated_metadata)
     return {
         "generated_schema_version": gm.get("llm_enrichment_output_version"),
         "approved_schema_version": am.get("llm_enrichment_output_version"),
         "prompt_id": pick(gm, "prompt_id", "enrichment_prompt_id"),
-        "prompt_version": pick(gm, "prompt_version", "enrichment_prompt_version"),
-        "model": pick(gm, "model", "enrichment_model", "llm_model"),
+        "prompt_version": fresh["prompt_version"] or pick(gm, "prompt_version", "enrichment_prompt_version"),
+        "model": fresh["model"] or pick(gm, "model", "enrichment_model", "llm_model"),
+        "prompt_sha256": fresh["prompt_sha256"],
         "provider": pick(gm, "provider", "model_provider", "llm_provider"),
+        # Where the identity came from + whether the fresh outputs agreed (surfaced, not hidden).
+        "provenance_source": "per_output_fresh" if fresh["fresh_output_count"] else "legacy_or_absent",
+        "provenance_heterogeneous": fresh["heterogeneous"],
+        "fresh_output_count": fresh["fresh_output_count"],
     }
 
 

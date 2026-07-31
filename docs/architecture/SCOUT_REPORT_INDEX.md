@@ -90,8 +90,12 @@ series for that task's metrics. Reports with **different** keys stay visible but
 `iou_threshold`, `normalization_version` (`review_contract_adapter.NORMALIZATION_VERSION`).
 
 **Metadata axes** (`metadata_comparability_key`): `task=metadata`, `metric_definition_version`,
-`metadata_prompt_version`, `metadata_model`, `metadata_schema_version` (generated/approved enrichment
-versions), `normalization_version`, `evaluation_version` (`audit_review.EVALUATION_VERSION`).
+`metadata_prompt_version`, `metadata_prompt_sha256`, `metadata_model`, `metadata_schema_version`
+(generated/approved enrichment versions), `metadata_revision_distance_version`,
+`metadata_accuracy_version`, `normalization_version`, `evaluation_version`
+(`audit_review.EVALUATION_VERSION`). `metadata_prompt_sha256` is the hash of the Publisher's prompt
+templates: a silent (un-versioned) prompt edit changes the sha even when the human-label
+`metadata_prompt_version` is unchanged, forcing a methodology boundary instead of contaminating a series.
 
 `comparability_key(axes) = "cmp_" + sha256(sorted "k=v" join)[:12]`. `build_comparability(body)`
 returns both keys plus the axis values; `metric_series(index, task=…)` segments on the task's key and
@@ -100,8 +104,12 @@ label a boundary ("iou_threshold 0.5→0.6") rather than silently splicing.
 
 **Prompts / upstream models are captured, not ignored.** Scout's delta is LLM-free, but the metadata
 it compares was produced by the Publisher's enrichment prompts/models — so those are metadata-axis
-inputs (`metadata_prompt_version`, `metadata_model`, `metadata_schema_version`), recorded when the
-Publisher emits them and otherwise `null`. They also surface via the `generated_snapshot_revision_id`.
+inputs (`metadata_prompt_version`, `metadata_prompt_sha256`, `metadata_model`,
+`metadata_schema_version`), recorded when the Publisher emits them and otherwise `null`. As of the
+metadata-provenance interface (Publisher enhancement #1), these come from the per-output
+`generation_provenance` of the **fresh** generated outputs only — a preserved output keeps a *prior*
+run's provenance and must not drive this run's axis. They also surface via the
+`generated_snapshot_revision_id`.
 
 ## 5. Read model (server-side; UI never computes)
 

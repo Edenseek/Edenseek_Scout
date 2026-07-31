@@ -40,8 +40,8 @@ METRIC_FIELDS = ("precision", "recall", "split_rate", "merge_rate",
 # field lists below document the contract.
 GEOMETRY_AXES = ("task", "metric_definition_version", "geometry_detector_version",
                  "iou_threshold", "normalization_version")
-METADATA_AXES = ("task", "metric_definition_version", "metadata_prompt_version", "metadata_model",
-                 "metadata_schema_version", "metadata_revision_distance_version",
+METADATA_AXES = ("task", "metric_definition_version", "metadata_prompt_version", "metadata_prompt_sha256",
+                 "metadata_model", "metadata_schema_version", "metadata_revision_distance_version",
                  "metadata_accuracy_version", "normalization_version", "evaluation_version")
 
 
@@ -79,6 +79,10 @@ def metadata_axes(body):
         "task": "metadata",
         "metric_definition_version": body.get("algorithm_version"),
         "metadata_prompt_version": mp.get("prompt_version"),
+        # prompt_sha256 hashes the prompt templates: a silent (un-versioned) prompt edit changes the
+        # sha even when the human-label prompt_version is unchanged, forcing a methodology boundary
+        # rather than silently contaminating a comparability series.
+        "metadata_prompt_sha256": mp.get("prompt_sha256"),
         "metadata_model": mp.get("model"),
         "metadata_schema_version": f"{mp.get('generated_schema_version')}/{mp.get('approved_schema_version')}",
         "metadata_revision_distance_version": prov.get("metadata_revision_distance_version"),
