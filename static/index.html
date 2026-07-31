@@ -70,6 +70,8 @@ pre.report{background:var(--surface);border:1px solid var(--line);padding:15px;b
 .chartcard .leg i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:3px}
 svg .grid-l{stroke:var(--line-soft)} svg text{fill:var(--muted);font-family:var(--mono);font-size:9px} svg .bnd{stroke:var(--accent);stroke-width:1.3;stroke-dasharray:3 3}
 .samples{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:5px}
+.lever{background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 34%,transparent);border-radius:10px;padding:11px 14px;font-size:13px;color:var(--ink-soft);margin-bottom:12px}
+.lever b{color:var(--warn)}
 .toggle{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;font-family:var(--mono);font-size:11px}
 .toggle button{background:var(--surface);border:none;color:var(--muted);padding:5px 11px;cursor:pointer} .toggle button.on{background:var(--surface-2);color:var(--ink)}
 .searchbar input{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-family:var(--mono);font-size:12.5px;color:var(--ink)}
@@ -257,6 +259,48 @@ function chart(title,series,bnds,legend,metaArr){
   return `<div class="chartcard"><div class="head"><span class="title">${title}</span><span class="leg">${legend.map(l=>`<span><i style="background:${l.c}"></i>${l.n}</span>`).join("")}</span></div>
     <svg viewBox="0 0 ${W} ${H}" width="100%">${g}${b}${L}</svg><div class="samples">n/point: ${metaArr.join(" · ")}</div></div>`;
 }
+/* ---- geometry per-page diagnostics (from the latest delta report's geometry_delta.diagnostics) ---- */
+let latestDiag=undefined;
+async function loadLatestDiag(){
+  if(latestDiag!==undefined)return latestDiag;
+  try{const rep=await getJSON("/reports/latest");latestDiag=((rep||{}).geometry_delta||{}).diagnostics||null;}
+  catch(e){latestDiag=null;}
+  return latestDiag;
+}
+function geomScatter(pp,W,H){
+  const pad={l:32,r:12,t:10,b:30},iw=W-pad.l-pad.r,ih=H-pad.t-pad.b,maxD=Math.max(6,...pp.map(p=>p.density||0));
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px">`;
+  for(let yv=0;yv<=1.0001;yv+=.25){const py=pad.t+ih-ih*yv;g+=`<line class="grid-l" x1="${pad.l}" y1="${py}" x2="${W-pad.r}" y2="${py}"/><text x="${pad.l-6}" y="${py+3}" text-anchor="end">${(yv*100)|0}</text>`;}
+  for(let xv=1;xv<=maxD;xv++){const px=pad.l+iw*(xv/maxD);g+=`<text x="${px}" y="${H-11}" text-anchor="middle">${xv}</text>`;}
+  g+=`<text x="${pad.l+iw/2}" y="${H-1}" text-anchor="middle">panels per page</text>`;
+  const seen={};
+  pp.forEach(p=>{const k=(p.density||0)+","+Math.round((p.segmentation_accuracy||0)*100);seen[k]=(seen[k]||0)+1;const j=(seen[k]-1)*5;
+    const px=pad.l+iw*((p.density||0)/maxD)+j,py=pad.t+ih-ih*(p.segmentation_accuracy||0);
+    g+=`<circle cx="${px}" cy="${py}" r="5" fill="${p.generated_panels>0?'var(--pass)':'var(--fail)'}" fill-opacity=".82" stroke="var(--surface)" stroke-width="1"><title>page ${p.page_number} · ${p.density} panels · recall ${((p.recall||0)*100)|0}% · accuracy ${((p.segmentation_accuracy||0)*100).toFixed(0)}% · missing ${p.missing}</title></circle>`;});
+  return g+`<line class="grid-l" x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${pad.t+ih}"/></svg>`;
+}
+function geomLever(diag){
+  const pp=diag.per_page||[],sk=pp.filter(p=>p.generated_panels===0),pr=pp.filter(p=>p.generated_panels>0);
+  const rec=pr.length?pr.reduce((s,p)=>s+(p.recall||0),0)/pr.length:0,oa=((diag.order||{}).agreement||0)*100;
+  return `Automation produced <b>no panels on ${sk.length} of ${pp.length} pages</b>; on the ${pr.length} it processed, recall ≈ ${(rec*100).toFixed(0)}% and reading order is ${oa.toFixed(0)}% correct. Biggest lever: page-level detection coverage.`;
+}
+function scatterNote(){return `<div class="samples"><span style="color:var(--pass)">●</span> processed &nbsp; <span style="color:var(--fail)">●</span> skipped (0 panels) &nbsp;·&nbsp; x = panels/page, y = segmentation accuracy</div>`;}
+function renderGeomDiag(diag){
+  const gd=document.getElementById("geomdiag"); if(!gd)return;
+  if(!diag||!(diag.per_page||[]).length){gd.innerHTML=`<p class="status">Per-page geometry diagnostics appear once a v2 audit has run.</p>`;return;}
+  const sz=diag.panel_size_recall||{};
+  const bars=["large","medium","small"].map(k=>{const s=sz[k]||{},w=(s.recall||0)*100;
+    return `<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:12px"><span>${k} <span class="samples" style="display:inline">(${s.approved_panels||0})</span></span><span>${s.approved_panels?w.toFixed(0)+'%':'—'}</span></div><div style="height:9px;border-radius:5px;background:var(--surface-2)"><i style="display:block;height:100%;width:${w}%;background:var(--accent);border-radius:5px"></i></div></div>`;}).join("");
+  const o=diag.order||{},oa=((o.agreement||0)*100).toFixed(1);
+  let tbl=`<div class="tblwrap"><table><thead><tr><th>page</th><th class="n">panels</th><th class="n">gen</th><th class="n">recall</th><th class="n">accuracy</th><th class="n">missing</th></tr></thead><tbody>`;
+  (diag.per_page||[]).slice().sort((x,y)=>(""+x.page_number).localeCompare(""+y.page_number,undefined,{numeric:true})).forEach(p=>{
+    tbl+=`<tr><td>${esc(p.page_number)}</td><td class="n">${p.density}</td><td class="n" style="color:${p.generated_panels?'':'var(--fail)'}">${p.generated_panels}</td><td class="n">${((p.recall||0)*100)|0}%</td><td class="n">${((p.segmentation_accuracy||0)*100).toFixed(0)}%</td><td class="n">${p.missing||''}</td></tr>`;});
+  gd.innerHTML=`<div class="lever">${geomLever(diag)}</div>
+    <div class="grid g2"><div class="chartcard"><div class="head"><span class="title">Accuracy by page complexity <span class="samples">· ${diag.per_page.length} pages</span></span></div>${geomScatter(diag.per_page,460,210)}${scatterNote()}</div>
+    <div class="card"><h3>Reading-order fidelity</h3><div class="big ok">${oa}%</div><div class="sub">${o.concordant||0} concordant / ${o.discordant||0} discordant pairs</div><div class="section-h" style="margin:14px 0 6px">Recall by panel size</div>${bars}</div></div>
+    ${tbl}</tbody></table></div>`;
+}
+
 async function engView(){
   el().innerHTML=`<h1>Engineering</h1><p class="viewsub">Why a benchmark moved, which reports demonstrate it, and how geometry &amp; metadata quality evolved. Lines never cross a methodology boundary.</p><div id="engbody"><p class="status">Loading…</p></div>`;
   const body=document.getElementById("engbody");
@@ -273,6 +317,12 @@ async function engView(){
     let h=`<div class="section-h">How has quality evolved? ${toggle}</div><div class="grid g2">
       ${chart('Geometry — precision '+info('Precision')+' &amp; recall '+info('Recall'),gs,bnds,[{n:"precision",c:"var(--accent)"},{n:"recall",c:"var(--info)"}],meta)}
       ${chart('Metadata — accepted '+info('Metadata accepted / unchanged rate'),ms,mbnds,[{n:"accepted",c:"var(--pass)"}],meta)}</div>`;
+    const diag=await loadLatestDiag();
+    if(diag&&(diag.per_page||[]).length){
+      h+=`<div class="section-h">Where does segmentation struggle?</div>
+        <div class="lever">${geomLever(diag)}</div>
+        <div class="chartcard"><div class="head"><span class="title">Segmentation accuracy by page complexity <span class="samples">· ${diag.per_page.length} pages</span></span></div>${geomScatter(diag.per_page,540,220)}${scatterNote()}</div>`;
+    }
     h+=`<div class="section-h">Which reports demonstrate the change?</div><div class="tblwrap"><table><thead><tr><th>report</th><th>issue</th><th>precision</th><th>recall</th><th>metadata</th><th>worst</th><th>sha256</th></tr></thead><tbody>`;
     a.records.filter(r=>r.record_kind==="report").forEach((r,i,arr)=>{const brk=i>0&&arr[i-1].geometry_comparability_key!==r.geometry_comparability_key;
       h+=`<tr class="${brk?'boundary-row':''}"><td><code>${esc(r.report_id?r.report_id.slice(-9):"")}</code></td><td>${esc(r.issue_id)}</td><td class="n">${pct(r.metrics.precision)}</td><td class="n">${pct(r.metrics.recall)}</td><td>${esc(r.metadata_status||"—")}</td><td><span class="sev ${r.worst_severity}">${esc(r.worst_severity)}</span></td><td class="mono" style="font-size:11px">${esc((r.report_sha256||"").slice(0,10))}</td></tr>`;});
@@ -286,10 +336,12 @@ async function intelView(){
   el().innerHTML=`<h1>Intelligence</h1><p class="viewsub">Compare publishers, series, issues, and methodology versions over time; surface benchmark history and methodology boundaries. Search runs server-side.</p>
     <div class="searchbar"><input id="q" placeholder="precision<0.90  metadata_unchanged_rate>=0.60  finding:geometry.false_panels  issue:issue_001  severity:WARNING" oninput="runSearch()"/></div>
     <div class="hint">try: <code onclick="setQ('precision<0.95')">precision&lt;0.95</code> <code onclick="setQ('severity:WARNING')">severity:WARNING</code> <code onclick="setQ('finding:geometry.false_panels')">finding:geometry.false_panels</code> <code onclick="setQ('kind:failed_run')">kind:failed_run</code></div>
+    <div class="section-h">Geometry diagnostics</div><div id="geomdiag"><p class="status">Loading…</p></div>
     <div class="section-h">Compare over time</div><div id="cmp"><p class="status">Loading…</p></div>
     <div class="section-h">Methodology boundaries</div><ul class="att" id="bndlist"></ul>`;
   try{
     const a=await loadArchive();
+    renderGeomDiag(await loadLatestDiag());
     document.getElementById("cmp").innerHTML=cmpTable(a.records.filter(r=>r.record_kind==="report"));
     const items=[]; a.records.filter(r=>r.record_kind==="report"&&r.methodology_boundary).forEach(r=>{
       if(r.methodology_boundary.geometry)items.push(`<li class="boundary"><span class="sev INFO">BND</span><div><div class="txt"><b>Geometry methodology changed</b></div><div class="meta">at ${esc(r.report_id?r.report_id.slice(-9):"")} · key ${esc(r.geometry_comparability_key)}</div></div></li>`);
