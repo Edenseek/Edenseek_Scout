@@ -135,7 +135,7 @@ function rows(headers,data){if(!data.length)return `<p class="status">None.</p>`
   return `<div class="tblwrap"><table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${
     data.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;}
 
-let view="ops",opsSub="health",archive=null,timeAxis="meas";
+let view="ops",opsSub="pubhealth",archive=null,timeAxis="meas";
 const el=()=>document.getElementById("view");
 
 /* ---- archive fetch (shared) ---- */
@@ -144,14 +144,42 @@ async function loadArchive(){ if(!archive){archive=await getJSON("/audit-review/
 /* ================= OPERATIONS ================= */
 async function opsView(){
   const sub=`<div class="subnav">
-    ${["health","digest","review","readiness","failures","reports"].map(s=>
-      `<button class="${opsSub===s?'on':''}" onclick="setOpsSub('${s}')">${({health:"Scout health",digest:"Daily Digest",review:"Review Queue",readiness:"Retrieval Readiness",failures:"Failure Analysis",reports:"Reports Index"})[s]}</button>`).join("")}</div>`;
+    ${["pubhealth","health","digest","review","readiness","failures","reports"].map(s=>
+      `<button class="${opsSub===s?'on':''}" onclick="setOpsSub('${s}')">${({pubhealth:"Publisher Health",health:"Scout health",digest:"Daily Digest",review:"Review Queue",readiness:"Retrieval Readiness",failures:"Failure Analysis",reports:"Reports Index"})[s]}</button>`).join("")}</div>`;
   el().innerHTML=`<h1>Operations</h1><p class="viewsub">Is Scout healthy, what changed, and what needs a look — plus the operational dataset reports.</p>${sub}<div id="opsbody"><p class="status">Loading…</p></div>`;
   const body=document.getElementById("opsbody");
-  try{ await ({health:opsHealth,digest:loadDigest,review:loadReview,readiness:loadReadiness,failures:loadFailures,reports:loadReports}[opsSub])(body); }
+  try{ await ({pubhealth:opsPubHealth,health:opsHealth,digest:loadDigest,review:loadReview,readiness:loadReadiness,failures:loadFailures,reports:loadReports}[opsSub])(body); }
   catch(e){ body.innerHTML=`<p class="status">Could not load. ${esc(e.message)}. If no audit has run yet, click <b>Run Audit</b>.</p>`; }
 }
 function setOpsSub(s){opsSub=s;opsView();}
+
+/* Publisher Health — the certified, Registry-derived D8 projections (read-only, advisory). */
+async function opsPubHealth(body){
+  let pub,ser,iss;
+  try{ [pub,ser,iss]=await Promise.all([
+    getJSON("/observability/health/publisher"), getJSON("/observability/health/series"), getJSON("/observability/health")]); }
+  catch(e){ body.innerHTML=`<p class="status">Publisher Health projection unavailable: ${esc(e.message)}.</p>`; return; }
+  const cls=h=>h==="attention"?"warn":(h==="unknown"?"":"ok");
+  const word=h=>h==="attention"?"Attention":(h==="unknown"?"Unknown":"Healthy");
+  const S=iss.summary||{}, PS=pub.summary||{};
+  const overall=PS.attention>0?"attention":(PS.unknown>0?"unknown":"healthy");
+  const pubCards=(pub.records||[]).map(p=>`<div class="card"><h3>Publisher · ${esc(p.publisher_id)}</h3>
+    <div class="big ${cls(p.health)}">${word(p.health)}</div>
+    <div class="sub">series ${p.series_counts.healthy}/${p.series_counts.total} healthy · issues ${p.issue_counts.healthy}/${p.issue_counts.total} healthy</div></div>`).join("");
+  const serRows=(ser.records||[]).map(s=>[esc(s.series_id),word(s.health),`${s.issue_counts.healthy}/${s.issue_counts.total}`,esc((s.issues||[]).join(", "))]);
+  const issRows=(iss.records||[]).map(i=>[esc(i.issue_id),esc(i.series_id),word(i.health),esc(i.publication_state||"—"),esc((i.reasons||[]).join(", ")||"—")]);
+  const fresh=iss.registry_generated_at?`Registry as of ${esc(iss.registry_generated_at.slice(0,19).replace("T"," "))} UTC`:"";
+  body.innerHTML=`
+    <div class="chips"><span class="pill safe"><span class="d"></span>certified projection</span><span class="pill safe"><span class="d"></span>Registry-derived</span><span class="pill safe"><span class="d"></span>read-only · advisory</span></div>
+    <div class="grid g3" style="margin-top:12px">
+      <div class="card"><h3>Publisher Health ${info('Comparability / methodology boundary')}</h3>
+        <div class="big ${cls(overall)}">${word(overall)}</div>
+        <div class="sub">${S.healthy||0} healthy · ${S.attention||0} attention · ${S.unknown||0} unknown · ${S.total||0} issue(s)</div></div>
+      ${pubCards}</div>
+    <h3 style="margin-top:18px">Series</h3>${rows(["Series","Health","Issues healthy","Issue IDs"],serRows)}
+    <h3 style="margin-top:18px">Issues</h3>${rows(["Issue","Series","Health","Publication state","Reasons"],issRows)}
+    <p class="sub" style="margin-top:10px">${fresh} · derived from <code>/observability/health</code>, <code>/series</code>, <code>/publisher</code></p>`;
+}
 async function opsHealth(body){
   const a=await loadArchive(); const L=a.latest;
   if(!L){body.innerHTML=`<p class="status">No Scout synchronization report persisted yet.</p>`;return;}

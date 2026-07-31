@@ -55,9 +55,11 @@ new_entries = [e for e in idx["entries"] if e.get("run_seq") != BAD_RUN_SEQ]
 new_idx = dict(idx)
 new_idx["entries"] = new_entries
 new_idx["count"] = len(new_entries)
-if "latest" in new_idx:
-    new_idx["latest"] = next((e.get("report_id") for e in new_entries
-                              if e.get("run_seq") == 3), new_idx.get("latest"))
+# ``latest`` is canonically a dict {report_id, run_seq, persisted_key} (see _finalize) — not a bare
+# string. Rebuild it from the newest surviving entry so build_archive() does not break.
+_newest = new_entries[0] if new_entries else None
+new_idx["latest"] = ({"report_id": _newest["report_id"], "run_seq": _newest["run_seq"],
+                      "persisted_key": _newest.get("persisted_key")} if _newest else None)
 print(f"[1] index: count {idx['count']} -> {new_idx['count']}; run_seqs {before_seqs} -> "
       f"{[e.get('run_seq') for e in new_entries]}; latest -> {new_idx.get('latest')}")
 

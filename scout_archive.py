@@ -82,7 +82,11 @@ def build_archive(client=None, context=None):
     reports. Read-only."""
     index = sri.load_index(client, context=context)
     entries = index.get("entries", [])            # already newest-first (by run_seq)
-    latest_run_seq = (index.get("latest") or {}).get("run_seq")
+    # ``latest`` is canonically a dict ({report_id, run_seq, ...}); tolerate a malformed/absent value
+    # (fall back to the newest entry) so the archive never 503s over a bad pointer.
+    _latest = index.get("latest")
+    latest_run_seq = (_latest.get("run_seq") if isinstance(_latest, dict)
+                      else (entries[0].get("run_seq") if entries else None))
     reports = [_report_record(e, e.get("run_seq") == latest_run_seq) for e in entries]
 
     # methodology boundary: does this report's comparability differ from the next-NEWER report?
