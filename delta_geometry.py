@@ -21,12 +21,14 @@ GEOMETRY_ACCURACY_TARGET_HIGH = 0.99
 # Version of the geometry MATCHING rules (per-page IoU overlap match + split/merge/false/missing
 # definitions). A comparability axis for the geometry benchmark: a change here (or to
 # IOU_THRESHOLD) means new geometry metrics are not directly comparable to older ones.
-# v2: the corrected, STRATIFIED geometry model. Matching is scoped: page panels match within a page
-# (by page_number); spread panels match within a spread (by page_range) in the spread-canvas frame —
-# so same-position panels on different pages/spreads never falsely match. Whole-issue precision/recall
-# are the micro-average of the page + spread strata; each stratum is also reported.
-# See docs/phases/geometry-correctness/CROSS_PAGE_MATCHING_DEFECT.md.
-GEOMETRY_MATCH_VERSION = "v2"
+# v3: the COMPLETE corrected geometry model — page/spread SCOPED & STRATIFIED matching (page panels
+# within a page by page_number; spreads within a spread by page_range, in the spread-canvas frame),
+# a micro-averaged whole-issue total, quality-weighted segmentation_accuracy = E/(A+FP), and per-page
+# diagnostics (density, reading-order fidelity, overlap, panel-size strata). Bumped from v2 because
+# the methodology materially evolved from the interim page-scoping-only v2 — a stale v2 report was
+# persisted during an incident, so its run_id must not collide with the complete model. v3 yields a
+# distinct comparability key + run_id. See docs/phases/geometry-correctness/CROSS_PAGE_MATCHING_DEFECT.md.
+GEOMETRY_MATCH_VERSION = "v3"
 
 
 def _iou(a, b):

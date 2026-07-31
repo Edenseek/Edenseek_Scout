@@ -233,7 +233,7 @@ class TestGeometryDelta(unittest.TestCase):
                                                      "generated_snapshot_revision_id": "rev_g"}},
         }
         d = compute_geometry_delta(adapt_review(r))
-        self.assertEqual(d["geometry_match_version"], "v2")
+        self.assertEqual(d["geometry_match_version"], "v3")
         self.assertEqual(d["precision"], 1.0)      # each gen matches exactly its own-page approved
         self.assertEqual(d["recall"], 1.0)
         self.assertEqual(d["split_artifact_ids"], [])   # no phantom split from the other page
