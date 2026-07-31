@@ -12,17 +12,22 @@ from review_contract_adapter import adapt_review  # noqa: E402
 from delta_geometry import compute_geometry_delta  # noqa: E402
 
 
-def _mk_review(gen_bounds_by_key, approved_geom):
-    """Minimal generated-publication review with given generated bounds + approved geometry."""
+def _mk_review(gen_bounds_by_key, approved_geom, page_number=1):
+    """Minimal generated-publication review with given generated bounds + approved geometry, all
+    on one page. Synthetic approved keys carry no page in their id, so stamp ``page_number`` on
+    each so the page-scoped matcher (v2) keeps them on the same page as the generated panels."""
+    approved = {k: ({**v, "page_number": v.get("page_number", page_number)}
+                    if isinstance(v, dict) and not v.get("isSpreadPanel") else v)
+                for k, v in approved_geom.items()}
     return {
         "review_report_version": "v1", "issue_identity": fx.IDENTITY, "review_id": "rev_t",
         "generated_geometry": {"property_id": "x", "issue_number": 1, "total_pages": 1,
                                "total_story_pages": 1, "total_panels": len(gen_bounds_by_key),
-                               "panels": [{"panel_key": k, "page_number": 1, "order": 1,
+                               "panels": [{"panel_key": k, "page_number": page_number, "order": 1,
                                            "bbox": [0, 0, 1, 1], "bounds": b, "coordinate_space": "page"}
                                           for k, b in gen_bounds_by_key.items()]},
         "generated_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
-        "approved_geometry": approved_geom,
+        "approved_geometry": approved,
         "approved_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
         "provenance": {"published_revision_id": "rev_taaaa",
                        "generated_vs_approved": {"state": "generated_publication",
@@ -74,6 +79,59 @@ class TestGeometryDelta(unittest.TestCase):
         d = compute_geometry_delta(adapt_review(fx.review_manual()))
         self.assertFalse(d["applicable"])
         self.assertEqual(d["reason"], "manual_publication")
+
+    def test_no_cross_page_match(self):
+        """Regression for the cross-page matching defect (GEOMETRY_MATCH_VERSION v2): panels with
+        identical per-page normalized coordinates on DIFFERENT pages must not match each other.
+        Under v1 (no page scope) this produced phantom merges/splits and inflated precision."""
+        box = {"x": 0.0, "y": 0.0, "width": 1.0, "height": 0.5}
+        r = {
+            "review_report_version": "v1", "issue_identity": fx.IDENTITY, "review_id": "rev_t",
+            "generated_geometry": {"property_id": "x", "issue_number": 1, "total_pages": 2,
+                "total_story_pages": 2, "total_panels": 2, "panels": [
+                    {"panel_key": "society_of_killers_1_3::p1", "page_number": 3, "order": 1,
+                     "bbox": [0, 0, 1, 1], "bounds": box, "coordinate_space": "page"},
+                    {"panel_key": "society_of_killers_1_6::p1", "page_number": 6, "order": 1,
+                     "bbox": [0, 0, 1, 1], "bounds": box, "coordinate_space": "page"}]},
+            "generated_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+            "approved_geometry": {
+                "society_of_killers_1_3::p1": {**box, "approved": True},
+                "society_of_killers_1_6::p1": {**box, "approved": True}},
+            "approved_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+            "provenance": {"published_revision_id": "rev_taaaa",
+                           "generated_vs_approved": {"state": "generated_publication",
+                                                     "generated_snapshot_revision_id": "rev_g"}},
+        }
+        d = compute_geometry_delta(adapt_review(r))
+        self.assertEqual(d["geometry_match_version"], "v2")
+        self.assertEqual(d["precision"], 1.0)      # each gen matches exactly its own-page approved
+        self.assertEqual(d["recall"], 1.0)
+        self.assertEqual(d["split_artifact_ids"], [])   # no phantom split from the other page
+        self.assertEqual(d["merge_artifact_ids"], [])   # no phantom merge from the other page
+        self.assertEqual(d["false_count"], 0)
+
+    def test_page_number_derived_when_uncarried(self):
+        """Approved page panels carry no page_number in production; the adapter derives it from the
+        id so matching can be page-scoped. A generated page-3 panel must not match an approved
+        page-6 panel even at identical coordinates."""
+        box = {"x": 0.0, "y": 0.0, "width": 0.5, "height": 0.5}
+        r = {
+            "review_report_version": "v1", "issue_identity": fx.IDENTITY, "review_id": "rev_t",
+            "generated_geometry": {"property_id": "x", "issue_number": 1, "total_pages": 6,
+                "total_story_pages": 6, "total_panels": 1, "panels": [
+                    {"panel_key": "society_of_killers_1_3::p1", "page_number": 3, "order": 1,
+                     "bbox": [0, 0, 1, 1], "bounds": box, "coordinate_space": "page"}]},
+            "generated_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+            # approved id encodes page 6, NO page_number field -> derived
+            "approved_geometry": {"6::NEW::1": {**box, "isNew": True}},
+            "approved_metadata": {"llm_enrichment_output_version": "v1.1", "llm_enrichment_outputs": []},
+            "provenance": {"published_revision_id": "rev_taaaa",
+                           "generated_vs_approved": {"state": "generated_publication",
+                                                     "generated_snapshot_revision_id": "rev_g"}},
+        }
+        d = compute_geometry_delta(adapt_review(r))
+        self.assertEqual(d["false_count"], 1)                 # gen page-3 panel matched nothing
+        self.assertIn("6::NEW::1", d["missing_page_artifact_ids"])   # approved page-6 unmatched
 
 
 if __name__ == "__main__":

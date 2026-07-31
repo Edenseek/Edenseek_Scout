@@ -12,10 +12,13 @@ from review_contract_adapter import APPLICABILITY_MANUAL
 # Fixed IoU match threshold (named constant so the delta is reproducible and reviewable).
 IOU_THRESHOLD = 0.5
 
-# Version of the geometry MATCHING rules (IoU overlap match + split/merge/false/missing
+# Version of the geometry MATCHING rules (per-page IoU overlap match + split/merge/false/missing
 # definitions). A comparability axis for the geometry benchmark: a change here (or to
 # IOU_THRESHOLD) means new geometry metrics are not directly comparable to older ones.
-GEOMETRY_MATCH_VERSION = "v1"
+# v2: matching is SCOPED TO THE PAGE — bounds are normalized per page, so a same-position panel
+# on another page is a different panel and must not match (see
+# docs/phases/geometry-correctness/CROSS_PAGE_MATCHING_DEFECT.md).
+GEOMETRY_MATCH_VERSION = "v2"
 
 
 def _iou(a, b):
@@ -57,7 +60,12 @@ def compute_geometry_delta(canonical_review, iou_threshold=IOU_THRESHOLD):
     app_matches = {aid: [] for aid in approved_page}    # page aid -> generated ids overlapping it
     for gid in generated_ids:
         gb = generated[gid]["bbox"]
+        gpage = generated[gid].get("page_number")
         for aid in approved_page:
+            # Match only WITHIN the same page: bounds are normalized per page, so a same-position
+            # panel on another page is not the same panel (GEOMETRY_MATCH_VERSION v2).
+            if approved[aid].get("page_number") != gpage:
+                continue
             if _iou(gb, approved[aid]["bbox"]) >= iou_threshold:
                 gen_matches[gid].append(aid)
                 app_matches[aid].append(gid)

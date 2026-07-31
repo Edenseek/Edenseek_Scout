@@ -93,6 +93,32 @@ def _f(value, default=0.0):
         return float(default)
 
 
+def _derive_page_number(artifact_id, carried):
+    """The 1-based page a page-panel belongs to — the scope within which its geometry may be
+    compared. Panel coordinates are normalized **per page**, so a same-position panel on another
+    page is a different panel; matching must be page-scoped (see delta_geometry v2 and
+    docs/phases/geometry-correctness/).
+
+    Prefer the Publisher-carried ``page_number``; else derive from the artifact-id identity, which
+    encodes the page (``<property>_<issue>_<page>::pN`` and ``<page>::NEW::N``). Fail-fast if the
+    page cannot be established — Scout never silently compares panels across an unknown page.
+    """
+    if carried is not None:
+        try:
+            return int(carried)
+        except (TypeError, ValueError):
+            pass
+    head = str(artifact_id).split("::", 1)[0]
+    if head.isdigit():
+        return int(head)                       # "<page>::NEW::N" form
+    nums = [tok for tok in head.split("_") if tok.isdigit()]
+    if nums:
+        return int(nums[-1])                   # "<property>_<issue>_<page>" -> trailing = page
+    raise ReviewContractError(
+        f"cannot establish page_number for artifact {artifact_id!r} (no carried page_number and "
+        "the id does not encode a page) — refusing to compare geometry across an unknown page")
+
+
 def _normalize_bbox(raw, source):
     """Normalize either emitted bbox representation to a canonical ``(x, y, w, h)`` of floats.
 
@@ -143,7 +169,7 @@ def _normalize_generated_geometry(generated_panel_geometry):
             raise ReviewContractError(f"{src}.panel_key must be a string")
         canon[artifact_id] = {
             "bbox": _normalize_bbox(_require(row, "bounds", src), src + ".bounds"),
-            "page_number": row.get("page_number"),
+            "page_number": _derive_page_number(artifact_id, row.get("page_number")),
             "coordinate_space": row.get("coordinate_space"),
             "flags": {},  # generated side carries no approval flags
         }
@@ -195,7 +221,10 @@ def _normalize_approved_geometry(approved_geometry):
                 "— unexpected approved_geometry member; refusing to reinterpret")
         canon[artifact_id] = {
             "bbox": bbox,
-            "page_number": entry.get("page_number") if isinstance(entry, dict) else None,
+            # Page panels get a guaranteed page_number (matching is page-scoped); spreads are
+            # matched in the spread frame (Increment 2), not by page_number, so leave theirs as-is.
+            "page_number": (entry.get("page_number") if is_spread
+                            else _derive_page_number(artifact_id, entry.get("page_number"))),
             "coordinate_space": "spread" if is_spread else (
                 entry.get("coordinate_space") if isinstance(entry, dict) else None),
             "flags": flags,
