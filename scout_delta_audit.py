@@ -31,7 +31,8 @@ import scout_revision_ledger as ledger
 from audit_review import AuditReviewError, EVALUATION_VERSION
 from delta_auditor import SCOUT_DELTA_REPORT_VERSION, DELTA_ALGORITHM_VERSION
 from delta_geometry import GEOMETRY_MATCH_VERSION
-from delta_metadata_revision import benchmark_headline, METADATA_REVISION_DISTANCE_VERSION
+from delta_metadata_revision import (benchmark_headline, METADATA_REVISION_DISTANCE_VERSION,
+                                     METADATA_ACCURACY_VERSION)
 from review_contract_adapter import NORMALIZATION_VERSION
 
 _SEVERITY_ORDER = ("FAIL", "WARNING", "INFO", "PASS")
@@ -46,6 +47,7 @@ def static_versions():
         "geometry_match_version": GEOMETRY_MATCH_VERSION,
         "normalization_version": NORMALIZATION_VERSION,
         "metadata_revision_distance_version": METADATA_REVISION_DISTANCE_VERSION,
+        "metadata_accuracy_version": METADATA_ACCURACY_VERSION,
         "evaluation_version": EVALUATION_VERSION,
     }
 
