@@ -72,6 +72,15 @@ svg .grid-l{stroke:var(--line-soft)} svg text{fill:var(--muted);font-family:var(
 .samples{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:5px}
 .lever{background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 34%,transparent);border-radius:10px;padding:11px 14px;font-size:13px;color:var(--ink-soft);margin-bottom:12px}
 .lever b{color:var(--warn)}
+.analysis{margin-bottom:18px}
+.analysis .ahead{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:13px;padding-bottom:11px;border-bottom:1px solid var(--line-soft)}
+.analysis .alabel{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.analysis .rid{font-size:15px;font-weight:600}
+.analysis .rfull{font-family:var(--mono);font-size:10.5px;color:var(--muted);word-break:break-all}
+.statrow{display:flex;flex-wrap:wrap;gap:14px 26px}.statrow+.statrow{margin-top:14px}
+.stat-l{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.stat-v{font-size:14.5px;font-weight:600;margin-top:2px}
+.stat-v.big-v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:19px;color:var(--accent-ink)}
 .toggle{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;font-family:var(--mono);font-size:11px}
 .toggle button{background:var(--surface);border:none;color:var(--muted);padding:5px 11px;cursor:pointer} .toggle button.on{background:var(--surface-2);color:var(--ink)}
 .searchbar input{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-family:var(--mono);font-size:12.5px;color:var(--ink)}
@@ -260,12 +269,24 @@ function chart(title,series,bnds,legend,metaArr){
     <svg viewBox="0 0 ${W} ${H}" width="100%">${g}${b}${L}</svg><div class="samples">n/point: ${metaArr.join(" · ")}</div></div>`;
 }
 /* ---- geometry per-page diagnostics (from the latest delta report's geometry_delta.diagnostics) ---- */
-let latestDiag=undefined;
-async function loadLatestDiag(){
-  if(latestDiag!==undefined)return latestDiag;
-  try{const rep=await getJSON("/reports/latest");latestDiag=(((rep||{}).delta_report||{}).geometry_delta||{}).diagnostics||null;}
-  catch(e){latestDiag=null;}
-  return latestDiag;
+let latestReport=undefined;
+async function loadLatestReport(){
+  if(latestReport!==undefined)return latestReport;
+  try{latestReport=await getJSON("/reports/latest");}catch(e){latestReport=null;}
+  return latestReport;
+}
+function reportGeom(rep){return (((rep||{}).delta_report||{}).geometry_delta)||{};}
+async function loadLatestDiag(){return reportGeom(await loadLatestReport()).diagnostics||null;}
+/* Compact current-analysis summary: which report the page is analyzing + its headline results. */
+function geomSummary(rep){
+  if(!rep)return `<p class="status">No persisted delta report to analyze yet.</p>`;
+  const g=reportGeom(rep),ii=rep.issue_identity||{},o=(g.diagnostics||{}).order||{};
+  const rid=rep.report_id||"",md=(rep.certified_at||rep.measurement_time||"").slice(0,10);
+  const cell=(l,v,big)=>`<div class="stat"><div class="stat-l">${l}</div><div class="stat-v${big?' big-v':''}">${v}</div></div>`;
+  return `<div class="card analysis">
+    <div class="ahead"><div><span class="alabel">Currently analyzing</span> &nbsp;<code class="rid">${esc(rid.slice(-9)||"—")}</code></div><div class="rfull">${esc(rid)}</div></div>
+    <div class="statrow">${cell("Publisher",esc(ii.publisher_id||"—"))}${cell("Series",esc(ii.series_id||"—"))}${cell("Issue",esc(ii.issue_id||"—"))}${cell("Measured",esc(md||"—"))}${cell("Geometry",esc(g.geometry_match_version||"—"))}</div>
+    <div class="statrow">${cell("Precision "+info('Precision'),pct(g.precision),1)}${cell("Recall "+info('Recall'),pct(g.recall),1)}${cell("Segmentation accuracy",pct((g.segmentation_accuracy||{}).score),1)}${cell("Reading-order fidelity",o.agreement!=null?pct(o.agreement):"—",1)}</div></div>`;
 }
 function geomScatter(pp,W,H){
   const pad={l:32,r:12,t:10,b:30},iw=W-pad.l-pad.r,ih=H-pad.t-pad.b,maxD=Math.max(6,...pp.map(p=>p.density||0));
@@ -334,6 +355,7 @@ function setAxis(a){timeAxis=a;engView();}
 /* ================= INTELLIGENCE ================= */
 async function intelView(){
   el().innerHTML=`<h1>Intelligence</h1><p class="viewsub">Compare publishers, series, issues, and methodology versions over time; surface benchmark history and methodology boundaries. Search runs server-side.</p>
+    <div id="analysis"><p class="status">Loading…</p></div>
     <div class="searchbar"><input id="q" placeholder="precision<0.90  metadata_unchanged_rate>=0.60  finding:geometry.false_panels  issue:issue_001  severity:WARNING" oninput="runSearch()"/></div>
     <div class="hint">try: <code onclick="setQ('precision<0.95')">precision&lt;0.95</code> <code onclick="setQ('severity:WARNING')">severity:WARNING</code> <code onclick="setQ('finding:geometry.false_panels')">finding:geometry.false_panels</code> <code onclick="setQ('kind:failed_run')">kind:failed_run</code></div>
     <div class="section-h">Geometry diagnostics</div><div id="geomdiag"><p class="status">Loading…</p></div>
@@ -341,7 +363,9 @@ async function intelView(){
     <div class="section-h">Methodology boundaries</div><ul class="att" id="bndlist"></ul>`;
   try{
     const a=await loadArchive();
-    renderGeomDiag(await loadLatestDiag());
+    const rep=await loadLatestReport();
+    document.getElementById("analysis").innerHTML=geomSummary(rep);
+    renderGeomDiag(reportGeom(rep).diagnostics||null);
     document.getElementById("cmp").innerHTML=cmpTable(a.records.filter(r=>r.record_kind==="report"));
     const items=[]; a.records.filter(r=>r.record_kind==="report"&&r.methodology_boundary).forEach(r=>{
       if(r.methodology_boundary.geometry)items.push(`<li class="boundary"><span class="sev INFO">BND</span><div><div class="txt"><b>Geometry methodology changed</b></div><div class="meta">at ${esc(r.report_id?r.report_id.slice(-9):"")} · key ${esc(r.geometry_comparability_key)}</div></div></li>`);
