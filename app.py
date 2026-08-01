@@ -168,6 +168,32 @@ def run_audit(username: str = Depends(require_auth)):
         raise HTTPException(status_code=503, detail="Dataset audit failed")
 
 
+@app.post("/run-delta-audit")
+def run_delta_audit_endpoint(username: str = Depends(require_auth)):
+    """Manually trigger the geometry/metadata DELTA audit on the current approved revision — the SAME
+    canonical entry point (`audit_current_revision`) the scheduler reconciliation uses, so the founder can
+    run it from the online Scout instead of the VM shell. Read-and-advise: it audits + persists an
+    immutable Scout report to `edenseek-scout` and never writes Publisher data. Idempotent on run_id — a
+    revision already processed under the current methodology returns ``skipped`` (a no-op success)."""
+    logger.info("Manual delta audit requested")
+    try:
+        import scout_delta_audit
+        result = scout_delta_audit.audit_current_revision(trigger="manual")
+    except Exception as e:  # noqa: BLE001 — endpoint boundary; fail as 503 with a logged cause
+        logger.exception(f"Manual delta audit failed: {e}")
+        raise HTTPException(status_code=503, detail="Delta audit failed")
+    status = result.get("status")
+    if status in ("failed", "error"):
+        logger.warning(f"Manual delta audit did not complete: {result}")
+        raise HTTPException(status_code=503,
+                            detail=f"Delta audit {status}: {result.get('error') or result.get('stage')}")
+    # status is persisted | reconciled | skipped — returned verbatim so the UI can distinguish a fresh
+    # run from an idempotent no-op.
+    logger.info("Manual delta audit %s: run_seq=%s revision=%s",
+                status, result.get("run_seq"), result.get("revision_id"))
+    return result
+
+
 @app.get("/audit/reports")
 def list_audit_reports(username: str = Depends(require_auth)):
     reports = {}

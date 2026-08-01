@@ -85,6 +85,11 @@ svg .grid-l{stroke:var(--line-soft)} svg text{fill:var(--muted);font-family:var(
 .toggle button{background:var(--surface);border:none;color:var(--muted);padding:5px 11px;cursor:pointer} .toggle button.on{background:var(--surface-2);color:var(--ink)}
 .searchbar input{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:10px 13px;font-family:var(--mono);font-size:12.5px;color:var(--ink)}
 .searchbar input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.repbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:2px 0 14px;padding:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:9px}
+.repbar label{font-family:var(--mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);display:inline-flex;align-items:center;gap:7px}
+.repbar select{background:var(--surface-2);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-family:var(--mono);font-size:12px;cursor:pointer}
+.repbar select:focus{outline:2px solid var(--accent);outline-offset:1px}
+.icbtn.sm{padding:5px 10px}
 .hint{font-family:var(--mono);font-size:11px;color:var(--muted);margin:5px 0 14px} .hint code{cursor:pointer}
 .info{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;border:1px solid var(--muted);color:var(--muted);font-size:9px;font-family:var(--mono);cursor:help;margin-left:4px;position:relative;vertical-align:middle}
 .info:hover{border-color:var(--accent);color:var(--accent-ink)}
@@ -110,6 +115,7 @@ svg .grid-l{stroke:var(--line-soft)} svg text{fill:var(--muted);font-family:var(
   <button class="icbtn" id="helpbtn">Help</button>
   <button class="icbtn" id="themebtn">Theme</button>
   <button class="icbtn run" id="run-btn" onclick="runAudit()">Run Audit</button>
+  <button class="icbtn run" id="delta-btn" onclick="runDeltaAudit()" title="Re-run the geometry/metadata delta audit on the current approved revision">Run Delta Audit</button>
 </div></header>
 <main>
   <div class="status" id="run-status"></div>
@@ -268,15 +274,39 @@ function chart(title,series,bnds,legend,metaArr){
   return `<div class="chartcard"><div class="head"><span class="title">${title}</span><span class="leg">${legend.map(l=>`<span><i style="background:${l.c}"></i>${l.n}</span>`).join("")}</span></div>
     <svg viewBox="0 0 ${W} ${H}" width="100%">${g}${b}${L}</svg><div class="samples">n/point: ${metaArr.join(" · ")}</div></div>`;
 }
-/* ---- geometry per-page diagnostics (from the latest delta report's geometry_delta.diagnostics) ---- */
-let latestReport=undefined;
-async function loadLatestReport(){
-  if(latestReport!==undefined)return latestReport;
-  try{latestReport=await getJSON("/reports/latest");}catch(e){latestReport=null;}
-  return latestReport;
+/* ---- report source: which persisted delta report the analysis pages read ----
+   selectedReportId=null => the index `latest` pointer; otherwise a specific report_id. Caches are
+   per-report and cleared by resetReportCaches() (on Refresh / after an audit) so the page always
+   reflects the newest persisted report instead of the first one fetched this session. */
+let selectedReportId=null, reportCache={};
+function resetReportCaches(){ archive=null; reportCache={}; }
+async function loadSelectedReport(){
+  const key=selectedReportId||"__latest__";
+  if(reportCache[key]!==undefined)return reportCache[key];
+  try{ reportCache[key]= selectedReportId
+        ? await getJSON("/reports/"+encodeURIComponent(selectedReportId))
+        : await getJSON("/reports/latest"); }
+  catch(e){ reportCache[key]=null; }
+  return reportCache[key];
 }
+/* A compact picker + refresh bar shown atop the analysis views. Reads the archive (newest-first
+   report entries) so the founder can see and choose exactly which run they are viewing. */
+async function reportBar(){
+  let reps=[];
+  try{ const a=await loadArchive(); reps=(a.records||[]).filter(r=>r.record_kind==="report"); }catch(e){}
+  const opt=r=>{const seq="run"+String(r.run_seq).padStart(3,"0"),rid=r.report_id||"",
+    d=(r.measurement_time||r.completed_at||r.event_time||"").slice(0,10);
+    return `<option value="${esc(rid)}" ${selectedReportId===rid?"selected":""}>${seq} · …${esc(rid.slice(-6))} · ${esc(d)}</option>`;};
+  return `<div class="repbar">
+    <label>Report <select id="repsel" onchange="onPickReport(this.value)">
+      <option value="" ${!selectedReportId?"selected":""}>Latest</option>${reps.map(opt).join("")}</select></label>
+    <button class="icbtn sm" onclick="refreshReports()" title="Re-fetch the newest persisted reports">↻ Refresh</button>
+    ${reps.length?`<span class="samples">${reps.length} persisted report(s)${selectedReportId?"":" · showing latest"}</span>`:""}</div>`;
+}
+function onPickReport(v){ selectedReportId=v||null; render(); }
+function refreshReports(){ resetReportCaches(); render(); }
 function reportGeom(rep){return (((rep||{}).delta_report||{}).geometry_delta)||{};}
-async function loadLatestDiag(){return reportGeom(await loadLatestReport()).diagnostics||null;}
+async function loadLatestDiag(){return reportGeom(await loadSelectedReport()).diagnostics||null;}
 /* Compact current-analysis summary: which report the page is analyzing + its headline results. */
 function geomSummary(rep){
   if(!rep)return `<p class="status">No persisted delta report to analyze yet.</p>`;
@@ -336,9 +366,10 @@ function renderMetaDiag(rep){
 }
 
 async function engView(){
-  el().innerHTML=`<h1>Engineering</h1><p class="viewsub">Why a benchmark moved, which reports demonstrate it, and how geometry &amp; metadata quality evolved. Lines never cross a methodology boundary.</p><div id="engbody"><p class="status">Loading…</p></div>`;
+  el().innerHTML=`<h1>Engineering</h1><p class="viewsub">Why a benchmark moved, which reports demonstrate it, and how geometry &amp; metadata quality evolved. Lines never cross a methodology boundary.</p><div id="repbar"></div><div id="engbody"><p class="status">Loading…</p></div>`;
   const body=document.getElementById("engbody");
   try{
+    document.getElementById("repbar").innerHTML=await reportBar();
     const a=await loadArchive();
     const reps=a.records.filter(r=>r.record_kind==="report").slice().sort((x,y)=>((timeAxis==='event'?(x.event_time||""):(x.measurement_time||x.completed_at||"")).localeCompare(timeAxis==='event'?(y.event_time||""):(y.measurement_time||y.completed_at||"")))||((x.run_seq||0)-(y.run_seq||0)));
     if(!reps.length){body.innerHTML=`<p class="status">No persisted reports yet. Run the synchronization audit to populate trends.</p>`;return;}
@@ -368,6 +399,7 @@ function setAxis(a){timeAxis=a;engView();}
 /* ================= INTELLIGENCE ================= */
 async function intelView(){
   el().innerHTML=`<h1>Intelligence</h1><p class="viewsub">Compare publishers, series, issues, and methodology versions over time; surface benchmark history and methodology boundaries. Search runs server-side.</p>
+    <div id="repbar"></div>
     <div id="analysis"><p class="status">Loading…</p></div>
     <div class="searchbar"><input id="q" placeholder="precision<0.90  metadata_unchanged_rate>=0.60  finding:geometry.false_panels  issue:issue_001  severity:WARNING" oninput="runSearch()"/></div>
     <div class="hint">try: <code onclick="setQ('precision<0.95')">precision&lt;0.95</code> <code onclick="setQ('severity:WARNING')">severity:WARNING</code> <code onclick="setQ('finding:geometry.false_panels')">finding:geometry.false_panels</code> <code onclick="setQ('kind:failed_run')">kind:failed_run</code></div>
@@ -376,8 +408,9 @@ async function intelView(){
     <div class="section-h">Compare over time</div><div id="cmp"><p class="status">Loading…</p></div>
     <div class="section-h">Methodology boundaries</div><ul class="att" id="bndlist"></ul>`;
   try{
+    document.getElementById("repbar").innerHTML=await reportBar();
     const a=await loadArchive();
-    const rep=await loadLatestReport();
+    const rep=await loadSelectedReport();
     document.getElementById("analysis").innerHTML=geomSummary(rep);
     renderGeomDiag(reportGeom(rep).diagnostics||null);
     renderMetaDiag(rep);
@@ -419,8 +452,17 @@ async function runAudit(){
   const btn=document.getElementById("run-btn"),st=document.getElementById("run-status");
   btn.disabled=true;st.textContent="Running dataset audit…";
   try{const r=await fetch("/run-audit",{method:"POST"});if(!r.ok)throw new Error("HTTP "+r.status);const d=await r.json();
-    st.textContent=`Dataset audit complete: quality ${d.quality_score}/100.`; archive=null; render();
+    st.textContent=`Dataset audit complete: quality ${d.quality_score}/100.`; resetReportCaches(); render();
   }catch(e){ st.textContent="Audit failed. Check logs/scout.log."; } finally{ btn.disabled=false; }
+}
+async function runDeltaAudit(){
+  const btn=document.getElementById("delta-btn"),st=document.getElementById("run-status");
+  btn.disabled=true;st.textContent="Running delta audit on the current approved revision…";
+  try{const r=await fetch("/run-delta-audit",{method:"POST"});if(!r.ok)throw new Error("HTTP "+r.status);const d=await r.json();
+    if(d.status==="skipped"||d.status==="reconciled")st.textContent=`Delta audit: revision already current (${d.status}, run_seq ${d.run_seq??"—"}) — nothing new.`;
+    else st.textContent=`Delta audit complete: run_seq ${d.run_seq}, ${(d.revision_id||"").slice(0,18)}…`;
+    selectedReportId=null; resetReportCaches(); render();   // jump to the freshly persisted latest
+  }catch(e){ st.textContent="Delta audit failed. Check logs/scout.log."; } finally{ btn.disabled=false; }
 }
 render();
 </script>
