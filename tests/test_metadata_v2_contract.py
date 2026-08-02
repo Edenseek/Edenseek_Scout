@@ -197,6 +197,57 @@ class TestV2FieldContract(unittest.TestCase):
         self.assertIn("classification.shot_type",
                       b["non_editorial"]["society_of_killers_1_10::p1"])
 
+    def test_mixed_markers_no_phantom_edit(self):
+        # Reviewer #1: a leaf excluded on ONE panel but editorial on another must not fabricate a
+        # phantom added/abstention record on the excluding panel — it is skipped there.
+        r = _v2_review()
+        # exclude shot_type on 1_3 ONLY (both sides), leave it editorial elsewhere
+        for side in ("generated_metadata", "approved_metadata"):
+            for o in r[side]["llm_enrichment_outputs"]:
+                if o["artifact_id"] == "society_of_killers_1_3::p1":
+                    o["field_sources"]["output.classification.shot_type"] = "computed"
+        b = dmr.compute_metadata_benchmark(adapt_review(r))
+        shot_recs = [rec for rec in b["records"]
+                     if rec["field"] == "classification.shot_type"]
+        # only the two panels that kept it editorial produce shot_type records; 1_3 has none
+        self.assertEqual({rec["artifact_id"] for rec in shot_recs},
+                         {"society_of_killers_1_10::p1", "society_of_killers_1_7::p1"})
+        self.assertTrue(all(rec["artifact_id"] != "society_of_killers_1_3::p1" for rec in shot_recs))
+
+    def test_dialogue_canon_collision_is_not_a_false_accept(self):
+        # Reviewer #2: newline-injected structured dialogue that canonically collides must NOT accept.
+        g = [{"speaker": "A", "text": "B", "type": "T"}, {"speaker": "C", "text": "D", "type": "U"}]
+        a = [{"speaker": "A", "text": "B", "type": "T\nspeaker=C\ntext=D\ntype=U"}]
+        cat, _dist, m = dmr._classify(g, a)
+        self.assertFalse(m["structural_equal"])
+        self.assertNotEqual(cat, "accepted_unchanged")
+
+    def test_colors_marker_override_still_excluded(self):
+        # Reviewer #5: even if field_sources mislabels colors as "llm", it stays out of the compared set.
+        r = _v2_review()
+        for side in ("generated_metadata", "approved_metadata"):
+            for o in r[side]["llm_enrichment_outputs"]:
+                o["field_sources"]["output.classification.colors"] = "llm"
+        b = dmr.compute_metadata_benchmark(adapt_review(r))
+        self.assertTrue(all(rec["field"] != "classification.colors" for rec in b["records"]))
+
+    def test_empty_v11_metadata_keeps_field_skeleton(self):
+        # Reviewer #3: empty generated metadata falls back to the v1.1 4-field skeleton.
+        r = fx.review_generated()
+        r["generated_metadata"]["llm_enrichment_outputs"] = []
+        r["approved_metadata"]["llm_enrichment_outputs"] = []
+        b = dmr.compute_metadata_benchmark(adapt_review(r))
+        self.assertEqual(set(b["per_field"]), set(dmr.FIELDS))
+
+    def test_v1_literal_version_still_audits(self):
+        # Reviewer #4: a historical "v1" review record audits (routes to v1.1 extraction), not fail-fast.
+        r = fx.review_generated()
+        r["generated_metadata"]["llm_enrichment_output_version"] = "v1"
+        r["approved_metadata"]["llm_enrichment_output_version"] = "v1"
+        b = dmr.compute_metadata_benchmark(adapt_review(r))   # must not raise
+        self.assertTrue(b["applicable"])
+        self.assertGreater(b["comparable_artifacts"], 0)
+
     def test_v2_deterministic(self):
         c = adapt_review(_v2_review())
         a = json.dumps(dmr.compute_metadata_benchmark(c), sort_keys=True)

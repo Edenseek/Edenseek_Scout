@@ -280,7 +280,9 @@ def _extract_content_fields(output_obj):
 # Metadata content-schema versions Scout can parse. Fail-fast on anything else so an unknown structure is
 # never silently mis-extracted. (Version SKEW between the two sides is still handled downstream as
 # unsupported_schema; this only gates versions we don't know how to read at all.)
-SUPPORTED_METADATA_VERSIONS = ("v1.1", "v2")
+# Includes the pre-`v1.1` literal `"v1"` (routes to the v1.1 four-field extractor, matching pre-adapter-v3
+# behavior when there was no version gate) so a historical review record still audits rather than fail-fasting.
+SUPPORTED_METADATA_VERSIONS = ("v1", "v1.1", "v2")
 
 # Panel Intelligence v2 content leaves under `output.*`. The LLM-editorial leaves are compared; any leaf the
 # Publisher marks non-`llm` in `field_sources` (e.g. computed `classification.colors`) is routed out of the
@@ -314,8 +316,13 @@ def _extract_v2(output_obj, field_sources):
     editorial, non_editorial = {}, {}
     for leaf in V2_CONTENT_LEAVES:
         val = _get_path(o, leaf)
-        default = "computed" if leaf in V2_KNOWN_NON_LLM else "llm"
-        source = fs.get("output." + leaf, default)
+        # A KNOWN-deterministic leaf (colors) is ALWAYS non-editorial — a mislabeled `field_sources` marker
+        # must never pull a computed field into the compared set (it would always read "accepted" and
+        # inflate). Every other leaf trusts the marker, defaulting to `llm` (compared) when unlisted.
+        if leaf in V2_KNOWN_NON_LLM:
+            source = "computed"
+        else:
+            source = fs.get("output." + leaf, "llm")
         (editorial if source == "llm" else non_editorial)[leaf] = val
     return editorial, non_editorial
 
@@ -325,7 +332,9 @@ def _normalize_metadata(metadata_obj, side):
     canonical ``{artifact_id: {schema_version, fields, non_editorial, provenance...}}`` map. ``fields`` is
     the LLM-editorial content leaves the delta compares — the four v1.1 fields, or the Panel Intelligence
     v2 per-leaf set (marker-filtered). The schema version is carried so the delta can enforce
-    schema-version scoping. Fail-fast on a version we don't know how to read."""
+    schema-version scoping. Extraction routes by version prefix (v2 shape vs the v1.1 four fields); the
+    version GATE (fail-fast when BOTH sides share an unknown version) lives in ``adapt_review`` where both
+    sides are visible — a one-sided unknown version is a skew and abstains downstream, not a raise."""
     if not isinstance(metadata_obj, dict):
         raise ReviewContractError(f"{side} metadata must be a JSON object")
     schema_version = metadata_obj.get("llm_enrichment_output_version")

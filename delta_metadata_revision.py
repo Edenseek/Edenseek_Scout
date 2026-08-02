@@ -193,7 +193,11 @@ def _classify(gen, app):
         return "removed", 1.0, _measures(gen, app)        # approval discarded automation's field
     m = _measures(gen, app)
     d = m["char_levenshtein_norm"]
-    if d == 0.0 or m["structural_equal"]:
+    # Acceptance is gated on STRUCTURAL equality (the ground truth: gen == app), never on d == 0 alone.
+    # The canonical rendering is not injective for adversarial content (embedded "\n"/"=" could make two
+    # different structured-dialogue values share a canonical string, d == 0); such a collision is a real
+    # edit, so it falls through to the distance buckets rather than a false accept.
+    if m["structural_equal"]:
         cat = "accepted_unchanged"
     elif d <= T_MINOR:
         cat = "minor_wording_edit"
@@ -387,7 +391,9 @@ def compute_metadata_benchmark(canonical_review):
     generated_only = sorted(set(generated) - set(approved))   # artifact removed at approval
     approved_only = sorted(set(approved) - set(generated))    # artifact added at approval
 
-    fields = _field_list(generated)   # v1.1 four | v2 per-leaf set (from the generated side's version)
+    # v1.1 four | v2 per-leaf set (the editorial leaves the adapter extracted). Fall back to the v1.1
+    # skeleton when nothing was extracted (empty generated metadata) so the per-field shape is stable.
+    fields = _field_list(generated) or list(FIELDS)
 
     g_tally, distances, weighted_sum = _empty_tally(), [], 0.0
     gen_pop = app_pop = 0
@@ -414,8 +420,14 @@ def compute_metadata_benchmark(canonical_review):
                                   for leaf in sorted(set(g_ne) | set(a_ne))}
         if g.get("generation_count") is not None:
             generation_counts[aid] = g.get("generation_count")
+        gf, af = g.get("fields") or {}, a.get("fields") or {}
         for field in fields:
-            gv, av = g["fields"].get(field), a["fields"].get(field)
+            # A leaf marker-excluded (routed to non_editorial) on EITHER side for this artifact is not an
+            # editorial comparison for it — skip, so inconsistent per-panel `field_sources` can never
+            # fabricate a phantom added/removed/abstention record. (Skew is handled below over the whole set.)
+            if schema_match and not (field in gf and field in af):
+                continue
+            gv, av = gf.get(field), af.get(field)
             if not schema_match:
                 category, dist, measures = "unsupported_schema", None, None
             else:
