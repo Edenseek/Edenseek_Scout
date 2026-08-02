@@ -1,7 +1,7 @@
 # Scope — Adapter v3 (Panel Intelligence v2 field contract `llm_enrichment_output_version v1.1 → v2`)
 
-**Status:** SCOPED · not started · gated on Publisher confirming the exclusion-marker decision + recall-counter
-path (see `publisher_bridge/responses/2026-08-01_scout_v2_contract_agreement.md`).
+**Status:** SCOPED · gate CLEARED (Publisher confirmed all items 2026-08-01,
+`publisher_bridge/2026-08-01_publisher_v2_contract_confirmed_go_build_adapter_v3.md`) · ready to build.
 **Discipline:** certified-first — build → 2 adversarial rounds → cert write-up → deploy → live cert, each
 separate. Additive; existing v1.1 revisions stay immutable and audit unchanged.
 
@@ -34,8 +34,12 @@ series distinct from v1.1.
 - `publisher_notes` — human-authored, not LLM → ingest as context, hash only, never compared. **Raw text never
   persisted** (governance).
 
-Exclusion is by a **Publisher-emitted `source` marker** (preferred: `source: llm|computed|publisher`), else a
-**versioned explicit exclusion list** pinned to `output_version v2` (fallback).
+Exclusion is by a **Publisher-emitted record-level `field_sources` map** (CONFIRMED). Keys are full paths,
+e.g. `{"output.classification.colors": "computed", "publisher_notes": "publisher"}`; any field **not** listed
+defaults to `"llm"`. Scout excludes every leaf whose source `!= "llm"` from the compared/acceptance set —
+deterministic and future-proof (a new computed field just adds an entry). Note the key format: output leaves
+are prefixed `output.` (map `output.<leaf>` ↔ Scout's `<leaf>` key); `publisher_notes` is a record-level
+sibling (no prefix).
 
 **Unchanged siblings:** `generation_provenance`, `metadata_generation_provenance` (v2 acceptance/fresh logic is
 untouched — carries over as-is), `geometry_source`, `context_source`. Prompt `v1 → v2` (sha256 changes).
@@ -80,10 +84,17 @@ untouched — carries over as-is), `geometry_source`, `context_source`. Prompt `
 5. **colors/publisher_notes:** recorded (hash only), excluded from acceptance/edit-rate.
 6. **Backward compat:** v1.1 extraction + metric unchanged; v2 is a distinct series.
 
-## 5. Open (Publisher must confirm before build)
-- Exclusion **marker vs explicit-list** decision.
-- Recall-counter **exact field path**.
-- `shot_type` **controlled vocabulary** (allowed set / version).
+## 5. Publisher-confirmed inputs (2026-08-01 — gate cleared)
+- **Exclusion:** record-level `field_sources` map, default `"llm"`, exclude `source != "llm"` (§2).
+- **Recall counter:** `generation_provenance.generation_count` (int; 1 first generate, +1 per recall). **Ships
+  LATER with the recall endpoint — off the v2 critical path.** So the `llm_calls_per_panel` metric is
+  **best-effort**: read it when present, degrade gracefully (metric absent) when the field isn't emitted yet.
+  The path is fixed now so v3 reads it the moment it appears.
+- **`shot_type` vocab v1** (`shot_type_vocab: v1`, extensible, `"other"` fallback): `establishing · wide ·
+  full · medium · close-up · extreme close-up · over-the-shoulder · point-of-view · high-angle · low-angle ·
+  insert`. Compared as a normal leaf; out-of-vocab values labeled against this set (labeling only, not a gate).
+- **`field_sources` + `publisher_notes` are record-level siblings of `output`** (like `generation_provenance`)
+  — read at the output-entry level, not inside `output.*`.
 
 ## 6. Certified-first sequence
 Build behind the version bump → 2 adversarial review rounds → cert report → merge → deploy → live cert on
