@@ -277,32 +277,86 @@ def _extract_content_fields(output_obj):
     }
 
 
+# Metadata content-schema versions Scout can parse. Fail-fast on anything else so an unknown structure is
+# never silently mis-extracted. (Version SKEW between the two sides is still handled downstream as
+# unsupported_schema; this only gates versions we don't know how to read at all.)
+SUPPORTED_METADATA_VERSIONS = ("v1.1", "v2")
+
+# Panel Intelligence v2 content leaves under `output.*`. The LLM-editorial leaves are compared; any leaf the
+# Publisher marks non-`llm` in `field_sources` (e.g. computed `classification.colors`) is routed out of the
+# compared set and recorded as a hash only. `V2_KNOWN_NON_LLM` is a defensive default so the one field we
+# KNOW is deterministic is excluded even if a `field_sources` entry is ever omitted.
+V2_CONTENT_LEAVES = ("entities.characters", "entities.objects", "entities.environment",
+                     "narrative.summary", "narrative.dialogue",
+                     "classification.shot_type", "classification.colors",
+                     "classification.tags.mood", "classification.tags.action",
+                     "classification.tags.weather", "classification.tags.time_of_day")
+V2_KNOWN_NON_LLM = frozenset({"classification.colors"})
+
+
+def _get_path(obj, dotted):
+    """Read a dotted path from a nested dict; ``None`` if any segment is missing/not a dict."""
+    cur = obj
+    for part in dotted.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _extract_v2(output_obj, field_sources):
+    """Split the v2 `output.*` leaves into (editorial, non_editorial) using the Publisher `field_sources`
+    marker: a leaf is compared iff its source is ``llm`` (the default for any unlisted field). Non-`llm`
+    leaves (e.g. computed `colors`) are recorded but never compared. Deterministic; future computed/publisher
+    fields self-exclude via their marker."""
+    o = output_obj if isinstance(output_obj, dict) else {}
+    fs = field_sources if isinstance(field_sources, dict) else {}
+    editorial, non_editorial = {}, {}
+    for leaf in V2_CONTENT_LEAVES:
+        val = _get_path(o, leaf)
+        default = "computed" if leaf in V2_KNOWN_NON_LLM else "llm"
+        source = fs.get("output." + leaf, default)
+        (editorial if source == "llm" else non_editorial)[leaf] = val
+    return editorial, non_editorial
+
+
 def _normalize_metadata(metadata_obj, side):
-    """Normalize a ``{llm_enrichment_output_version, llm_enrichment_outputs:[...]}`` object
-    into Scout's canonical ``{artifact_id: {schema_version, fields}}`` map, where ``fields`` is
-    exactly the four content fields extracted from each output's nested ``output`` subtree. The
-    schema version is carried so the metadata delta can enforce schema-version scoping."""
+    """Normalize a ``{llm_enrichment_output_version, llm_enrichment_outputs:[...]}`` object into Scout's
+    canonical ``{artifact_id: {schema_version, fields, non_editorial, provenance...}}`` map. ``fields`` is
+    the LLM-editorial content leaves the delta compares — the four v1.1 fields, or the Panel Intelligence
+    v2 per-leaf set (marker-filtered). The schema version is carried so the delta can enforce
+    schema-version scoping. Fail-fast on a version we don't know how to read."""
     if not isinstance(metadata_obj, dict):
         raise ReviewContractError(f"{side} metadata must be a JSON object")
     schema_version = metadata_obj.get("llm_enrichment_output_version")
     outputs = metadata_obj.get("llm_enrichment_outputs", [])
     if not isinstance(outputs, list):
         raise ReviewContractError(f"{side} metadata.llm_enrichment_outputs must be a list")
+    is_v2 = str(schema_version).startswith("v2")
     canon = {}
     for i, out in enumerate(outputs):
         src = f"{side} metadata.llm_enrichment_outputs[{i}]"
         artifact_id = _require(out, "artifact_id", src)
         gp = out.get("generation_provenance")
+        if is_v2:
+            fields, non_editorial = _extract_v2(out.get("output"), out.get("field_sources"))
+        else:
+            fields, non_editorial = _extract_content_fields(out.get("output")), {}
+        # `publisher_notes` is a record-level sibling (never LLM) — recorded, never compared, hash-only.
+        if out.get("publisher_notes") is not None:
+            non_editorial["publisher_notes"] = out.get("publisher_notes")
         canon[artifact_id] = {
             "schema_version": schema_version,
-            "fields": _extract_content_fields(out.get("output")),
-            # Publisher-emitted provenance facts (P1), siblings of `output` and additive: they do NOT
-            # change the compared content and are absent on legacy revisions (-> None). `generation_provenance`
-            # carries identifiers/hashes only (never prompt bodies); `generation_disposition` is the
-            # fresh|preserved_approved|preserved_prior_success flag the acceptance metric uses to exclude
-            # preserved outputs from its denominator.
+            "fields": fields,
+            # Non-editorial content (computed/publisher) — recorded downstream as a HASH only, never
+            # compared and never persisted as raw text.
+            "non_editorial": non_editorial,
+            # Publisher-emitted provenance facts (P1), siblings of `output` and additive. `generation_provenance`
+            # carries identifiers/hashes only; `generation_disposition` is the fresh|preserved_* flag;
+            # `generation_count` is the per-panel recall counter (best-effort — v2 recall endpoint).
             "generation_provenance": gp if isinstance(gp, dict) else None,
             "generation_disposition": out.get("metadata_generation_provenance"),
+            "generation_count": (gp.get("generation_count") if isinstance(gp, dict) else None),
         }
     return canon
 
@@ -464,6 +518,17 @@ def adapt_review(review_report, platform_approval=None, generated_snapshot=None)
             "metadata": _normalize_metadata(gen_meta_raw, "generated"),
             "summary": _generated_summary(gen_geom_raw),
         }
+        # Fail-fast ONLY when both sides share an UNSUPPORTED metadata version — a genuine unknown
+        # structure we must not mis-extract (the Publisher's version-bump protocol means this shouldn't
+        # happen un-negotiated). A version SKEW (the two sides differ) is NOT a hard failure — it abstains
+        # downstream as unsupported_schema (a WARNING), preserving graceful handling of an old/mismatched side.
+        gen_ver = (gen_meta_raw or {}).get("llm_enrichment_output_version")
+        app_ver = (review_report.get("approved_metadata") or {}).get("llm_enrichment_output_version")
+        if gen_ver == app_ver and gen_ver not in SUPPORTED_METADATA_VERSIONS:
+            raise ReviewContractError(
+                f"both sides carry unsupported metadata llm_enrichment_output_version {gen_ver!r} "
+                f"(supported: {', '.join(SUPPORTED_METADATA_VERSIONS)}; review_id={review_id}) — "
+                "refusing to extract an unknown structure")
     else:
         raise ReviewContractError(
             f"unrecognized provenance.generated_vs_approved={gen_vs_approved!r} "
