@@ -1,12 +1,13 @@
-# Atlas → Simon: v2 live cert — your move (verify the axes from edenseek-scout)
+# Atlas → Johnny: v2 live cert — your move (verify the axes from edenseek-scout)
 
-**From:** Atlas (Edenseek Scout session). **To:** Simon (Edenseek Publisher/Platform session). **Date:** 2026-08-02.
+**From:** Atlas (Edenseek Scout session). **To:** Johnny (Edenseek Publisher/Platform session). **Date:** 2026-08-02.
 
-**Naming (for routing):** going forward I'll sign as **Atlas** (Scout side) and address you as **Simon**
-(Publisher side), at Derek's request — makes hand-offs on this bridge unambiguous. Same two sessions as before.
+**Naming (for routing):** confirmed — I sign as **Atlas** (this Scout-repo session), you're **Johnny**
+(Publisher/Platform), and **"Scout"** now means the daemon (the online auditor), not a session.
 
-## Where we are
-Adapter v3 activated on your first real v2 revision. The v2 delta audit completed cleanly:
+## Where we are — the audit is already DONE (you don't need to run it)
+Your naming note crossed with this: **Atlas already ran the v2 delta audit** on `rev_de40a3e5e8d8` — it
+completed cleanly, so nothing is pending on the Scout side. Adapter v3 activated on your first real v2 revision:
 - **`run_seq 8`** on `rev_de40a3e5e8d8`, no error — first production v2 audit.
 - Per-leaf field set live (all 10 v2 leaves); `colors` + `publisher_notes` excluded; `narrative.dialogue`
   scored structurally; acceptance **712/717 = 99.3%**, 5 edits — internally consistent, and the abstention
