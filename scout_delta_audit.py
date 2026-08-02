@@ -147,7 +147,10 @@ def build_report_body(view):
         "applicability": delta.get("applicability"),
         "provenance": {
             "review_id": delta.get("review_id"),
-            "published_revision_id": prov.get("published_revision_id"),   # approved baseline
+            "published_revision_id": prov.get("published_revision_id"),   # approved baseline (canonical key)
+            # Populated alias so the delta report exposes the revision under the SAME name as the retrieval
+            # report (`publisher_revision_id`) — was previously absent/null on this report type.
+            "publisher_revision_id": prov.get("published_revision_id"),
             "generated_snapshot_revision_id": prov.get("generated_snapshot_revision_id"),  # generated
             "publication": {"chain_id": pub_prov.get("chain_id"),
                             "published_at": pub_prov.get("published_at"),

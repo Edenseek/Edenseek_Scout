@@ -332,6 +332,10 @@ def materialize_approved_contract(dest_root=None, context=None):
         "source_bucket": bucket,
         "publisher_pointer_key": pointer["key"],
         "publisher_pointer_version_id": pointer["version_id"],
+        # `published_revision_id` is the canonical revision-id key across Scout's report types (delta,
+        # index, ledger, registry, observability); `publisher_revision_id` is retained as a populated alias
+        # so both report types expose the revision under the same name and existing readers don't break.
+        "published_revision_id": pointer["revision_id"],
         "publisher_revision_id": pointer["revision_id"],
         "publisher_revision_key": pointer["revision_key"],
         "publisher_snapshot_version_id": snapshot_version,

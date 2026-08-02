@@ -349,6 +349,25 @@ class TestIntegration(unittest.TestCase):
         entry = sri.build_index_entry({**body, "run_id": "r", "run_seq": 1, "report_id": "x"})
         self.assertTrue(entry["metadata_metrics"]["applicable"])
 
+    def test_revision_id_field_names_aligned(self):
+        # The delta report exposes the revision under BOTH the canonical `published_revision_id` and the
+        # `publisher_revision_id` alias (retrieval-report name), both populated and equal — no null field.
+        rep = run_delta_audit(fx.review_generated(), fx.platform_approval())
+        view = {
+            "audit_timestamp": "2026-07-28T00:00:00Z", "publisher_commit": "p", "scout_commit": "s",
+            "evidence": {"issue_identity": fx.IDENTITY, "summary": {}, "objects": [],
+                         "manifest_version": "v1", "publisher_provenance": {}},
+            "findings": [{"code": "x", "severity": "PASS", "title": "t", "detail": "d"}],
+            "delta_summary": {"geometry": {"status": "computed", "precision": 1.0, "recall": 0.5,
+                                           "split_rate": 0, "merge_rate": 0, "missing": 0,
+                                           "spread_missing": 1, "false": 0},
+                              "metadata": {"status": "computed", "compared": 2}},
+            "delta_report": rep, "delta_report_sha256": "x",
+        }
+        prov = sda.build_report_body(view)["provenance"]
+        self.assertEqual(prov["publisher_revision_id"], prov["published_revision_id"])
+        self.assertIsNotNone(prov["published_revision_id"])
+
 
 if __name__ == "__main__":
     unittest.main()
