@@ -61,10 +61,14 @@ untouched — carries over as-is), `geometry_source`, `context_source`. Prompt `
   - `dialogue` comparison: extend `_canon`/`_elements`/`_measures` to render `{type,speaker,text}` elements
     (element-set + order); an edit = element change / add / remove / reorder. Keep set-Jaccard for the
     list-of-dicts shape; token-Jaccard fallback for text leaves.
-  - **Version bumps that reflect real methodology changes:** `METADATA_REVISION_DISTANCE_VERSION v1 → v2`
-    (field set + dialogue distance changed) and `METADATA_ACCURACY_VERSION v2 → v3` (per-leaf denominator).
-    Both must land in the comparability axis AND `scout_delta_audit.static_versions()` fingerprint (the
-    dual-condition lesson). The Publisher `metadata_schema_version v1.1→v2` moves the axis automatically too.
+  - **Versioning — NO code-version bump (decided during build).** The v1.1↔v2 boundary is carried entirely
+    by the evidence-dependent `metadata_schema_version` axis (`v1.1/v1.1` vs `v2/v2`), which already yields a
+    distinct comparability key. The distance DEFINITION is unchanged (the canonical rendering handles both
+    v1.1 shapes and v2 structured dialogue generically), and the fresh-only acceptance methodology is
+    unchanged, so `METADATA_REVISION_DISTANCE_VERSION` and `METADATA_ACCURACY_VERSION` stay put. Benefit:
+    **v1.1 content audits byte-identically** under v3 (no spurious boundary, no needless re-run), while v2
+    content is a clean new series via its schema axis. `static_versions()` is therefore unchanged. A
+    descriptive `field_set_version` (`v1.1`|`v2`) is emitted on the benchmark for readability.
   - New metric: `llm_calls_per_panel` from the recall counter (additive; provenance-derived).
 - **`scout_report_index.py`** — no new axis needed beyond what already flows (`metadata_schema_version`,
   `metadata_accuracy_version`, `metadata_revision_distance_version` all already axes). Verify the v2 keys
