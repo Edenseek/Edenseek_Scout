@@ -2,8 +2,24 @@
 
 **Track:** Week 12 · Supporting Materials · **Branch:** `week12-track-a-resolved-graph-auditor`
 **Date:** 2026-08-07 · **Discipline:** certified-first (build → 2 adversarial rounds → certify → deploy → live cert)
-**Status:** CODE-COMPLETE · adversarially reviewed (2 rounds, all findings resolved) · **offline-certified** ·
-LIVE cert GATED on two Publisher confirmations (below).
+**Status:** CODE-COMPLETE · adversarially reviewed (3 rounds) · **offline-certified against the Publisher-
+CONFIRMED semantic** · LIVE cert needs only a Phase-B read path (both contract questions now answered).
+
+## 0. Update — both live-cert gates ANSWERED (2026-08-07), mirror corrected + re-verified
+Johnny confirmed both open items from the authoritative resolver (`material_index_merge.py`):
+- **`rank_aware_explicit_supersession`:** R suppresses T iff **`rank(T) > rank(R)`** (T strictly LESS specific);
+  broader can't suppress narrower; same-scope is a no-op (lifecycle `superseded` status handles it); only
+  surviving non-suppressed records suppress (most-specific-first); collision-shadowed records' edges are
+  DROPPED. Scout's mirror was corrected to this — **this reversed round-1 fix #3** (that reviewer was wrong
+  about shadowed edges; only the authoritative source settled it). A 3rd adversarial round cross-read the real
+  resolver and found **no divergence on valid data**; order-independence **proven** (5000 permutations → one
+  result). Added a `binding_status == "bound"` gate mirroring the resolver's `supersedes_ids()`, and a
+  `materials.cross_scope_collision` authoring finding.
+- **`material_index.json` wrapper:** `{schema_version:int, scope, records:[...]}` — records under `records`
+  (the tolerant reader already handles it).
+- **Documented low-severity out-of-band boundary:** an unknown `scope.level` maps to rank 99 (the Publisher
+  derives rank from index position 0–3); only reachable on malformed placement the store forbids.
+`supersession_semantic` now reports `rank_aware_strict_more_specific`. Suite 429.
 
 ## 1. What it is
 Scout's **independent mirror** of the Publisher's certified Supporting-Materials resolution cascade, which
