@@ -191,6 +191,40 @@ class TestGovernanceAndDeterminism(unittest.TestCase):
         b = json.dumps(mra.compute_resolution_audit(idx, rm, CONTRACT), sort_keys=True)
         self.assertEqual(a, b)
 
+    def test_missing_file_id_does_not_crash(self):
+        # Review #1: a multi-file record with one missing file_id must not crash the sorted() in the key.
+        rec = _rec("m_a", "issue")
+        rec["files"].append({"role": "secondary", "artifact_ref": {"revision": "rev_2"}})  # no file_id
+        idx = {"issue": {"records": [rec]}}
+        rep = mra.compute_resolution_audit(idx, _resolved([_res_entry("m_a")]), CONTRACT)  # must not raise
+        self.assertTrue(rep["applicable"])
+
+    def test_shadowed_supersedes_edge_still_applied(self):
+        # Review #3: a supersedes edge on a collision-shadowed record is still honored (collected from all
+        # eligible records), so authoring and resolved layers don't contradict.
+        recs = [_rec("m_x", "issue"),                                   # narrower m_x wins the collision
+                _rec("m_x", "series", supersedes="m_y"),               # shadowed, but its edge must apply
+                _rec("m_y", "issue", status="publisher_approved")]
+        eff = [r["material_id"] for r in mra.resolve_effective_materials(recs)]
+        self.assertNotIn("m_y", eff)                                   # m_y superseded, not in effective set
+
+    def test_version_skew_blanks_divergence_lists(self):
+        idx = {"issue": _index("issue", [_rec("m_a", "issue")])}
+        rm = _resolved([_res_entry("m_z")], cver="v2")   # different id AND different version
+        rep = mra.compute_resolution_audit(idx, rm, CONTRACT)
+        self.assertTrue(rep["version_skew"])
+        cc = rep["cross_check"]
+        self.assertEqual(cc["only_scout"], [])           # not a meaningless cross-version delta
+        self.assertEqual(cc["only_publisher"], [])
+        self.assertFalse(cc["matches"])
+
+    def test_duplicate_resolved_id_flagged_deterministically(self):
+        idx = {"issue": _index("issue", [_rec("m_a", "issue")])}
+        rm = _resolved([_res_entry("m_a", revision="rev_1"), _res_entry("m_a", revision="rev_2")])
+        rep = mra.compute_resolution_audit(idx, rm, CONTRACT)
+        self.assertEqual(rep["cross_check"]["duplicate_resolved_ids"], ["m_a"])
+        self.assertFalse(rep["cross_check"]["matches"])   # a dup id is a divergence, not silently deduped
+
     def test_tolerant_index_wrapper(self):
         # accepts records under 'materials' as well as 'records'
         idx = {"issue": {"materials": [_rec("m_a", "issue")]}}

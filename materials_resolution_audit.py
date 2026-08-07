@@ -42,19 +42,25 @@ def _rank(record):
     return _SCOPE_RANK.get((record.get("scope") or {}).get("level"), 99)
 
 
+def _sorted_files(pairs):
+    """Deterministically sort (file_id, revision) pairs with a TOTAL order that tolerates None (a missing
+    file_id/revision must surface as a finding via a key mismatch, never crash the audit on a mixed-None sort)."""
+    return tuple(sorted(pairs, key=lambda t: (t[0] is None, str(t[0]), t[1] is None, str(t[1]))))
+
+
 def _material_key(record):
     """A material's identity for the effective-set comparison: (material_id, sorted (file_id, revision)
-    tuples). References only."""
-    files = tuple(sorted((f.get("file_id"), (f.get("artifact_ref") or {}).get("revision") or f.get("revision"))
-                         for f in (record.get("files") or []) if isinstance(f, dict)))
+    tuples). References only. The record shape carries the file revision under ``artifact_ref.revision``."""
+    files = _sorted_files((f.get("file_id"), (f.get("artifact_ref") or {}).get("revision") or f.get("revision"))
+                          for f in (record.get("files") or []) if isinstance(f, dict))
     return (record.get("material_id"), files)
 
 
 def _resolved_key(entry):
     """Same identity shape for a Publisher `resolved_materials.resolved` entry (which carries flat
     `files:[{file_id, revision}]`)."""
-    files = tuple(sorted((f.get("file_id"), f.get("revision"))
-                         for f in (entry.get("files") or []) if isinstance(f, dict)))
+    files = _sorted_files((f.get("file_id"), f.get("revision"))
+                          for f in (entry.get("files") or []) if isinstance(f, dict))
     return (entry.get("material_id"), files)
 
 
@@ -85,9 +91,15 @@ def resolve_effective_materials(records, target_edition_id=None):
             by_id[mid] = r
 
     # 4 — rank_aware_explicit_supersession: a record's `supersedes` relationship removes the target material.
-    # Only eligible (in-union) records participate, so an ineligible record can never suppress (per the notes).
+    # ASSUMPTION (pending Publisher confirmation of the exact `rank_aware` semantic, which the contract docs
+    # do NOT define): supersession is honored for any ELIGIBLE record's explicit target, rank-blind. Edges are
+    # collected from ALL eligible records (not just post-collision survivors) so a shadowed record's
+    # supersession intent isn't silently lost and the authoring/resolved layers stay consistent. Eligibility
+    # (retirement+edition) was already applied, so an ineligible record never suppresses (per the notes). If
+    # the Publisher's `rank_aware` adds a scope-precedence constraint, the cross-check surfaces the divergence
+    # rather than silently mis-resolving — see the report's `supersession_semantic` note.
     superseded = set()
-    for r in by_id.values():
+    for r in eligible:
         for rel in (r.get("relationships") or []):
             if rel.get("rel") == "supersedes":
                 tgt = (rel.get("target") or {}).get("id")
@@ -189,14 +201,23 @@ def compute_resolution_audit(scope_indexes, resolved_materials, resolution_contr
     theirs = {_resolved_key(e) for e in publisher_resolved if isinstance(e, dict)}
     mine_ids = {k[0] for k in mine}
     theirs_ids = {k[0] for k in theirs}
-    # material-id level agreement + file-revision-level mismatches on the agreed ids
-    agree_ids = sorted(mine_ids & theirs_ids)
-    only_scout = sorted(mine_ids - theirs_ids)
-    only_publisher = sorted(theirs_ids - mine_ids)
-    mine_by_id = {k[0]: k[1] for k in mine}
-    theirs_by_id = {k[0]: k[1] for k in theirs}
-    file_mismatches = sorted(mid for mid in agree_ids if mine_by_id[mid] != theirs_by_id[mid])
-    matches = (not version_skew and not only_scout and not only_publisher and not file_mismatches)
+    # Deterministic id->files maps (sorted, so a duplicate id resolves stably last-wins, not by set order).
+    mine_by_id = {k[0]: k[1] for k in sorted(mine)}
+    theirs_by_id = {k[0]: k[1] for k in sorted(theirs)}
+    # Flag (never silently dedup) a material_id appearing twice in the Publisher's resolved list.
+    resolved_id_list = [e.get("material_id") for e in publisher_resolved if isinstance(e, dict)]
+    duplicate_resolved_ids = sorted({m for m in resolved_id_list if resolved_id_list.count(m) > 1}, key=str)
+
+    if version_skew:
+        # Abstain: a cross-version comparison is meaningless — report no divergence lists, only the skew.
+        agree_ids = only_scout = only_publisher = file_mismatches = []
+    else:
+        agree_ids = sorted(mine_ids & theirs_ids)
+        only_scout = sorted(mine_ids - theirs_ids)
+        only_publisher = sorted(theirs_ids - mine_ids)
+        file_mismatches = sorted(mid for mid in agree_ids if mine_by_id[mid] != theirs_by_id[mid])
+    matches = (not version_skew and not only_scout and not only_publisher
+               and not file_mismatches and not duplicate_resolved_ids)
 
     return {
         "applicable": True,
@@ -204,6 +225,10 @@ def compute_resolution_audit(scope_indexes, resolved_materials, resolution_contr
         "resolution_contract_version": cver,
         "resolved_materials_version": rm.get("resolved_materials_version"),
         "version_skew": version_skew,
+        # The `rank_aware` supersession semantic is not defined by the contract docs; Scout mirrors it as
+        # rank-blind explicit-target supersession pending Publisher confirmation (a divergence here would
+        # surface in the cross-check, not silently mis-resolve).
+        "supersession_semantic": "explicit_target_rank_blind_pending_confirmation",
         "target": rm.get("target"),
         "target_edition_id": target_edition_id,
         "records_total": len(all_records),
@@ -215,6 +240,7 @@ def compute_resolution_audit(scope_indexes, resolved_materials, resolution_contr
             "only_scout": only_scout,             # Scout resolved it, Publisher didn't -> investigate
             "only_publisher": only_publisher,     # Publisher resolved it, Scout didn't -> investigate
             "file_revision_mismatches": file_mismatches,
+            "duplicate_resolved_ids": duplicate_resolved_ids,
         },
         "authoring_findings": _authoring_findings(all_records),
     }
