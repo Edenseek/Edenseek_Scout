@@ -340,6 +340,10 @@ def _extract_grounding(context_source):
     for e in context_source:
         if not isinstance(e, dict) or e.get("kind") != "supporting_material":
             continue
+        # A supporting-material entry with no material_id can't be audited (the contract guarantees one);
+        # drop it defensively rather than crash a downstream sort — matches the adapter's fail-soft posture.
+        if not e.get("material_id"):
+            continue
         files = e.get("files") if isinstance(e.get("files"), list) else []
         norm_files = sorted(
             ({"file_id": f.get("file_id"), "revision": f.get("revision")}

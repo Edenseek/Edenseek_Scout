@@ -47,8 +47,9 @@ def _classify(gen_entries, app_entries):
     g_ids, a_ids = set(g_by_id), set(a_by_id)
     added_ids, removed_ids = a_ids - g_ids, g_ids - a_ids
     common = g_ids & a_ids
-    revised_ids = sorted(m for m in common if g_by_id[m] != a_by_id[m])
-    detail = {"added": sorted(added_ids), "removed": sorted(removed_ids), "revision_changed": revised_ids}
+    revised_ids = sorted((m for m in common if g_by_id[m] != a_by_id[m]), key=str)
+    detail = {"added": sorted(added_ids, key=str), "removed": sorted(removed_ids, key=str),
+              "revision_changed": revised_ids}
     if not added_ids and not removed_ids and not revised_ids:
         return "accepted_unchanged", detail
     if added_ids and removed_ids:
@@ -85,13 +86,24 @@ def compute_materials_grounding_benchmark(canonical_review):
     gen_pin, app_pin = _pin_versions(pins.get("generated")), _pin_versions(pins.get("approved"))
 
     common = sorted(set(generated) & set(approved))
-    any_grounding = any((generated[a].get("grounding") or approved[a].get("grounding")) for a in common)
+    # Applicability spans ALL outputs (both sides, every artifact) — grounding introduced on a non-common
+    # (added/removed-at-approval) artifact is real grounding activity, so claiming "no_materials_grounding"
+    # would be a false baseline. Comparison itself is still generated-vs-approved over COMMON artifacts
+    # (a non-common artifact has no counterpart to diff against); those are surfaced separately for transparency.
+    def _grounded(m):
+        return bool(m.get("grounding"))
+    any_grounding = (any(_grounded(o) for o in generated.values())
+                     or any(_grounded(o) for o in approved.values()))
     if not any_grounding:
         return {"applicable": False, "reason": "no_materials_grounding",
                 "version": MATERIALS_GROUNDING_VERSION}
+    grounded_only_generated = sorted(a for a in (set(generated) - set(approved)) if _grounded(generated[a]))
+    grounded_only_approved = sorted(a for a in (set(approved) - set(generated)) if _grounded(approved[a]))
 
-    # Version skew between sides -> abstain over the whole set (never a wrong number).
-    version_skew = gen_pin != app_pin
+    # Version skew ONLY when BOTH sides carry a real pin and they differ. A pin is emitted per-side only
+    # when that side grounded, so an off->on case (grounding added at approval) has one absent pin — that is
+    # NOT a skew (it would falsely abstain and defeat grounding_added detection); fall through to _classify.
+    version_skew = (None not in gen_pin and None not in app_pin and gen_pin != app_pin)
 
     def is_fresh(entry):
         return entry.get("generation_disposition") in (None, "fresh")
@@ -114,8 +126,11 @@ def compute_materials_grounding_benchmark(canonical_review):
                 fresh_accepted += 1
         records.append({
             "artifact_id": aid, "category": category,
-            "generated_material_ids": sorted(m.get("material_id") for m in (g.get("grounding") or [])),
-            "approved_material_ids": sorted(m.get("material_id") for m in (a.get("grounding") or [])),
+            # deduped id lists (a material appears at most once per output); str-safe sort.
+            "generated_material_ids": sorted({m.get("material_id") for m in (g.get("grounding") or [])},
+                                             key=str),
+            "approved_material_ids": sorted({m.get("material_id") for m in (a.get("grounding") or [])},
+                                            key=str),
             "detail": detail,
             "generated_disposition": g.get("generation_disposition"),
         })
@@ -129,6 +144,10 @@ def compute_materials_grounding_benchmark(canonical_review):
         "resolution_contract_version": gen_pin[1],
         "version_skew": version_skew,
         "artifacts_common": len(common),
+        # Non-common artifacts that carry grounding — real activity with no generated-vs-approved counterpart
+        # to diff; surfaced so they are observed, not silently dropped by the common-only comparison.
+        "grounded_only_generated": grounded_only_generated,
+        "grounded_only_approved": grounded_only_approved,
         "counts": dict(tally),
         "grounding_acceptance": {"numerator": fresh_accepted, "denominator": fresh_comparable, "rate": rate,
                                  "basis": "fresh_generated_outputs_only"},
@@ -136,18 +155,6 @@ def compute_materials_grounding_benchmark(canonical_review):
         "records": records,   # identifiers/references only — never material bytes or text
     }
 
-
-def materials_grounding_headline(benchmark):
-    """Compact per-report materials-grounding metrics for the index/search (pure)."""
-    if not benchmark.get("applicable"):
-        return {"applicable": False, "reason": benchmark.get("reason")}
-    acc = benchmark["grounding_acceptance"]
-    return {
-        "applicable": True,
-        "materials_grounding_metric_version": benchmark["version"],
-        "materials_grounding_version": benchmark.get("materials_grounding_version"),
-        "resolution_contract_version": benchmark.get("resolution_contract_version"),
-        "grounding_acceptance_rate": acc["rate"],
-        "grounding_comparable": acc["denominator"],
-        "grounding_edits": benchmark["grounding_edits"],
-    }
+# NOTE: index/search headline + dashboard surfacing for this benchmark are a deferred follow-up
+# increment (mirrors how metadata_accuracy's dashboard surfacing was deferred to a joint UI review).
+# The benchmark rides on the report body via delta_auditor today; no consumer reads a headline yet.
