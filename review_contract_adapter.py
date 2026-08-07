@@ -327,6 +327,30 @@ def _extract_v2(output_obj, field_sources):
     return editorial, non_editorial
 
 
+def _extract_grounding(context_source):
+    """The SUPPORTING-MATERIAL grounding entries from a per-output ``context_source`` (CBI-2b) — the
+    approved materials + revisions the output grounded on. Filters to ``kind == "supporting_material"``
+    (registry grounding rides the same list as ``kind: "registry_entity"`` and is not materials). Returns
+    a deterministically-sorted list of ``{material_id, category, subtype, edition_id, files:[{file_id,
+    revision}]}`` — identifiers only (references, never raw material text). Empty when grounding is off /
+    absent (byte-identical baseline)."""
+    if not isinstance(context_source, list):
+        return []
+    out = []
+    for e in context_source:
+        if not isinstance(e, dict) or e.get("kind") != "supporting_material":
+            continue
+        files = e.get("files") if isinstance(e.get("files"), list) else []
+        norm_files = sorted(
+            ({"file_id": f.get("file_id"), "revision": f.get("revision")}
+             for f in files if isinstance(f, dict)),
+            key=lambda f: (str(f["file_id"]), str(f["revision"])))
+        out.append({"material_id": e.get("material_id"), "category": e.get("category"),
+                    "subtype": e.get("subtype"), "edition_id": e.get("edition_id"),
+                    "files": norm_files})
+    return sorted(out, key=lambda m: str(m["material_id"]))
+
+
 def _normalize_metadata(metadata_obj, side):
     """Normalize a ``{llm_enrichment_output_version, llm_enrichment_outputs:[...]}`` object into Scout's
     canonical ``{artifact_id: {schema_version, fields, non_editorial, provenance...}}`` map. ``fields`` is
@@ -366,6 +390,9 @@ def _normalize_metadata(metadata_obj, side):
             "generation_provenance": gp if isinstance(gp, dict) else None,
             "generation_disposition": out.get("metadata_generation_provenance"),
             "generation_count": (gp.get("generation_count") if isinstance(gp, dict) else None),
+            # CBI-2b materials grounding (which approved materials+revisions this output grounded on),
+            # from the per-output context_source — the AUTHORITATIVE source (not the run-level pin).
+            "grounding": _extract_grounding(out.get("context_source")),
         }
     return canon
 
@@ -563,6 +590,13 @@ def adapt_review(review_report, platform_approval=None, generated_snapshot=None)
         "normalization_version": NORMALIZATION_VERSION,
         "metadata_provenance": _metadata_provenance(
             review_report.get("generated_metadata"), review_report.get("approved_metadata")),
+        # CBI-2b run-level VERSION PIN (materials_grounding_version + resolution_contract_version) from each
+        # side's top-level metadata doc — a version stamp only, NOT the material list. None when grounding
+        # off (byte-identical baseline). The authoritative grounding is per-artifact `grounding` above.
+        "materials_grounding_pin": {
+            "generated": (review_report.get("generated_metadata") or {}).get("materials_grounding"),
+            "approved": (review_report.get("approved_metadata") or {}).get("materials_grounding"),
+        },
         "source_versions": {
             "review_report_version": review_report.get("review_report_version"),
             "platform_approval_version": (platform_approval or {}).get("platform_approval_version"),
