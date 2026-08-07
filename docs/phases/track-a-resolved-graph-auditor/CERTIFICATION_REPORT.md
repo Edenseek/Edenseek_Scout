@@ -17,6 +17,12 @@ Johnny confirmed both open items from the authoritative resolver (`material_inde
   `materials.cross_scope_collision` authoring finding.
 - **`material_index.json` wrapper:** `{schema_version:int, scope, records:[...]}` — records under `records`
   (the tolerant reader already handles it).
+- **GOVERNED CITATION:** the confirmed semantic is now formalized in the versioned contract spec
+  `docs/architecture/resolution_contract_versioning.md` **§6 "Filter semantics (v1)"** (Edenseek repo, commit
+  `f5cd6e9`; Gate-B reviewed line-by-line against the resolver) — doc-only, `resolution_contract_version` stays
+  `v1`. Scout's mirror pins to §6, not an informal note. Cross-checked: §6's "supersedes target already outside
+  the resolved set (retired/edition-filtered/nonexistent) is a no-op" matches Scout's `tgt in by_id` guard
+  (by_id is the post-eligibility, post-collision union).
 - **Documented low-severity out-of-band boundary:** an unknown `scope.level` maps to rank 99 (the Publisher
   derives rank from index position 0–3); only reachable on malformed placement the store forbids.
 `supersession_semantic` now reports `rank_aware_strict_more_specific`. Suite 429.
