@@ -375,6 +375,7 @@ def _normalize_metadata(metadata_obj, side):
         src = f"{side} metadata.llm_enrichment_outputs[{i}]"
         artifact_id = _require(out, "artifact_id", src)
         gp = out.get("generation_provenance")
+        gpv = out.get("grounding_provenance")   # CBI-2c per-output version pin
         if is_v2:
             fields, non_editorial = _extract_v2(out.get("output"), out.get("field_sources"))
         else:
@@ -397,6 +398,10 @@ def _normalize_metadata(metadata_obj, side):
             # CBI-2b materials grounding (which approved materials+revisions this output grounded on),
             # from the per-output context_source — the AUTHORITATIVE source (not the run-level pin).
             "grounding": _extract_grounding(out.get("context_source")),
+            # CBI-2c: the grounding VERSION PIN is now PER-OUTPUT (materials_grounding_version +
+            # resolution_contract_version), present only when a supporting_material grounded THIS output.
+            # None when absent (off / registry-only / pre-CBI-2c frozen revisions).
+            "grounding_provenance": gpv if isinstance(gpv, dict) else None,
         }
     return canon
 
@@ -594,9 +599,9 @@ def adapt_review(review_report, platform_approval=None, generated_snapshot=None)
         "normalization_version": NORMALIZATION_VERSION,
         "metadata_provenance": _metadata_provenance(
             review_report.get("generated_metadata"), review_report.get("approved_metadata")),
-        # CBI-2b run-level VERSION PIN (materials_grounding_version + resolution_contract_version) from each
-        # side's top-level metadata doc — a version stamp only, NOT the material list. None when grounding
-        # off (byte-identical baseline). The authoritative grounding is per-artifact `grounding` above.
+        # LEGACY (pre-CBI-2c) run-level version pin from each side's top-level metadata doc. Superseded by
+        # the PER-OUTPUT `grounding_provenance` (CBI-2c) — kept only as a fallback for immutable frozen
+        # revisions published before the move. None on current revisions. Never the material list.
         "materials_grounding_pin": {
             "generated": (review_report.get("generated_metadata") or {}).get("materials_grounding"),
             "approved": (review_report.get("approved_metadata") or {}).get("materials_grounding"),

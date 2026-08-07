@@ -82,8 +82,18 @@ def compute_materials_grounding_benchmark(canonical_review):
 
     generated = canonical_review["generated"]["metadata"]
     approved = canonical_review["approved"]["metadata"]
-    pins = canonical_review.get("materials_grounding_pin") or {}
-    gen_pin, app_pin = _pin_versions(pins.get("generated")), _pin_versions(pins.get("approved"))
+    # Legacy (pre-CBI-2c) top-level pin — fallback only for immutable frozen revisions.
+    legacy = canonical_review.get("materials_grounding_pin") or {}
+    legacy_gen, legacy_app = _pin_versions(legacy.get("generated")), _pin_versions(legacy.get("approved"))
+
+    def _pin_of(entry, legacy_side):
+        """The (materials_grounding_version, resolution_contract_version) for one output. CBI-2c: per-output
+        ``grounding_provenance``; falls back to the legacy top-level pin for pre-CBI-2c frozen revisions;
+        else (None, None) (unpinned — an output that did not ground carries no pin)."""
+        gp = entry.get("grounding_provenance")
+        if isinstance(gp, dict):
+            return _pin_versions(gp)
+        return legacy_side
 
     common = sorted(set(generated) & set(approved))
     # Applicability spans ALL outputs (both sides, every artifact) — grounding introduced on a non-common
@@ -100,20 +110,22 @@ def compute_materials_grounding_benchmark(canonical_review):
     grounded_only_generated = sorted(a for a in (set(generated) - set(approved)) if _grounded(generated[a]))
     grounded_only_approved = sorted(a for a in (set(approved) - set(generated)) if _grounded(approved[a]))
 
-    # Version skew ONLY when BOTH sides carry a real pin and they differ. A pin is emitted per-side only
-    # when that side grounded, so an off->on case (grounding added at approval) has one absent pin — that is
-    # NOT a skew (it would falsely abstain and defeat grounding_added detection); fall through to _classify.
-    version_skew = (None not in gen_pin and None not in app_pin and gen_pin != app_pin)
-
     def is_fresh(entry):
         return entry.get("generation_disposition") in (None, "fresh")
 
     records = []
     tally = {c: 0 for c in ("accepted_unchanged", *_EDIT_CATEGORIES, "abstention", "unsupported_version")}
     fresh_comparable = fresh_accepted = 0
+    pins_seen = set()   # distinct per-output pins across grounded outputs (for the report-level summary)
     for aid in common:
         g, a = generated[aid], approved[aid]
-        if version_skew:
+        gen_pin, app_pin = _pin_of(g, legacy_gen), _pin_of(a, legacy_app)
+        for p in (gen_pin, app_pin):
+            if None not in p:
+                pins_seen.add(p)
+        # PER-OUTPUT version skew: both this output's sides carry a real pin AND they differ. Per-output
+        # (CBI-2c) removes the run-level carry-forward — an off->on output has one absent pin -> not a skew.
+        if None not in gen_pin and None not in app_pin and gen_pin != app_pin:
             category, detail = "unsupported_version", {}
         else:
             category, detail = _classify(g.get("grounding") or [], a.get("grounding") or [])
@@ -137,12 +149,19 @@ def compute_materials_grounding_benchmark(canonical_review):
 
     rate = round(fresh_accepted / fresh_comparable, 6) if fresh_comparable else 0.0
     edited = sum(tally[c] for c in _EDIT_CATEGORIES)
+    # Report-level version summary derived from the per-output pins actually seen. Uniform -> the single
+    # value; heterogeneous -> None + version_skew (distinct pins coexist across grounded outputs — a real
+    # contract-consistency signal, not silently collapsed).
+    mg_versions = {p[0] for p in pins_seen}
+    rc_versions = {p[1] for p in pins_seen}
+    version_skew = tally["unsupported_version"] > 0 or len(pins_seen) > 1
     return {
         "applicable": True,
         "version": MATERIALS_GROUNDING_VERSION,
-        "materials_grounding_version": gen_pin[0],
-        "resolution_contract_version": gen_pin[1],
+        "materials_grounding_version": (next(iter(mg_versions)) if len(mg_versions) == 1 else None),
+        "resolution_contract_version": (next(iter(rc_versions)) if len(rc_versions) == 1 else None),
         "version_skew": version_skew,
+        "distinct_version_pins": sorted(f"{p[0]}/{p[1]}" for p in pins_seen),
         "artifacts_common": len(common),
         # Non-common artifacts that carry grounding — real activity with no generated-vs-approved counterpart
         # to diff; surfaced so they are observed, not silently dropped by the common-only comparison.

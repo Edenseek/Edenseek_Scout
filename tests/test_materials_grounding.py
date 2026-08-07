@@ -29,30 +29,30 @@ def _sm(material_id, revision, category="reference", subtype="style_guide", file
             "files": [{"file_id": file_id, "revision": revision}]}
 
 
-def _grounded_review(gen_ctx, app_ctx, gen_pin="auto", app_pin="auto", dispositions=None):
+def _grounded_review(gen_ctx, app_ctx, gen_pin="auto", app_pin="auto", dispositions=None, legacy_top=None):
     """v1.1 review with per-output context_source grounding injected on the 3 common panels.
     gen_ctx/app_ctx: {artifact_id: [context_source entries]}. dispositions: {artifact_id: fresh|preserved_*}.
 
-    Pin emission mirrors PRODUCTION: by default ("auto") a side's run-level `materials_grounding` pin is
-    emitted ONLY IF that side actually grounds on ≥1 supporting_material — so an off->on case realistically
-    has one absent pin. Pass an explicit pin dict to force it, or None to force-omit."""
+    Pin emission mirrors PRODUCTION (CBI-2c): a **per-output** `grounding_provenance` block is stamped on an
+    output ONLY IF that output grounds on ≥1 supporting_material. Default ("auto") uses _PIN; pass an
+    explicit dict as gen_pin/app_pin to override that side's per-output pin (e.g. a version skew), or None
+    to force-omit. ``legacy_top`` (dict) instead stamps the SUPERSEDED top-level pin for backward-compat tests."""
     r = copy.deepcopy(fx.review_generated())
-    for side, ctx in (("generated_metadata", gen_ctx), ("approved_metadata", app_ctx)):
+
+    def _out_grounds(o):
+        return any(e.get("kind") == "supporting_material" for e in (o.get("context_source") or []))
+    for side, ctx, pin in (("generated_metadata", gen_ctx, gen_pin), ("approved_metadata", app_ctx, app_pin)):
         for o in r[side]["llm_enrichment_outputs"]:
             aid = o["artifact_id"]
             if aid in ctx:
                 o["context_source"] = ctx[aid]
             if side == "generated_metadata" and dispositions and aid in dispositions:
                 o["metadata_generation_provenance"] = dispositions[aid]
-
-    def _side_grounds(ctx):
-        return any(any(e.get("kind") == "supporting_material" for e in entries) for entries in ctx.values())
-    for key, pin, ctx in (("generated_metadata", gen_pin, gen_ctx), ("approved_metadata", app_pin, app_ctx)):
-        if pin == "auto":
-            if _side_grounds(ctx):
-                r[key]["materials_grounding"] = dict(_PIN)
-        elif pin is not None:
-            r[key]["materials_grounding"] = pin
+            # per-output pin, present iff this output grounds (CBI-2c)
+            if pin is not None and _out_grounds(o):
+                o["grounding_provenance"] = dict(_PIN) if pin == "auto" else pin
+        if legacy_top is not None:
+            r[side]["materials_grounding"] = legacy_top   # superseded top-level shape (compat only)
     return r
 
 
@@ -102,13 +102,35 @@ class TestMaterialsGrounding(unittest.TestCase):
             adapt_review(_grounded_review(g, g, dispositions={A2: "preserved_approved"})))
         self.assertEqual(b["grounding_acceptance"]["denominator"], 1)   # only A1 fresh+comparable
 
-    def test_version_skew_abstains(self):
+    def test_version_skew_per_output_abstains(self):
+        # CBI-2c: pin is per-output. A1 grounds both sides; approved's per-output pin is v2 vs generated v1
+        # -> that output is unsupported_version (per-output skew), excluded from the denominator.
         g = {A1: [_sm("mat_a", "rev_1")]}
         b = dmg.compute_materials_grounding_benchmark(adapt_review(_grounded_review(
             g, g, app_pin={"materials_grounding_version": "v2", "resolution_contract_version": "v1"})))
         self.assertTrue(b["version_skew"])
-        self.assertEqual(b["counts"]["unsupported_version"], b["artifacts_common"])
+        self.assertEqual(b["counts"]["unsupported_version"], 1)   # only the grounded, differing output
         self.assertEqual(b["grounding_acceptance"]["denominator"], 0)
+        self.assertIn("v1/v1", b["distinct_version_pins"])
+        self.assertIn("v2/v1", b["distinct_version_pins"])
+
+    def test_per_output_pin_reported(self):
+        # CBI-2c per-output pin is read + summarized at report level (uniform -> single value).
+        g = {A1: [_sm("mat_a", "rev_1")]}
+        b = dmg.compute_materials_grounding_benchmark(adapt_review(_grounded_review(g, g)))
+        self.assertEqual(b["materials_grounding_version"], "v1")
+        self.assertEqual(b["resolution_contract_version"], "v1")
+        self.assertFalse(b["version_skew"])
+        self.assertEqual(b["distinct_version_pins"], ["v1/v1"])
+
+    def test_legacy_top_level_pin_fallback(self):
+        # A pre-CBI-2c frozen revision carries the SUPERSEDED top-level pin and NO per-output block.
+        g = {A1: [_sm("mat_a", "rev_1")]}
+        b = dmg.compute_materials_grounding_benchmark(adapt_review(
+            _grounded_review(g, g, gen_pin=None, app_pin=None, legacy_top=dict(_PIN))))
+        self.assertTrue(b["applicable"])
+        self.assertEqual(b["materials_grounding_version"], "v1")   # fell back to the legacy top-level
+        self.assertFalse(b["version_skew"])
 
     def test_grounding_introduced_at_approval_is_added_not_false_skew(self):
         # Reviewer Finding 1: off->on. Generated grounds on NOTHING (no gen pin, per production emission);
