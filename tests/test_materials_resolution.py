@@ -122,6 +122,19 @@ class TestResolveMirror(unittest.TestCase):
         eff = [r["material_id"] for r in mra.resolve_effective_materials(recs)]
         self.assertEqual(eff, ["m_old"])   # m_new retired -> not eligible -> can't suppress m_old
 
+    def test_explicitly_unbound_supersedes_does_not_apply(self):
+        # Mirror the Publisher's binding_status=="bound" gate: an explicitly-unbound edge (even with an id)
+        # does NOT suppress; a bound or unmarked edge does.
+        recs = [_rec("m_broad", "series", status="publisher_approved"), _rec("m_narrow", "issue")]
+        recs[1]["relationships"] = [{"rel": "supersedes",
+                                     "target": {"kind": "material", "id": "m_broad", "binding_status": "unbound"}}]
+        eff = [r["material_id"] for r in mra.resolve_effective_materials(recs)]
+        self.assertIn("m_broad", eff)   # unbound edge ignored -> m_broad survives
+        # bound variant DOES apply
+        recs[1]["relationships"][0]["target"]["binding_status"] = "bound"
+        eff2 = [r["material_id"] for r in mra.resolve_effective_materials(recs)]
+        self.assertNotIn("m_broad", eff2)
+
     def test_terminal_approved_only(self):
         recs = [_rec("m_draft", "issue", status="draft"), _rec("m_ok", "issue")]
         eff = [r["material_id"] for r in mra.resolve_effective_materials(recs)]

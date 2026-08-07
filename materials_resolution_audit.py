@@ -109,7 +109,13 @@ def resolve_effective_materials(records, target_edition_id=None):
         r_rank = _rank(r)
         for rel in (r.get("relationships") or []):
             if rel.get("rel") == "supersedes":
-                tgt = (rel.get("target") or {}).get("id")
+                tgt_obj = rel.get("target") or {}
+                # The Publisher resolver applies a supersedes edge only when it is BOUND
+                # (material_index.py::supersedes_ids). On valid data bound<=>id-present, but mirror the
+                # actual check: an explicitly-unbound edge never suppresses (bound or absent -> id-presence).
+                if tgt_obj.get("binding_status") not in (None, "bound"):
+                    continue
+                tgt = tgt_obj.get("id")
                 if tgt is not None and tgt in by_id and _rank(by_id[tgt]) > r_rank:
                     suppressed.add(tgt)                 # strictly-less-specific target only
     survivors = [r for mid, r in by_id.items() if mid not in suppressed]
