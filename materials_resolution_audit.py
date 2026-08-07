@@ -90,22 +90,29 @@ def resolve_effective_materials(records, target_edition_id=None):
         if mid not in by_id or _rank(r) < _rank(by_id[mid]):
             by_id[mid] = r
 
-    # 4 — rank_aware_explicit_supersession: a record's `supersedes` relationship removes the target material.
-    # ASSUMPTION (pending Publisher confirmation of the exact `rank_aware` semantic, which the contract docs
-    # do NOT define): supersession is honored for any ELIGIBLE record's explicit target, rank-blind. Edges are
-    # collected from ALL eligible records (not just post-collision survivors) so a shadowed record's
-    # supersession intent isn't silently lost and the authoring/resolved layers stay consistent. Eligibility
-    # (retirement+edition) was already applied, so an ineligible record never suppresses (per the notes). If
-    # the Publisher's `rank_aware` adds a scope-precedence constraint, the cross-check surfaces the divergence
-    # rather than silently mis-resolving — see the report's `supersession_semantic` note.
-    superseded = set()
-    for r in eligible:
+    # 4 — rank_aware_explicit_supersession (Publisher-confirmed authoritative semantic,
+    # material_index_merge.resolve_effective_materials):
+    #   * A surviving record R suppresses target T named in R.supersedes IFF rank(T) > rank(R) — T is at a
+    #     STRICTLY LESS-SPECIFIC scope than R. Broader can't suppress narrower; same-scope is a no-op
+    #     (within-scope replacement is expressed by the `superseded` lifecycle status, not the cascade edge).
+    #   * Only SURVIVING (kept, not-yet-suppressed) records suppress — a suppressed record does NOT apply its
+    #     own edges (so chains resolve correctly).
+    #   * Collision-shadowed records are already dropped (not in `by_id`), so their edges never apply.
+    #   * Evaluated MOST-SPECIFIC-FIRST (material_id tiebreak) — a determinism/order-independence device (a
+    #     record that could suppress R is more specific than R, hence processed first).
+    survivors_ordered = sorted(by_id.values(), key=lambda r: (_rank(r), str(r.get("material_id"))))
+    suppressed = set()
+    for r in survivors_ordered:
+        rid = r.get("material_id")
+        if rid in suppressed:
+            continue                                   # a suppressed record does not suppress others
+        r_rank = _rank(r)
         for rel in (r.get("relationships") or []):
             if rel.get("rel") == "supersedes":
                 tgt = (rel.get("target") or {}).get("id")
-                if tgt is not None:
-                    superseded.add(tgt)
-    survivors = [r for mid, r in by_id.items() if mid not in superseded]
+                if tgt is not None and tgt in by_id and _rank(by_id[tgt]) > r_rank:
+                    suppressed.add(tgt)                 # strictly-less-specific target only
+    survivors = [r for mid, r in by_id.items() if mid not in suppressed]
 
     # 5 — lifecycle_publisher_approved_only (TERMINAL — the Publisher's context_builder_view).
     effective = [r for r in survivors if r.get("status") == "publisher_approved"]
@@ -118,6 +125,18 @@ def _authoring_findings(records):
     observations about their internal consistency."""
     findings = []
     ids = {r.get("material_id") for r in records}
+
+    # (0) A material_id authored at MORE THAN ONE scope. The store enforces single placement (authored once,
+    # never duplicated at descendants), so a cross-scope collision is an authoring anomaly — and it is exactly
+    # the case where the resolved layer drops the shadowed record's edge, so surface it explicitly.
+    scopes_by_id = {}
+    for r in records:
+        scopes_by_id.setdefault(r.get("material_id"), set()).add((r.get("scope") or {}).get("level"))
+    for mid, levels in sorted(scopes_by_id.items(), key=lambda kv: str(kv[0])):
+        if len(levels) > 1:
+            findings.append({"code": "materials.cross_scope_collision", "severity": "WARNING",
+                             "material_id": mid, "scope_levels": sorted(levels, key=str),
+                             "detail": "same material_id authored at more than one scope (single-placement violation)"})
 
     # (a) Every `supersedes` target must resolve to a known material (no dangling supersession edge).
     for r in records:
@@ -228,10 +247,9 @@ def compute_resolution_audit(scope_indexes, resolved_materials, resolution_contr
         "resolution_contract_version": cver,
         "resolved_materials_version": rm.get("resolved_materials_version"),
         "version_skew": version_skew,
-        # The `rank_aware` supersession semantic is not defined by the contract docs; Scout mirrors it as
-        # rank-blind explicit-target supersession pending Publisher confirmation (a divergence here would
-        # surface in the cross-check, not silently mis-resolve).
-        "supersession_semantic": "explicit_target_rank_blind_pending_confirmation",
+        # Publisher-confirmed: a record suppresses a target only if strictly more specific (rank(T)>rank(R)),
+        # from surviving non-suppressed records, never from a collision-shadowed record.
+        "supersession_semantic": "rank_aware_strict_more_specific",
         "target": rm.get("target"),
         "target_edition_id": target_edition_id,
         "records_total": len(all_records),

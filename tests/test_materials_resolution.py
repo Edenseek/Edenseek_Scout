@@ -84,18 +84,43 @@ class TestResolveMirror(unittest.TestCase):
         self.assertEqual(len(eff), 1)
         self.assertEqual((eff[0].get("scope") or {}).get("level"), "issue")
 
-    def test_explicit_supersession_removes_target(self):
-        recs = [_rec("m_old", "issue", status="superseded"),
+    def test_narrower_supersedes_broader(self):
+        # rank_aware: issue (rank 0) supersedes series (rank 1) -> applies (rank(T)=1 > rank(R)=0).
+        recs = [_rec("m_old", "series", status="publisher_approved"),
                 _rec("m_new", "issue", supersedes="m_old")]
         eff = [r["material_id"] for r in mra.resolve_effective_materials(recs)]
-        self.assertEqual(eff, ["m_new"])
+        self.assertEqual(eff, ["m_new"])   # m_old (broader) suppressed by m_new (narrower)
+
+    def test_broader_cannot_supersede_narrower(self):
+        # series (rank 1) supersedes issue (rank 0) -> NO-OP (would need rank(T)=0 > rank(R)=1). Both survive.
+        recs = [_rec("m_iss", "issue", status="publisher_approved"),
+                _rec("m_ser", "series", supersedes="m_iss")]
+        eff = [r["material_id"] for r in mra.resolve_effective_materials(recs)]
+        self.assertEqual(eff, ["m_iss", "m_ser"])
+
+    def test_same_scope_edge_is_noop_lifecycle_drops(self):
+        # issue supersedes issue -> edge no-op (equal rank); within-scope replacement via `superseded` status.
+        recs = [_rec("m_old", "issue", status="superseded"),         # dropped by terminal (not approved)
+                _rec("m_new", "issue", supersedes="m_old")]
+        eff = [r["material_id"] for r in mra.resolve_effective_materials(recs)]
+        self.assertEqual(eff, ["m_new"])   # m_old gone via lifecycle status, not the edge
+
+    def test_suppressed_record_does_not_suppress(self):
+        # chain: m1@issue supersedes m2@series; m2@series supersedes m3@title_group.
+        # m2 is suppressed by m1, so m2 does NOT suppress m3 -> m3 survives.
+        recs = [_rec("m1", "issue", supersedes="m2"),
+                _rec("m2", "series", supersedes="m3"),
+                _rec("m3", "title_group", status="publisher_approved")]
+        eff = [r["material_id"] for r in mra.resolve_effective_materials(recs)]
+        self.assertEqual(eff, ["m1", "m3"])   # m2 suppressed; m3 survives (its suppressor was itself suppressed)
 
     def test_ineligible_record_never_suppresses(self):
-        # m_new supersedes m_old but m_new is RETIRED (ineligible) -> it can't suppress; m_old survives
-        recs = [_rec("m_old", "issue", status="publisher_approved"),
+        # m_new (series) supersedes m_old (issue)... but that's broader->narrower anyway; use a valid rank
+        # direction and make the suppressor RETIRED so eligibility (not rank) is what blocks it.
+        recs = [_rec("m_old", "series", status="publisher_approved"),
                 _rec("m_new", "issue", status="retired", supersedes="m_old")]
         eff = [r["material_id"] for r in mra.resolve_effective_materials(recs)]
-        self.assertEqual(eff, ["m_old"])
+        self.assertEqual(eff, ["m_old"])   # m_new retired -> not eligible -> can't suppress m_old
 
     def test_terminal_approved_only(self):
         recs = [_rec("m_draft", "issue", status="draft"), _rec("m_ok", "issue")]
@@ -199,14 +224,14 @@ class TestGovernanceAndDeterminism(unittest.TestCase):
         rep = mra.compute_resolution_audit(idx, _resolved([_res_entry("m_a")]), CONTRACT)  # must not raise
         self.assertTrue(rep["applicable"])
 
-    def test_shadowed_supersedes_edge_still_applied(self):
-        # Review #3: a supersedes edge on a collision-shadowed record is still honored (collected from all
-        # eligible records), so authoring and resolved layers don't contradict.
-        recs = [_rec("m_x", "issue"),                                   # narrower m_x wins the collision
-                _rec("m_x", "series", supersedes="m_y"),               # shadowed, but its edge must apply
-                _rec("m_y", "issue", status="publisher_approved")]
+    def test_shadowed_supersedes_edge_dropped(self):
+        # Publisher-confirmed: a collision-shadowed record is dropped ENTIRELY, edges included. m_x@series is
+        # shadowed by m_x@issue, so its supersedes(m_y) edge does NOT apply -> m_y survives.
+        recs = [_rec("m_x", "issue"),                                  # narrower m_x wins the collision
+                _rec("m_x", "series", supersedes="m_y"),              # shadowed -> its edge is dropped
+                _rec("m_y", "title_group", status="publisher_approved")]
         eff = [r["material_id"] for r in mra.resolve_effective_materials(recs)]
-        self.assertNotIn("m_y", eff)                                   # m_y superseded, not in effective set
+        self.assertIn("m_y", eff)                                      # m_y NOT superseded (shadowed edge dropped)
 
     def test_version_skew_blanks_divergence_lists(self):
         idx = {"issue": _index("issue", [_rec("m_a", "issue")])}
