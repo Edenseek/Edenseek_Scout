@@ -225,6 +225,17 @@ class TestGovernanceAndDeterminism(unittest.TestCase):
         self.assertEqual(rep["cross_check"]["duplicate_resolved_ids"], ["m_a"])
         self.assertFalse(rep["cross_check"]["matches"])   # a dup id is a divergence, not silently deduped
 
+    def test_none_material_id_does_not_crash(self):
+        # Round-2 regression: a None material_id on either side must not crash the id sorts.
+        bad = _rec(None, "issue")
+        idx = {"issue": {"records": [bad, _rec("m_a", "issue")]}}
+        rep = mra.compute_resolution_audit(idx, _resolved([_res_entry("m_a")]), CONTRACT)  # must not raise
+        self.assertTrue(rep["applicable"])
+        # None id on the resolved side too
+        rm = _resolved([_res_entry(None), _res_entry("m_a")])
+        rep2 = mra.compute_resolution_audit({"issue": {"records": [_rec("m_a", "issue")]}}, rm, CONTRACT)
+        self.assertTrue(rep2["applicable"])
+
     def test_tolerant_index_wrapper(self):
         # accepts records under 'materials' as well as 'records'
         idx = {"issue": {"materials": [_rec("m_a", "issue")]}}

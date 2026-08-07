@@ -156,7 +156,7 @@ def _authoring_findings(records):
     for lineage, approved in sorted(approved_by_lineage.items(), key=lambda kv: str(kv[0])):
         if len(approved) > 1:
             findings.append({"code": "materials.multiple_active_approved", "severity": "FAIL",
-                             "lineage": lineage, "material_ids": sorted(approved),
+                             "lineage": lineage, "material_ids": sorted(approved, key=str),
                              "detail": "more than one publisher_approved record in one supersession lineage"})
 
     # (c) A record that is a supersedes TARGET should not still be publisher_approved (should be superseded).
@@ -201,9 +201,12 @@ def compute_resolution_audit(scope_indexes, resolved_materials, resolution_contr
     theirs = {_resolved_key(e) for e in publisher_resolved if isinstance(e, dict)}
     mine_ids = {k[0] for k in mine}
     theirs_ids = {k[0] for k in theirs}
-    # Deterministic id->files maps (sorted, so a duplicate id resolves stably last-wins, not by set order).
-    mine_by_id = {k[0]: k[1] for k in sorted(mine)}
-    theirs_by_id = {k[0]: k[1] for k in sorted(theirs)}
+    # Deterministic id->files maps. ALL material_id sorts use a None-safe key (`_kid`) — a missing
+    # material_id must surface as a divergence, never crash the audit on a mixed None/str sort.
+    def _kid(k):
+        return (str(k[0]), str(k[1]))
+    mine_by_id = {k[0]: k[1] for k in sorted(mine, key=_kid)}
+    theirs_by_id = {k[0]: k[1] for k in sorted(theirs, key=_kid)}
     # Flag (never silently dedup) a material_id appearing twice in the Publisher's resolved list.
     resolved_id_list = [e.get("material_id") for e in publisher_resolved if isinstance(e, dict)]
     duplicate_resolved_ids = sorted({m for m in resolved_id_list if resolved_id_list.count(m) > 1}, key=str)
@@ -212,10 +215,10 @@ def compute_resolution_audit(scope_indexes, resolved_materials, resolution_contr
         # Abstain: a cross-version comparison is meaningless — report no divergence lists, only the skew.
         agree_ids = only_scout = only_publisher = file_mismatches = []
     else:
-        agree_ids = sorted(mine_ids & theirs_ids)
-        only_scout = sorted(mine_ids - theirs_ids)
-        only_publisher = sorted(theirs_ids - mine_ids)
-        file_mismatches = sorted(mid for mid in agree_ids if mine_by_id[mid] != theirs_by_id[mid])
+        agree_ids = sorted(mine_ids & theirs_ids, key=str)
+        only_scout = sorted(mine_ids - theirs_ids, key=str)
+        only_publisher = sorted(theirs_ids - mine_ids, key=str)
+        file_mismatches = sorted((mid for mid in agree_ids if mine_by_id[mid] != theirs_by_id[mid]), key=str)
     matches = (not version_skew and not only_scout and not only_publisher
                and not file_mismatches and not duplicate_resolved_ids)
 
