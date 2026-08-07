@@ -132,6 +132,26 @@ class TestMaterialsGrounding(unittest.TestCase):
         self.assertEqual(b["materials_grounding_version"], "v1")   # fell back to the legacy top-level
         self.assertFalse(b["version_skew"])
 
+    def test_stale_legacy_block_does_not_manufacture_skew_on_off_to_on(self):
+        # Re-point review Defect 1: a leftover top-level materials_grounding block must NOT synthesize a pin
+        # for an UNGROUNDED side. Off->on (gen ungrounded, app grounds v2) with a stale v1 top-level block
+        # must be grounding_added, not a false unsupported_version.
+        r = _grounded_review({}, {A1: [_sm("mat_a", "rev_1")]},
+                             app_pin={"materials_grounding_version": "v2", "resolution_contract_version": "v1"},
+                             legacy_top=dict(_PIN))
+        b = dmg.compute_materials_grounding_benchmark(adapt_review(r))
+        self.assertEqual(b["counts"]["grounding_added"], 1)
+        self.assertEqual(b["counts"]["unsupported_version"], 0)
+        self.assertFalse(b["version_skew"])
+
+    def test_malformed_pin_value_does_not_crash(self):
+        # Re-point review Defect 2: a non-scalar version value must not crash the audit (fail-soft).
+        g = {A1: [_sm("mat_a", "rev_1")]}
+        r = _grounded_review(g, g, gen_pin={"materials_grounding_version": ["v1"],  # non-scalar
+                                            "resolution_contract_version": "v1"})
+        b = dmg.compute_materials_grounding_benchmark(adapt_review(r))   # must not raise
+        self.assertTrue(b["applicable"])
+
     def test_grounding_introduced_at_approval_is_added_not_false_skew(self):
         # Reviewer Finding 1: off->on. Generated grounds on NOTHING (no gen pin, per production emission);
         # approval grounds A1. Must be grounding_added, NOT a false version skew that abstains the run.

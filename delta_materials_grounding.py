@@ -14,9 +14,13 @@ Provenance discipline (mirrors metadata v2):
   across a grounding-off recall). The pin is used ONLY to stamp/boundary the contract versions.
 - **Fresh-only acceptance:** a ``preserved_*`` output's grounding equals approved by construction, so it is
   excluded from the acceptance denominator (same as the metadata metric).
-- **Version-pinned:** ``materials_grounding_version`` (this benchmark's input contract) +
-  ``resolution_contract_version`` (pins the resolution manifest) are comparability axes; a change is a
-  methodology boundary. A version SKEW between sides abstains (``unsupported_version``), never a wrong number.
+- **Version-pinned (per-output, CBI-2c):** each grounded output carries its own ``grounding_provenance``
+  (``materials_grounding_version`` + ``resolution_contract_version``). A PER-OUTPUT skew — that output's
+  generated and approved sides both pinned but to different versions — marks that artifact
+  ``unsupported_version`` (excluded from acceptance, never a wrong number). Report-level ``version_skew`` is
+  True if any per-output skew OR the grounded outputs carry heterogeneous (self-consistent but differing)
+  pins across the revision; in the heterogeneous case each output is still classified normally and the
+  acceptance rate is computed (the flag + ``distinct_version_pins`` surface the cross-output inconsistency).
 - **Off-by-default is not-applicable, not a failure:** when materials grounding contributed to neither side,
   there is nothing to audit (byte-identical baseline).
 """
@@ -87,9 +91,13 @@ def compute_materials_grounding_benchmark(canonical_review):
     legacy_gen, legacy_app = _pin_versions(legacy.get("generated")), _pin_versions(legacy.get("approved"))
 
     def _pin_of(entry, legacy_side):
-        """The (materials_grounding_version, resolution_contract_version) for one output. CBI-2c: per-output
-        ``grounding_provenance``; falls back to the legacy top-level pin for pre-CBI-2c frozen revisions;
-        else (None, None) (unpinned — an output that did not ground carries no pin)."""
+        """The (materials_grounding_version, resolution_contract_version) for one output. A pin exists ONLY
+        for an output that actually grounded (contract: the per-output block is present iff grounded) — so an
+        ungrounded output is always ``(None, None)``, never the legacy top-level pin. Otherwise: the
+        per-output ``grounding_provenance``, else the legacy top-level pin (pre-CBI-2c frozen-revision
+        fallback for a grounded-but-unpinned output)."""
+        if not entry.get("grounding"):
+            return (None, None)   # ungrounded: no pin, so a stale legacy block can't manufacture a skew
         gp = entry.get("grounding_provenance")
         if isinstance(gp, dict):
             return _pin_versions(gp)
@@ -121,7 +129,9 @@ def compute_materials_grounding_benchmark(canonical_review):
         g, a = generated[aid], approved[aid]
         gen_pin, app_pin = _pin_of(g, legacy_gen), _pin_of(a, legacy_app)
         for p in (gen_pin, app_pin):
-            if None not in p:
+            # Only summarize well-formed scalar pins (fail-soft: a malformed non-scalar version value is
+            # dropped from the summary, never crashes the audit — matches the adapter's drop-don't-crash posture).
+            if None not in p and all(isinstance(x, str) for x in p):
                 pins_seen.add(p)
         # PER-OUTPUT version skew: both this output's sides carry a real pin AND they differ. Per-output
         # (CBI-2c) removes the run-level carry-forward — an off->on output has one absent pin -> not a skew.
