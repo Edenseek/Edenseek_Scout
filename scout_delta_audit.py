@@ -33,6 +33,7 @@ from delta_auditor import SCOUT_DELTA_REPORT_VERSION, DELTA_ALGORITHM_VERSION
 from delta_geometry import GEOMETRY_MATCH_VERSION
 from delta_metadata_revision import (benchmark_headline, METADATA_REVISION_DISTANCE_VERSION,
                                      METADATA_ACCURACY_VERSION)
+from delta_materials_grounding import MATERIALS_GROUNDING_VERSION
 from review_contract_adapter import NORMALIZATION_VERSION
 
 _SEVERITY_ORDER = ("FAIL", "WARNING", "INFO", "PASS")
@@ -48,6 +49,7 @@ def static_versions():
         "normalization_version": NORMALIZATION_VERSION,
         "metadata_revision_distance_version": METADATA_REVISION_DISTANCE_VERSION,
         "metadata_accuracy_version": METADATA_ACCURACY_VERSION,
+        "materials_grounding_version": MATERIALS_GROUNDING_VERSION,
         "evaluation_version": EVALUATION_VERSION,
     }
 
