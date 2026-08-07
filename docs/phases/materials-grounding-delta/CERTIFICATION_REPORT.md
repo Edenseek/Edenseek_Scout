@@ -74,6 +74,29 @@ change categories; fresh-only denominator; both-sides version skew; off→on gro
 regression); non-common grounded applicability; id-less no-crash; duplicate-id dedupe; identifiers-only;
 determinism; manual not-applicable; registry-entity filtering; report integration.
 
+## 7b. CBI-2c re-point (2026-08-06) — version pin moved run-level → per-output
+The Publisher's Track-B live-cert attempt revealed the run-level `materials_grounding` block lived at the
+wrong layer: a top-level key is not carried in the frozen `approved_llm_outputs.json` derived view Scout
+audits, so it never reached the published audit. The pin was moved to a **per-output `grounding_provenance`**
+block (present iff that output grounded), on the same channel `context_source` already uses. Scout was
+re-pointed:
+- Adapter carries per-output `grounding_provenance`; the top-level pin is retained only as a fallback for
+  immutable pre-CBI-2c frozen revisions.
+- **Skew is now per-output** (an artifact is `unsupported_version` iff both its sides are pinned and differ),
+  which removes the run-level carry-forward entirely — the class that produced round 1's MAJOR.
+- Report-level version summary derives from the per-output pins seen (heterogeneous → `version_skew` +
+  `distinct_version_pins`).
+
+A further adversarial round on the re-point found 2 defects in the legacy-fallback path — both fixed +
+regression-tested:
+| # | Sev | Finding | Resolution |
+|---|-----|---------|------------|
+| R1 | Medium | `_pin_of` returned the legacy top-level pin for ANY unpinned output incl. **ungrounded** ones → a stale coexisting top-level block synthesized a pin on an ungrounded side and manufactured a false skew on off→on (same class as round 1). | `_pin_of` returns `(None,None)` for an ungrounded output; legacy fallback only for a grounded-but-unpinned output. |
+| R2 | Low | A non-scalar version value crashed the whole audit at `pins_seen.add` (`TypeError`). | Only well-formed scalar pins are summarized (fail-soft); the per-output skew test uses tuple comparison (no hash), so a genuine skew with a malformed side is still detected. |
+
+Round 2 verified both fixes hold, genuine skew is not suppressed, and no regression. Materials suite **20/20**,
+full suite **401**.
+
 ## 8. Certification statement
 Additive and backward-compatible (NOT-APPLICABLE on all existing data), deterministic, references/identifiers
 only (no material text — verified), authoritative off per-output `context_source` with the pin as version-only,
