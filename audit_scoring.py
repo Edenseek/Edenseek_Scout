@@ -65,8 +65,33 @@ def _max_severity(severities):
 
 
 def _derive_page(artifact_id):
+    """LEGACY fallback only: parse a page out of the old ``page_<n>_panel_<m>`` id format. Current Publisher
+    artifact ids (``12::NEW::1``, ``society_of_killers_1_3::p1``) do NOT encode a parseable page — page
+    association is the emitted ``page_range`` field, read via ``_page_from_range``."""
     m = PAGE_RE.match(str(artifact_id))
     return int(m.group(1)) if m else None
+
+
+def _page_from_range(page_range):
+    """Primary page from the Publisher-emitted ``page_range`` (an ARRAY: single-page panel ``[24]``, spread
+    ``[12, 13]``). Returns the first page (a spread belongs to both; it is bucketed under its first for the
+    page dimension). ``None`` when absent/empty — do NOT parse the artifact_id for a page."""
+    if isinstance(page_range, (list, tuple)) and page_range:
+        first = page_range[0]
+        if isinstance(first, bool):
+            return None
+        if isinstance(first, int):
+            return first
+        if isinstance(first, str) and first.isdigit():
+            return int(first)
+    return None
+
+
+def _page_of(artifact_id, page_by_id):
+    """Page association for one artifact: the emitted ``page_range`` (authoritative), falling back to the
+    legacy id parse only when no ``page_range`` is available (so old-format datasets still page)."""
+    p = _page_from_range((page_by_id or {}).get(artifact_id))
+    return p if p is not None else _derive_page(artifact_id)
 
 
 def _metadata_field_checks(artifact_id, output):
@@ -79,8 +104,10 @@ def _metadata_field_checks(artifact_id, output):
     }
 
 
-def _analyze_artifacts(outputs, approved_ids):
-    """Per-artifact pass producing the raw signals every report draws from."""
+def _analyze_artifacts(outputs, approved_ids, page_by_id=None):
+    """Per-artifact pass producing the raw signals every report draws from. ``page_by_id`` maps
+    artifact_id -> emitted ``page_range`` (from the approved dataset), so page association is read, not
+    parsed from the id."""
     per_artifact = []
     for out in outputs:
         aid = out.get("artifact_id")
@@ -99,7 +126,7 @@ def _analyze_artifacts(outputs, approved_ids):
 
         per_artifact.append({
             "artifact_id": aid,
-            "page": _derive_page(aid),
+            "page": _page_of(aid, page_by_id),
             "meta_present": present,
             "meta_total": len(checks),
             "missing_fields": missing,
@@ -255,7 +282,15 @@ def run_audit(inputs):
     n = len(outputs)
 
     approved_ids = {a.get("artifact_id") for a in approved if isinstance(a, dict)}
-    per_artifact = _analyze_artifacts(outputs, approved_ids)
+    # Page association is the emitted `page_range` on each approved-dataset artifact (array-valued: single
+    # page [24], spread [12,13]); a stale id-parse previously mis-read the current id formats as "unpaged".
+    # Fall back to the packets' page_range where the approved side lacks it.
+    page_by_id = {}
+    for src in (packets, approved):
+        for a in (src or []):
+            if isinstance(a, dict) and a.get("artifact_id") is not None and a.get("page_range") is not None:
+                page_by_id.setdefault(a.get("artifact_id"), a.get("page_range"))
+    per_artifact = _analyze_artifacts(outputs, approved_ids, page_by_id)
 
     meta_present = sum(pa["meta_present"] for pa in per_artifact)
     meta_total = sum(pa["meta_total"] for pa in per_artifact)
