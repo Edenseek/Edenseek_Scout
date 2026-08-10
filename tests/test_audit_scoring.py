@@ -16,6 +16,37 @@ def _sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+class TestPageAssociation(unittest.TestCase):
+    """Page association reads the emitted `page_range` (array), never parses the artifact_id — the fix for
+    the 100%-unpaged false finding (stale `page_<n>_panel_<m>` regex vs current id formats)."""
+
+    def test_page_from_range_single_and_spread(self):
+        self.assertEqual(audit_scoring._page_from_range([24]), 24)      # single-page panel
+        self.assertEqual(audit_scoring._page_from_range([12, 13]), 12)  # spread -> first page
+        self.assertEqual(audit_scoring._page_from_range(["7"]), 7)      # string-digit tolerated
+        self.assertIsNone(audit_scoring._page_from_range([]))
+        self.assertIsNone(audit_scoring._page_from_range(None))
+        self.assertIsNone(audit_scoring._page_from_range([True]))       # bool is not a page
+
+    def test_page_of_prefers_range_over_id_parse(self):
+        # current id formats don't encode a page; page_range provides it (not "unpaged")
+        self.assertEqual(audit_scoring._page_of("12::NEW::1", {"12::NEW::1": [12, 13]}), 12)
+        self.assertEqual(audit_scoring._page_of("society_of_killers_1_3::p1",
+                                                {"society_of_killers_1_3::p1": [3]}), 3)
+        # no page_range -> legacy id parse still works (backward compat)
+        self.assertEqual(audit_scoring._page_of("page_5_panel_2", {}), 5)
+        # neither -> unpaged (None)
+        self.assertIsNone(audit_scoring._page_of("12::NEW::1", {}))
+
+    def test_analyze_artifacts_uses_page_range(self):
+        outputs = [{"artifact_id": "12::NEW::1", "output": {}},
+                   {"artifact_id": "sok_1_9::p1", "output": {}}]
+        page_by_id = {"12::NEW::1": [12, 13], "sok_1_9::p1": [9]}
+        pa = audit_scoring._analyze_artifacts(outputs, set(), page_by_id)
+        self.assertEqual({a["artifact_id"]: a["page"] for a in pa},
+                         {"12::NEW::1": 12, "sok_1_9::p1": 9})   # both paged, neither "unpaged"
+
+
 class TestAuditScoring(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

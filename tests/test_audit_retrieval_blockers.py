@@ -41,7 +41,7 @@ class TestRetrievalBlockers(unittest.TestCase):
         counts = {b["blocker_type"]: b["affected_count"] for b in self.blockers["artifact_blockers"]}
         self.assertEqual(counts.get("missing_characters"), 90)
         self.assertEqual(counts.get("missing_dialogue"), 28)
-        self.assertEqual(counts.get("missing_page_linkage"), 9)
+        self.assertEqual(counts.get("missing_page_linkage"), 8)  # page_range fix: 1::NEW::1 paged
 
     def test_only_known_blocker_types(self):
         for b in self.blockers["artifact_blockers"]:

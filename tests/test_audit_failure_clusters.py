@@ -50,10 +50,10 @@ class TestFailureClusters(unittest.TestCase):
     def test_unpaged_cluster(self):
         uc = self.clusters["unpaged_cluster"]
         self.assertIsNotNone(uc)
-        self.assertEqual(uc["artifact_count"], 9)
-        # 'unpaged' failure affects all 9 unpaged artifacts.
+        self.assertEqual(uc["artifact_count"], 8)  # page_range fix: 1::NEW::1 paged
+        # 'unpaged' failure affects all 8 remaining unpaged artifacts (1::NEW::1 now paged via page_range).
         unpaged_counts = {f["failure_type"]: f["affected_count"] for f in uc["failures"]}
-        self.assertEqual(unpaged_counts.get("unpaged"), 9)
+        self.assertEqual(unpaged_counts.get("unpaged"), 8)
 
     def test_no_numeric_prediction(self):
         for f in self.clusters["issue_wide_failures"]:

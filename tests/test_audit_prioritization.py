@@ -76,9 +76,9 @@ class TestPageHeatmap(unittest.TestCase):
         self.assertEqual(total, len(self.artifacts))
 
     def test_unpaged_bucket_regression(self):
-        self.assertEqual(self.heat["unpaged_count"], 9)
+        self.assertEqual(self.heat["unpaged_count"], 8)  # 1::NEW::1 now paged via page_range (was mis-read as unpaged)
         paged = [p for p in self.heat["pages"] if isinstance(p["page"], int)]
-        self.assertEqual(len(paged), 29)
+        self.assertEqual(len(paged), 30)  # page 1 is now a distinct bucket (1::NEW::1)
 
     def test_sorted_worst_first(self):
         rank = {"high": 3, "medium": 2, "low": 1}
