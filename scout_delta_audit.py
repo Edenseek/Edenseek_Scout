@@ -294,13 +294,45 @@ def audit_current_revision(client=None, force=False, trigger="manual", context=N
             "trigger": trigger}
 
 
+def audit_all_discovered(client=None, force=False, trigger="discovered"):
+    """MULTI-ISSUE orchestrator (Increment 1) — audit EVERY published issue, not just the env-configured
+    one. Enumerates issues via Discovery (read-only, published-only: keyed on ``/approved/published.json``),
+    then runs the canonical ``audit_current_revision`` per discovered ``IssueContext``.
+
+    Preserves every per-issue guarantee: each audit is idempotent + ledger-guarded (an already-processed
+    revision skips), reads only that issue's approved surface, and writes only that issue's ``edenseek-scout``
+    surface. Per-issue isolation — one issue's failure is recorded and never aborts the rest (mirrors the
+    Registry rebuild). Deterministic order (Discovery returns sorted prefixes). Orchestration only; the
+    per-issue audit is unchanged.
+    """
+    import scout_discovery   # local import: keeps the module boundary one-directional
+    contexts = scout_discovery.discover_contexts(client=client)
+    results, counts = [], {}
+    for ctx in contexts:
+        try:
+            r = audit_current_revision(client=client, force=force, trigger=trigger, context=ctx)
+        except Exception as e:  # noqa: BLE001 — defensive: isolate a per-issue blow-up, never abort the run
+            logger.exception("Multi-issue audit: unhandled error on %s: %s", ctx.scout_prefix, e)
+            r = {"status": "error", "stage": "orchestrator", "error": str(e)}
+        r = {**r, "issue_prefix": ctx.scout_prefix}
+        results.append(r)
+        counts[r.get("status")] = counts.get(r.get("status"), 0) + 1
+    logger.info("Multi-issue audit: %d issue(s) discovered; status counts %s", len(contexts), counts)
+    return {"discovered": len(contexts), "counts": counts, "results": results, "trigger": trigger}
+
+
 def main(argv=None):
-    """Manual trigger — the same canonical agent entry point the scheduler/reconciliation use."""
+    """Manual trigger — the same canonical agent entry point the scheduler/reconciliation use.
+    ``--all`` audits every discovered issue (multi-issue); otherwise the single env-configured issue."""
     argv = argv if argv is not None else sys.argv[1:]
     try:
         if "--dry-run" in argv:
             result = run_and_persist(dry_run=True)
             print(json.dumps({k: v for k, v in result.items() if k != "report_body"}, indent=2))
+        elif "--all" in argv:
+            result = audit_all_discovered(force="--force" in argv, trigger="manual_all")
+            print(json.dumps(result, indent=2))
+            return 0 if not (result["counts"].get("failed") or result["counts"].get("error")) else 1
         else:
             result = audit_current_revision(force="--force" in argv, trigger="manual")
             print(json.dumps(result, indent=2))

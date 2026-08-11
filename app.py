@@ -194,6 +194,26 @@ def run_delta_audit_endpoint(username: str = Depends(require_auth)):
     return result
 
 
+@app.post("/run-delta-audit-all")
+def run_delta_audit_all_endpoint(username: str = Depends(require_auth)):
+    """Manually trigger the MULTI-ISSUE delta audit — audit EVERY published issue (Discovery-enumerated),
+    not just the env-configured one (Increment 1). Read-and-advise: per-issue idempotent + ledger-guarded,
+    reads only published approved surfaces, writes only `edenseek-scout`. Per-issue isolation — one issue's
+    failure is recorded in the result, never aborts the run. Returns the aggregate {discovered, counts,
+    results}. 503 only if the orchestrator itself blows up (a discovery/config error), not for an individual
+    issue's failure (those are in `results`)."""
+    logger.info("Multi-issue delta audit requested")
+    try:
+        import scout_delta_audit
+        result = scout_delta_audit.audit_all_discovered(trigger="manual_all")
+    except Exception as e:  # noqa: BLE001 — endpoint boundary; a discovery/config failure -> 503
+        logger.exception(f"Multi-issue delta audit failed: {e}")
+        raise HTTPException(status_code=503, detail="Multi-issue delta audit failed")
+    logger.info("Multi-issue delta audit: %s issue(s), counts=%s",
+                result.get("discovered"), result.get("counts"))
+    return result
+
+
 @app.get("/audit/reports")
 def list_audit_reports(username: str = Depends(require_auth)):
     reports = {}
