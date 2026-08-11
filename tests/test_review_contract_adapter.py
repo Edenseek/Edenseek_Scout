@@ -45,6 +45,16 @@ class TestAdapter(unittest.TestCase):
         self.assertIn("society_of_killers_1_10::p1", geom)
         self.assertIn("spread_12_13::p1", geom)
 
+    def test_spread_order_sibling_skipped_not_malformed_panel(self):
+        """Gate-C advance notice (2026-08-11): approved_geometry gains a third additive structural sibling
+        `spread_order` (keyed by page-range -> chosen panel reading order). It must be skipped like the
+        other siblings (F1 treatment), NOT fail-fast as a malformed panel."""
+        r = fx.review_generated()
+        r["approved_geometry"]["spread_order"] = {"12-13": ["12::NEW::2", "12::NEW::1", "12::NEW::3"]}
+        geom = adapt_review(r)["approved"]["geometry"]   # must not raise
+        self.assertNotIn("spread_order", geom)
+        self.assertIn("spread_12_13::p1", geom)          # real spread artifact still present
+
     def test_new_on_spread_entry_handled_as_spread(self):
         """A ``<page>::NEW::N`` drawn-on-spread entry (degenerate page coords + stage_geometry)
         is handled identically to a ``spread_*`` entry."""

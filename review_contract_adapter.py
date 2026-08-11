@@ -52,7 +52,9 @@ APPLICABILITY_MANUAL = "manual"
 # artifact-id-keyed panel entries (Publisher-emitted, verified against production
 # rev_a8c65a83a196). They are ordering/collection metadata, NOT panel geometry, and are
 # skipped. Any OTHER non-artifact member is unknown and fails fast (never silently reinterpreted).
-APPROVED_GEOMETRY_STRUCTURAL_KEYS = frozenset({"panel_order", "spread_artifacts"})
+# `spread_order` (advance-noticed 2026-08-11, additive, keyed by spread page-range → chosen panel
+# reading order) is the third such sibling — same F1 treatment so it can't look like a malformed panel.
+APPROVED_GEOMETRY_STRUCTURAL_KEYS = frozenset({"panel_order", "spread_artifacts", "spread_order"})
 
 
 class ReviewContractError(Exception):
