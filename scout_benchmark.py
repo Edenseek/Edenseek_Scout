@@ -145,10 +145,16 @@ def build_projection(entries, scope, generated_at):
         "benchmark_projection_version": BENCHMARK_PROJECTION_VERSION,
         "scope": scope,
         "measurement_generated_at": generated_at,
+        # Count distinct issues/series on the FULL ownership identity, not the bare leaf name: every issue is
+        # `issue_001` and a series name can repeat across universes, so a leaf-only distinct-count collapses
+        # (platform "issues" read 1 for 3 real issues). `issues` is a denominator — a per-issue rate at
+        # platform/publisher scope would otherwise divide by the collapsed count and read high.
         "sample_sizes": {
             "reports": len(entries),
-            "issues": len({e.get("issue_id") for e in entries}),
-            "series": len({(e.get("publisher_id"), e.get("series_id")) for e in entries}),
+            "issues": len({(e.get("publisher_id"), e.get("title_group_id"), e.get("series_id"),
+                            e.get("issue_id")) for e in entries}),
+            "series": len({(e.get("publisher_id"), e.get("title_group_id"), e.get("series_id"))
+                           for e in entries}),
             "publishers": len({e.get("publisher_id") for e in entries}),
         },
     }

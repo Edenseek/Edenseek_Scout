@@ -185,5 +185,35 @@ class TestIntelligenceScopeParam(unittest.TestCase):
         scoped.assert_not_called()
 
 
+class TestSampleSizesIdentity(unittest.TestCase):
+    """Johnny's live finding: `sample_sizes.issues` collapsed to 1 for 3 real issues because every issue is
+    named `issue_001` and the count was distinct-on the bare leaf. Count on the full ownership identity."""
+
+    def _e(self, tg, ser, issue="issue_001"):
+        return {"run_seq": 1, "report_id": f"r_{tg}_{ser}_{issue}", "issue_id": issue,
+                "publisher_id": "edenseek", "title_group_id": tg, "series_id": ser,
+                "event_time": "t", "measurement_time": "t", "certified_at": "t",
+                "geometry_comparability_key": "cmp_gA", "metadata_comparability_key": "cmp_mA",
+                "comparability": {"geometry_axes": {}, "metadata_axes": {}},
+                "geometry_benchmark": _geom(), "metadata_benchmark": {"applicable": False}}
+
+    def test_three_issue_001s_across_universes_count_three_not_one(self):
+        entries = [self._e("society_universe", "society_of_killers"),
+                   self._e("i_ride_for_them", "i_ride_for_them"),
+                   self._e("caelaris", "promises")]
+        ss = sb.build_projection(entries, {"level": "platform"}, "t")["sample_sizes"]
+        self.assertEqual(ss["issues"], 3)   # was 1 (collapsed on bare issue_id)
+        self.assertEqual(ss["series"], 3)
+        self.assertEqual(ss["reports"], 3)
+
+    def test_same_series_name_different_universe_not_collapsed(self):
+        # two universes sharing a series name, each with issue_001 -> 2 distinct issues; the title_group_id in
+        # the identity tuple is what keeps (publisher, series, issue) from colliding here.
+        entries = [self._e("universe_a", "main"), self._e("universe_b", "main")]
+        ss = sb.build_projection(entries, {"level": "platform"}, "t")["sample_sizes"]
+        self.assertEqual(ss["issues"], 2)
+        self.assertEqual(ss["series"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
