@@ -485,17 +485,23 @@ async function seriesComparison(){
   try{ series=(await getJSON("/observability/health/series")).records||[]; }
   catch(e){ box.innerHTML=`<p class="status">Series comparison unavailable (${esc(e.message)}).</p>`; return; }
   try{ issues=(await loadIssues()).issues||[]; }catch(e){}
-  const repBySeries={}; issues.forEach(i=>{ if(i.series_id&&!(i.series_id in repBySeries))repBySeries[i.series_id]=i.issue_prefix; });
+  // Key the representative issue by the FULL identity (publisher · universe · series): series_id is unique
+  // only WITHIN a universe, so two universes sharing a series name (the Publisher model permits it) must not
+  // collide onto one issue_prefix — that would show one universe's benchmark on the other's row.
+  const skey=x=>`${x.publisher_id||""} ${x.title_group_id||""} ${x.series_id||""}`;
+  const repBySeries={}; issues.forEach(i=>{ const k=skey(i); if(i.series_id&&!(k in repBySeries))repBySeries[k]=i.issue_prefix; });
   const word=h=>h==="attention"?"Attention":(h==="unknown"?"Unknown":"Healthy");
   const sev=h=>h==="attention"?"WARNING":(h==="unknown"?"INFO":"PASS");
   // one benchmark fetch per series, in parallel and tolerant (a not-yet-rebuilt scope -> null -> "—")
-  const projs=await Promise.all(series.map(s=>{ const rep=repBySeries[s.series_id];
+  const projs=await Promise.all(series.map(s=>{ const rep=repBySeries[skey(s)];
     return rep?getJSON("/benchmark/series?issue_prefix="+encodeURIComponent(rep)).catch(()=>null):Promise.resolve(null); }));
   let anyBench=false;
   const rows=series.map((s,i)=>{ const proj=projs[i]; if(proj)anyBench=true;
     const g=proj?benchSeg(proj,"geometry"):null, m=proj?benchSeg(proj,"metadata"):null;
-    const nseg=Math.max(g?g.nsegs:0,m?m.nsegs:0);
-    const flag=nseg>1?` <span class="pill warn" title="Spans ${nseg} methodology segments — headline is the current methodology only; cross-series ranking may not be like-for-like.">⚠ ${nseg} methods</span>`:"";
+    // geometry & metadata have INDEPENDENT comparability keys — flag per task so the warning names which
+    // headline (precision/recall vs acceptance) is current-methodology-only, not a conflated max.
+    const gN=g?g.nsegs:0, mN=m?m.nsegs:0, multi=(gN>1?["geometry"]:[]).concat(mN>1?["metadata"]:[]);
+    const flag=multi.length?` <span class="pill warn" title="Multiple methodology segments (geometry ${gN||"—"}, metadata ${mN||"—"}) — the ${multi.join(" & ")} headline is the current methodology only; cross-series ranking may not be like-for-like.">⚠ ${multi.join("/")} methods</span>`:"";
     return `<tr><td>${esc(s.title_group_id||"—")}</td><td>${esc(s.series_id)}${flag}</td>`
       +`<td><span class="sev ${sev(s.health)}">${word(s.health)}</span></td>`
       +`<td class="n">${pct(benchRate(g,"precision"))}</td><td class="n">${pct(benchRate(g,"recall"))}</td>`
