@@ -467,6 +467,44 @@ async function engView(){
 }
 function setAxis(a){timeAxis=a;engView();}
 
+/* SXI-2d: cross-series comparison. Each series' CURRENT-methodology benchmark headline, Universe-grouped —
+   consuming /observability/health/series (the series list) + /benchmark/series (per-scope, SXI-2c). The
+   current-methodology segment is the segment of the NEWEST run's comparability key; a series spanning more
+   than one methodology segment is flagged, so incomparable series are never silently ranked against each
+   other (the same comparability discipline the guard enforces server-side). */
+function benchSeg(proj,task){
+  const t=(proj||{})[task]||{},pts=t.points||[],segs=t.segments||{};
+  if(!pts.length)return null;
+  const key=pts[pts.length-1].comparability_key,seg=segs[key];
+  return seg?{seg,key,nsegs:Object.keys(segs).length}:null;
+}
+function benchRate(bs,metric){ return bs&&bs.seg.metrics&&bs.seg.metrics[metric]?bs.seg.metrics[metric].rate:null; }
+async function seriesComparison(){
+  const box=document.getElementById("seriescmp"); if(!box)return;
+  let series=[],issues=[];
+  try{ series=(await getJSON("/observability/health/series")).records||[]; }
+  catch(e){ box.innerHTML=`<p class="status">Series comparison unavailable (${esc(e.message)}).</p>`; return; }
+  try{ issues=(await loadIssues()).issues||[]; }catch(e){}
+  const repBySeries={}; issues.forEach(i=>{ if(i.series_id&&!(i.series_id in repBySeries))repBySeries[i.series_id]=i.issue_prefix; });
+  const word=h=>h==="attention"?"Attention":(h==="unknown"?"Unknown":"Healthy");
+  const sev=h=>h==="attention"?"WARNING":(h==="unknown"?"INFO":"PASS");
+  // one benchmark fetch per series, in parallel and tolerant (a not-yet-rebuilt scope -> null -> "—")
+  const projs=await Promise.all(series.map(s=>{ const rep=repBySeries[s.series_id];
+    return rep?getJSON("/benchmark/series?issue_prefix="+encodeURIComponent(rep)).catch(()=>null):Promise.resolve(null); }));
+  let anyBench=false;
+  const rows=series.map((s,i)=>{ const proj=projs[i]; if(proj)anyBench=true;
+    const g=proj?benchSeg(proj,"geometry"):null, m=proj?benchSeg(proj,"metadata"):null;
+    const nseg=Math.max(g?g.nsegs:0,m?m.nsegs:0);
+    const flag=nseg>1?` <span class="pill warn" title="Spans ${nseg} methodology segments — headline is the current methodology only; cross-series ranking may not be like-for-like.">⚠ ${nseg} methods</span>`:"";
+    return `<tr><td>${esc(s.title_group_id||"—")}</td><td>${esc(s.series_id)}${flag}</td>`
+      +`<td><span class="sev ${sev(s.health)}">${word(s.health)}</span></td>`
+      +`<td class="n">${pct(benchRate(g,"precision"))}</td><td class="n">${pct(benchRate(g,"recall"))}</td>`
+      +`<td class="n">${pct(benchRate(m,"accepted_unchanged_rate"))}</td>`
+      +`<td class="n">${(proj&&proj.sample_sizes)?proj.sample_sizes.reports:"—"}</td></tr>`; }).join("");
+  box.innerHTML=`<div class="tblwrap"><table><thead><tr><th>Universe</th><th>Series</th><th>Health</th><th class="n">Precision</th><th class="n">Recall</th><th class="n">Acceptance</th><th class="n">Reports</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="status">No series discovered.</td></tr>'}</tbody></table></div>`
+    +(anyBench?"":`<p class="sub" style="margin-top:8px">Per-series benchmarks appear once the projections are rebuilt (<code>rebuild_all</code>); the series list + health are live.</p>`);
+}
+
 /* ================= INTELLIGENCE ================= */
 async function intelView(){
   el().innerHTML=`<h1>Intelligence</h1><p class="viewsub">Compare publishers, series, issues, and methodology versions over time; surface benchmark history and methodology boundaries. Search runs server-side.</p>
@@ -474,6 +512,7 @@ async function intelView(){
     <div id="analysis"><p class="status">Loading…</p></div>
     <div class="searchbar"><input id="q" placeholder="precision<0.90  metadata_unchanged_rate>=0.60  finding:geometry.false_panels  issue:issue_001  severity:WARNING" oninput="runSearch()"/></div>
     <div class="hint">try: <code onclick="setQ('precision<0.95')">precision&lt;0.95</code> <code onclick="setQ('severity:WARNING')">severity:WARNING</code> <code onclick="setQ('finding:geometry.false_panels')">finding:geometry.false_panels</code> <code onclick="setQ('kind:failed_run')">kind:failed_run</code></div>
+    <div class="section-h">Compare series — cross-series benchmark ${info('Comparability / methodology boundary')}</div><div id="seriescmp"><p class="status">Loading…</p></div>
     <div class="section-h">Geometry diagnostics</div><div id="geomdiag"><p class="status">Loading…</p></div>
     <div class="section-h">Metadata quality</div><div id="metadiag"><p class="status">Loading…</p></div>
     <div class="section-h">Compare over time</div><div id="cmp"><p class="status">Loading…</p></div>
@@ -485,6 +524,7 @@ async function intelView(){
     document.getElementById("analysis").innerHTML=geomSummary(rep)+findingsPanel(rep);
     renderGeomDiag(reportGeom(rep).diagnostics||null, isManual(rep));
     renderMetaDiag(rep);
+    seriesComparison();   // SXI-2d: cross-series table renders into its own div (independent fetches)
     document.getElementById("cmp").innerHTML=cmpTable(a.records.filter(r=>r.record_kind==="report"));
     const items=[]; a.records.filter(r=>r.record_kind==="report"&&r.methodology_boundary).forEach(r=>{
       if(r.methodology_boundary.geometry)items.push(`<li class="boundary"><span class="sev INFO">BND</span><div><div class="txt"><b>Geometry methodology changed</b></div><div class="meta">at ${esc(r.report_id?r.report_id.slice(-9):"")} · key ${esc(r.geometry_comparability_key)}</div></div></li>`);
