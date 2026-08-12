@@ -406,22 +406,40 @@ def get_audit_review_search(q: str = "", issue_prefix: str = "", username: str =
 
 
 @app.get("/intelligence/geometry")
-def get_geometry_intelligence(username: str = Depends(require_auth)):
+def get_geometry_intelligence(level: str = "", issue_prefix: str = "",
+                              username: str = Depends(require_auth)):
     """Read-only Geometry Intelligence projection — recurring panel failure modes + version-correlated
-    improvements, consuming the persisted report index. Advisory only; mutates nothing."""
+    improvements, consuming the persisted report index. Advisory only; mutates nothing. Optional ``level``
+    (platform | publisher | series | issue) + ``issue_prefix`` aggregate ACROSS issues at that scope
+    (SXI-2c); default = the configured single issue. A bad level/scope is a 400."""
     try:
-        return scout_intelligence.build_geometry_intelligence()
+        if level:
+            return scout_intelligence.build_geometry_intelligence_scoped(level=level, issue_prefix=issue_prefix)
+        return scout_intelligence.build_geometry_intelligence(context=_issue_context(issue_prefix))
+    except HTTPException:
+        raise
+    except (ValueError, KeyError, IndexError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid scope: {e}")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Geometry intelligence error: {e}")
         raise HTTPException(status_code=503, detail=f"Geometry intelligence unavailable: {e}")
 
 
 @app.get("/intelligence/metadata")
-def get_metadata_intelligence(username: str = Depends(require_auth)):
+def get_metadata_intelligence(level: str = "", issue_prefix: str = "",
+                              username: str = Depends(require_auth)):
     """Read-only Metadata Intelligence projection — weak fields, edit classes, prompt/model/schema
-    correlations, consuming the persisted index + immutable reports. Advisory only; mutates nothing."""
+    correlations, consuming the persisted index + immutable reports. Advisory only; mutates nothing.
+    Optional ``level`` + ``issue_prefix`` aggregate ACROSS issues at that scope (SXI-2c); default = the
+    configured single issue. A bad level/scope is a 400."""
     try:
-        return scout_intelligence.build_metadata_intelligence()
+        if level:
+            return scout_intelligence.build_metadata_intelligence_scoped(level=level, issue_prefix=issue_prefix)
+        return scout_intelligence.build_metadata_intelligence(context=_issue_context(issue_prefix))
+    except HTTPException:
+        raise
+    except (ValueError, KeyError, IndexError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid scope: {e}")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Metadata intelligence error: {e}")
         raise HTTPException(status_code=503, detail=f"Metadata intelligence unavailable: {e}")
@@ -552,18 +570,36 @@ def get_schema(name: str, username: str = Depends(require_auth)):
         raise HTTPException(status_code=404, detail="Unknown schema")
 
 
+def _benchmark_key(level: str, issue_prefix: str):
+    """Resolve the persisted benchmark key for a level + scope (SXI-2c). ``platform`` needs no scope;
+    ``issue``/``series``/``publisher`` derive their root from the issue_prefix via the same ownership-chain
+    parse ``rebuild_all`` used to WRITE them, so a read serves exactly the object that was persisted. A
+    malformed prefix is a 400."""
+    if level == "platform":
+        return "benchmark/platform.json"
+    if level not in ("issue", "series", "publisher"):
+        raise HTTPException(status_code=400, detail="level must be platform | publisher | series | issue")
+    if not issue_prefix:
+        raise HTTPException(status_code=400, detail=f"level '{level}' requires an issue_prefix scope")
+    try:
+        roots = scout_benchmark._roots(issue_prefix)
+    except (KeyError, IndexError):
+        raise HTTPException(status_code=400, detail="Invalid issue_prefix (not an issue ownership chain)")
+    return {"issue": f"{issue_prefix}/benchmark/benchmark.json",
+            "series": f"{roots['series_root']}/benchmark/benchmark.json",
+            "publisher": f"{roots['publisher_root']}/benchmark/benchmark.json"}[level]
+
+
 @app.get("/benchmark/{level}")
-def get_benchmark(level: str, username: str = Depends(require_auth)):
+def get_benchmark(level: str, issue_prefix: str = "", username: str = Depends(require_auth)):
     """Read-only benchmark projection for a level (platform | publisher | series | issue). Reads the
     persisted, weighted projection; the browser renders it and never recomputes. Points carry counts
-    + both timestamps; segments are per methodology (comparability) boundary.
+    + both timestamps; segments are per methodology (comparability) boundary. Non-platform levels take an
+    ``issue_prefix`` scope (the series/publisher root is derived from it). (SXI-2c: all levels served.)
     """
-    keys = {"platform": "benchmark/platform.json"}
-    if level not in keys:
-        raise HTTPException(status_code=400,
-                            detail="level must be one of: platform (publisher/series/issue: pass scope next slice)")
+    key = _benchmark_key(level, issue_prefix)   # raises 400 on bad level / missing / malformed scope
     try:
-        projection = scout_benchmark.load_projection(keys[level])
+        projection = scout_benchmark.load_projection(key)
     except scout_benchmark.ScoutBenchmarkError as e:
         logger.warning(f"Benchmark projection error: {e}")
         raise HTTPException(status_code=503, detail=f"Benchmark unavailable: {e}")

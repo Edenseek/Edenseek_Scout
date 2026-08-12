@@ -14,6 +14,9 @@ the governed approval workflow (the `governance` block states this on every outp
 Outputs validate against `schemas/geometry_intelligence.schema.json` /
 `schemas/metadata_intelligence.schema.json` (the shared contracts).
 """
+import json
+import os
+
 import scout_report_index as sri
 import scout_report_publisher as srp
 import scout_benchmark as sb
@@ -228,3 +231,81 @@ def build_metadata_intelligence(client=None, generated_at="1970-01-01T00:00:00Z"
             continue
     return metadata_intelligence(entries, reports_by_id, generated_at,
                                  {"level": "issue", "issue_prefix": index.get("issue_prefix")})
+
+
+# --------------------------------------------------------------------------- #
+# Cross-issue (scoped) loaders — SXI-2c
+# --------------------------------------------------------------------------- #
+# The single-issue loaders above read ONE index. These aggregate across EVERY discovered issue and filter to
+# a scope (platform / publisher / series / issue), so Intelligence can answer "recurring failure modes for
+# the whole publisher / this series" — not just one issue. Correctness note (the comparability guard): the
+# projection functions group the merged entries by comparability key (geometry_comparability_key /
+# metadata axes) via `sb.build_projection`, so entries produced under different methodologies land in
+# SEPARATE segments and are never averaged into one number — merging entries across issues is safe.
+def _scope_and_prefix(level, issue_prefix):
+    """Return (scope dict, issue-prefix filter) for a cross-issue aggregation. Mirrors `rebuild_all`'s
+    per-level scope construction EXACTLY, so Intelligence and Benchmarks agree on what a scope means.
+    Raises ``ValueError`` (bad level) or ``KeyError``/``IndexError`` (malformed prefix)."""
+    if level == "platform":
+        return {"level": "platform"}, ""
+    if level not in ("issue", "series", "publisher"):
+        raise ValueError(f"unknown scope level {level!r}")
+    r = sb._roots(issue_prefix)   # malformed prefix -> KeyError/IndexError (caller maps to 400)
+    if level == "issue":
+        return ({"level": "issue", **{k: r[k] for k in
+                 ("publisher_id", "title_group_id", "series_id", "issue_id")}}, issue_prefix.rstrip("/"))
+    if level == "series":
+        return ({"level": "series", "publisher_id": r["publisher_id"],
+                 "title_group_id": r["title_group_id"], "series_id": r["series_id"]}, r["series_root"])
+    return ({"level": "publisher", "publisher_id": r["publisher_id"]}, r["publisher_root"])
+
+
+def _scout_bucket_client(client, context):
+    bucket = context.scout_bucket if context is not None else os.getenv(srp.BUCKET_ENV)
+    if not bucket:
+        raise sb.ScoutBenchmarkError(f"Scout Repository bucket not configured: set {srp.BUCKET_ENV}.")
+    region = context.scout_region if context is not None else os.getenv(srp.REGION_ENV, srp.DEFAULT_REGION)
+    return bucket, (client or srp._s3_client(region))
+
+
+def _scoped_entries(client, bucket, prefix, *, needs_reports=False):
+    """Enumerate every per-issue report index and return the entries whose issue lies within ``prefix``
+    (``""`` = platform / all). An issue matches when its prefix equals the scope root or is nested under it.
+    ``needs_reports`` also loads the immutable reports (metadata per-field detail) by absolute key from the
+    shared scout bucket. Read-only."""
+    entries, reports_by_id = [], {}
+    for issue_prefix, idx in sb.discover_issue_indexes(client, bucket):
+        if prefix and not (issue_prefix == prefix or issue_prefix.startswith(prefix + "/")):
+            continue
+        for e in idx.get("entries", []):
+            entries.append(e)
+            if needs_reports and (e.get("metadata_benchmark") or {}).get("applicable") \
+                    and (e.get("metadata_benchmark") or {}).get("comparable_fields"):
+                key = (e.get("persisted_key") or {}).get("history")
+                if not key:
+                    continue
+                try:
+                    reports_by_id[e["report_id"]] = json.loads(srp.read_object(client, key))
+                except Exception:  # noqa: BLE001 — a missing/unreadable report just drops from detail
+                    continue
+    return entries, reports_by_id
+
+
+def build_geometry_intelligence_scoped(level="platform", issue_prefix="", client=None,
+                                       generated_at="1970-01-01T00:00:00Z", context=None):
+    """Cross-issue Geometry Intelligence at a scope. Enumerates all report indexes, filters to the scope,
+    and projects (comparability guard inherited from the per-key segmentation)."""
+    scope, prefix = _scope_and_prefix(level, issue_prefix)
+    bucket, client = _scout_bucket_client(client, context)
+    entries, _ = _scoped_entries(client, bucket, prefix)
+    return geometry_intelligence(entries, generated_at, scope)
+
+
+def build_metadata_intelligence_scoped(level="platform", issue_prefix="", client=None,
+                                       generated_at="1970-01-01T00:00:00Z", context=None):
+    """Cross-issue Metadata Intelligence at a scope. Enumerates all report indexes + their reports, filters
+    to the scope, and projects (comparability guard inherited)."""
+    scope, prefix = _scope_and_prefix(level, issue_prefix)
+    bucket, client = _scout_bucket_client(client, context)
+    entries, reports_by_id = _scoped_entries(client, bucket, prefix, needs_reports=True)
+    return metadata_intelligence(entries, reports_by_id, generated_at, scope)
