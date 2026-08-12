@@ -135,7 +135,7 @@ class TestV2FieldContract(unittest.TestCase):
         ma = b["metadata_accuracy"]
         # 3 artifacts x 10 leaves = 30 candidate; abstentions (empty both sides, e.g. objects/dialogue on
         # some) reduce comparable. colors/notes are NOT in the 30 at all.
-        self.assertEqual(ma["denominator_basis"], "fresh_generated_outputs_only")
+        self.assertEqual(ma["denominator_basis"], "llm_generated_this_revision_only")
         self.assertTrue(0 < ma["acceptance"]["denominator"] <= 30)
         self.assertGreater(ma["total_edited_fields"], 0)
 

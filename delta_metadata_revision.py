@@ -94,12 +94,36 @@ _EDIT_CATEGORIES = ("minor_wording_edit", "moderate_rewrite", "major_rewrite",
 # would inflate the rate. v2 excludes them from the denominator via the emitted flag rather than the
 # invisible generate-before-approve invariant v1 implicitly relied on. Absent disposition (legacy
 # revisions with no flag) is treated as fresh, so v2 is BACKWARD-IDENTICAL to v1 on all-fresh data.
-# The acceptance METHODOLOGY (fresh-only denominator) is unchanged from v2. The per-leaf granularity for v2
-# content is a consequence of the v2 field set, already boundaried by `metadata_schema_version` (v2/v2), so
-# this code-methodology version does not bump — v1.1 content keeps its v2 acceptance number identically.
-METADATA_ACCURACY_VERSION = "v2"
+# v3 (REVISION-AWARE denominator): on a REVISION, metadata is INHERITED, not generated — but an inherited
+# output keeps its ORIGINAL `metadata_generation_provenance`, so a rev-1 `fresh` output still reads `fresh` in
+# rev 2 though no LLM ran. Filtering on that flag alone would admit carried-forward content and produce a
+# meaningless acceptance rate. v3 counts only content an LLM produced in THIS revision, using the composite
+# rule below (`_counts_toward_acceptance`): the Publisher writes an `origin` field ONLY on the
+# revision-inheritance path, so its PRESENCE (not value) discriminates. Absent origin -> generation path ->
+# today's fresh-only filter (so v3 is NUMBER-IDENTICAL to v2 on first publications, where origin is absent
+# on all outputs). Present origin -> revision-inherited -> exclude unless origin in {generated, regenerated}
+# (i.e. today: excluded — carried_forward/confirmed/null all excluded). The version bump signals the
+# methodology change; certified v2 first-publication numbers are unaffected (a re-audit re-derives the same
+# denominator; the empty `origin:null` add/split/merge class contributes no content and is excluded).
+METADATA_ACCURACY_VERSION = "v3"
 METADATA_ACCURACY_TARGET_LOW = 0.75
 METADATA_ACCURACY_TARGET_HIGH = 0.90
+
+# Origin values that mean "an LLM produced this output IN THIS revision" (ratified vocab; not emitted yet).
+_LLM_GENERATED_THIS_REVISION_ORIGINS = ("generated", "regenerated")
+
+
+def _counts_toward_acceptance(r):
+    """v3 revision-aware inclusion: does this field-record's output count toward the acceptance denominator —
+    i.e. did an LLM produce it in THIS revision? Composite rule (Publisher-confirmed shapes):
+      * `origin` ABSENT (generation path — first publication, or an in-revision regeneration returns a fresh
+        output object without `origin`): use the v2 fresh-only filter (disposition fresh / None-legacy).
+      * `origin` PRESENT (revision-inheritance path): count only ``generated``/``regenerated`` (LLM ran this
+        cycle); EXCLUDE ``carried_forward``, ``confirmed``, and the empty ``null`` add/split/merge class.
+    On a first publication `origin` is absent on every output, so this is identical to the v2 filter."""
+    if not r.get("generated_has_origin"):
+        return r.get("generated_disposition") in (None, "fresh")
+    return r.get("generated_origin") in _LLM_GENERATED_THIS_REVISION_ORIGINS
 
 
 def _is_empty(v):
@@ -312,18 +336,27 @@ def _metadata_accuracy(records, fresh_global, fields):
     a Publisher-contract violation) the fresh/preserved split cannot be trusted, so ``meets_target`` is
     withheld (``None``) and ``provisional`` is set rather than emitting a green target off contaminated data.
     """
-    def is_fresh(r):
-        return r.get("generated_disposition") in (None, "fresh")
+    is_fresh = _counts_toward_acceptance   # v3: revision-aware (origin-composite); v2 fresh-only when origin absent
     scored = [r for r in records if r.get("category") in _DISTANCE_CATEGORIES]
     fresh = [r for r in scored if is_fresh(r)]
     excluded = [r for r in scored if not is_fresh(r)]
-    # Disposition coverage — the backward-compat default (absent -> fresh) is only safe when the flag is
-    # UNIFORMLY present or absent. The flag is per-artifact (present on every field-record incl.
-    # abstention/unsupported), so coverage is measured over ALL records, not only scored ones — otherwise
-    # an all-abstention-but-flagged revision would read "none". The Publisher contract emits it on every
-    # output; "partial" means a contract violation and is surfaced/gated rather than silently trusted.
-    flagged = sum(1 for r in records if r.get("generated_disposition") is not None)
-    coverage = "none" if flagged == 0 else "all" if flagged == len(records) else "partial"
+    # Disposition coverage — the backward-compat default (absent -> fresh) is only safe when the disposition
+    # flag is UNIFORMLY present or absent AMONG THE GENERATION-PATH OUTPUTS (origin absent). v3-aware: the
+    # revision-inheritance outputs (origin present, incl. the empty add/split/merge class which legitimately
+    # carries NO disposition) are excluded from this check — they are keyed on `origin`, not the disposition,
+    # so a missing disposition there is contract-conformant, not a "partial emission" violation. Restricting
+    # to generation-path records is what stops a legitimate mixed revision (a regenerated output + an empty
+    # add) from falsely reading "partial" and withholding meets_target.
+    gen_path = [r for r in records if not r.get("generated_has_origin")]
+    flagged = sum(1 for r in gen_path if r.get("generated_disposition") is not None)
+    if not gen_path:
+        coverage = "none"                                  # no generation-path outputs -> nothing to check
+    elif flagged == len(gen_path):
+        coverage = "all"
+    elif flagged == 0:
+        coverage = "none"
+    else:
+        coverage = "partial"
     provisional = coverage == "partial"
 
     comparable = fresh_global["comparable_fields"]
@@ -363,11 +396,16 @@ def _metadata_accuracy(records, fresh_global, fields):
         "total_edited_fields": total_edited,
         "per_field": per_field,
         "editorial_burden": burden,   # ranked: where the publisher's editing work concentrates
-        # v2 provenance exclusion — transparency for the denominator (fresh-only).
-        "denominator_basis": "fresh_generated_outputs_only",
+        # v3: denominator = fields an LLM produced THIS revision (origin-aware; = fresh-only on first pubs).
+        "denominator_basis": "llm_generated_this_revision_only",
         "excluded_preserved_field_count": len(excluded),
         "excluded_preserved_artifacts": sorted({r.get("artifact_id") for r in excluded}),
         "disposition_coverage": coverage,   # none (legacy) | all (contract-conformant) | partial (violation)
+        # Low-confidence marker (advisory only — does NOT change meets_target): a rate of exactly 1.0 with
+        # zero edits over a non-empty denominator is the "approved without per-artifact inspection" pattern
+        # (bulk Approve-All), i.e. not evidence of LLM quality. Interim signal until the Publisher emits a
+        # dedicated bulk-approve flag (post-Week-12 Gate C).
+        "low_confidence_no_inspection": bool(comparable > 0 and rate == 1.0 and total_edited == 0),
         # Fresh-only descriptive aggregate — the headline sources every rate from here (never from the
         # all-common `global`), so the report can't carry two acceptance numbers on two denominators.
         "aggregate": fresh_global,
@@ -451,8 +489,11 @@ def compute_metadata_benchmark(canonical_review):
                 "generated_sha256": _sha256(gv), "approved_sha256": _sha256(av),
                 "generated_empty": _is_empty(gv), "approved_empty": _is_empty(av),
                 # Publisher-emitted per-output disposition (fresh|preserved_*); None on legacy revisions.
-                # The v2 acceptance metric excludes non-fresh outputs from its denominator.
+                # v3 revision provenance: `origin` (present ONLY on the revision-inheritance path — its
+                # presence discriminates) drives `_counts_toward_acceptance`. Absent -> v2 fresh-only filter.
                 "generated_disposition": g.get("generation_disposition"),
+                "generated_origin": g.get("origin"),
+                "generated_has_origin": bool(g.get("has_origin")),
                 "measures": measures,
             })
 
@@ -465,8 +506,7 @@ def compute_metadata_benchmark(canonical_review):
     # counts as fresh (legacy backward-compat), so on all-fresh data these equal the all-common blocks.
     # These are what `global`/`per_field` expose so every downstream consumer (report body, index entry,
     # Metadata Intelligence trend) reads the fresh-only number, never the preserved-inflated one.
-    def _fresh(r):
-        return r.get("generated_disposition") in (None, "fresh")
+    _fresh = _counts_toward_acceptance   # v3: revision-aware surface (same predicate as the acceptance headline)
     fresh_records = [r for r in records if _fresh(r)]
     # Fresh SCHEMA-MATCHED artifacts (category != unsupported_schema) — mirrors comparable_artifacts, so
     # corrections_per_artifact uses the same artifact-count basis on all-fresh data.
