@@ -70,7 +70,7 @@ tr.boundary-row td{border-top:1.6px dashed var(--accent)}
 pre.report{background:var(--surface);border:1px solid var(--line);padding:15px;border-radius:10px;overflow:auto;font-size:12px;line-height:1.45;white-space:pre-wrap;box-shadow:var(--shadow)}
 .att{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .att li{display:grid;grid-template-columns:70px 1fr;gap:11px;align-items:center;background:var(--surface);border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:10px 14px;box-shadow:var(--shadow)}
-.att li.WARNING{border-left-color:var(--warn)} .att li.FAIL{border-left-color:var(--fail)} .att li.INFO{border-left-color:var(--info)} .att li.boundary{border-left-color:var(--accent)}
+.att li.WARNING{border-left-color:var(--warn)} .att li.FAIL{border-left-color:var(--fail)} .att li.INFO{border-left-color:var(--info)} .att li.PASS{border-left-color:var(--pass)} .att li.boundary{border-left-color:var(--accent)}
 .att .txt{font-size:13px} .att .meta{color:var(--muted);font-size:11.5px;font-family:var(--mono)}
 .status{color:var(--muted);margin:8px 0;font-size:13px}
 .chartcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:15px 17px 11px;box-shadow:var(--shadow)}
@@ -347,7 +347,7 @@ function findingsPanel(rep){
   const f=((rep||{}).findings)||[]; if(!f.length)return "";
   const rank={FAIL:0,WARNING:1,INFO:2,PASS:3};
   const rows=f.slice().sort((a,b)=>(rank[a.severity]??9)-(rank[b.severity]??9)).map(x=>
-    `<li class="${esc(x.severity)}"><div class="txt"><span class="sev ${esc(x.severity)}">${esc(x.severity)}</span> <code>${esc(x.code||"")}</code> — ${esc(x.title||"")}</div><div class="meta">${esc(x.detail||"")}</div></li>`).join("");
+    `<li class="${esc(x.severity)}"><span class="sev ${esc(x.severity)}">${esc(x.severity)}</span><div><div class="txt"><code>${esc(x.code||"")}</code> — ${esc(x.title||"")}</div><div class="meta">${esc(x.detail||"")}</div></div></li>`).join("");
   return `<div class="section-h" style="margin-top:14px">Scout findings (${f.length}) — why this report has its severity</div><ul class="att">${rows}</ul>`;
 }
 async function loadLatestDiag(){return reportGeom(await loadSelectedReport()).diagnostics||null;}
