@@ -61,11 +61,13 @@ def _bodies(review_report_version="v1", platform_approval_version="v1"):
     }
 
 
-def _fake_client(bodies=None, missing_keys=()):
+def _fake_client(bodies=None, missing_keys=(), denied_keys=()):
     bodies = bodies if bodies is not None else _bodies()
     client = mock.Mock()
 
     def get_object(Bucket, Key):  # noqa: N803
+        if Key in denied_keys:
+            raise ClientError({"Error": {"Code": "AccessDenied"}}, "GetObject")
         if Key in missing_keys or Key not in bodies:
             raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
         return {"Body": _FakeBody(bodies[Key]), "VersionId": "ver-" + Key.rsplit("/", 1)[-1]}
@@ -176,10 +178,11 @@ class TestAuditReviewDelta(unittest.TestCase):
                 audit_s3_source.PREFIX_ENV: APPROVED_PREFIX,
                 audit_s3_source.REGION_ENV: "us-west-2"}
 
-    def _view(self, bodies):
+    def _view(self, bodies, missing_keys=(), denied_keys=()):
         with mock.patch.dict("os.environ", self._env(), clear=False), \
                 mock.patch.object(audit_review, "_scout_commit", return_value="testsha"):
-            return audit_review.build_audit_review(client=_fake_client(bodies))
+            return audit_review.build_audit_review(
+                client=_fake_client(bodies, missing_keys=missing_keys, denied_keys=denied_keys))
 
     def _by_code(self, view):
         return {f["code"]: f for f in view["findings"]}
@@ -199,6 +202,24 @@ class TestAuditReviewDelta(unittest.TestCase):
         self.assertEqual(fbc["metadata.comparability"]["severity"], "PASS")
         self.assertEqual(fbc["delta.deterministic"]["severity"], "PASS")
         self.assertEqual(fbc["evidence.loaded"]["severity"], "PASS")
+        # platform_approval is present in _delta_bodies -> platform.approval PASS (v2 evaluation rules).
+        self.assertEqual(fbc["platform.approval"]["severity"], "PASS")
+
+    def test_absent_platform_approval_is_warning_not_evidence_fail(self):
+        # F1 / EVALUATION v2: a not-yet-platform-approved revision (platform_approval.json absent) must NOT
+        # read as evidence.loaded FAIL — it is a separate authority, absent by design after publication.
+        missing = f"{ISSUE_ROOT}/reviews/{REVIEW_ID}/platform_approval.json"
+        v = self._view(_delta_bodies(), missing_keys=(missing,))
+        fbc = self._by_code(v)
+        self.assertEqual(fbc["evidence.loaded"]["severity"], "PASS")        # required objects all read
+        self.assertEqual(fbc["platform.approval"]["severity"], "WARNING")   # truthful workflow state
+        self.assertFalse(any(f["severity"] == "FAIL" for f in v["findings"]))  # nothing FAILs
+
+    def test_denied_platform_approval_is_a_real_read_failure(self):
+        # A denied/error (not merely absent) IS an evidence problem — platform.approval FAILs.
+        v = self._view(_delta_bodies(), denied_keys=(
+            f"{ISSUE_ROOT}/reviews/{REVIEW_ID}/platform_approval.json",))
+        self.assertEqual(self._by_code(v)["platform.approval"]["severity"], "FAIL")
 
     def test_metadata_schema_skew_warns(self):
         # generated v1.1 vs approved v1 -> metadata abstains -> WARNING, not FAIL

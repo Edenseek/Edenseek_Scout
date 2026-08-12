@@ -334,6 +334,22 @@ function onPickReport(v){ selectedReportId=v||null; render(); }
 function onPickIssue(v){ selectedIssuePrefix=v||null; selectedReportId=null; resetReportCaches(); render(); }
 function refreshReports(){ resetReportCaches(); render(); }
 function reportGeom(rep){return (((rep||{}).delta_report||{}).geometry_delta)||{};}
+// F2: every issue is `issue_001` today, so the bare issue id distinguishes nothing — qualify it with the
+// series, the same convention the issue picker uses. Returns escaped HTML.
+function issueLabel(r){return (r.series_id?esc(r.series_id)+" · ":"")+esc(r.issue_id||"—");}
+// A manual publication (`applicability: "manual"`) has no generated side — the geometry/metadata delta is
+// NOT APPLICABLE, which is a different statement from "not measured yet". Used to render honest empty states.
+function isManual(rep){return ((rep||{}).applicability||((rep||{}).delta_report||{}).applicability)==="manual";}
+// F4: surface WHY the selected report has its severity — the per-report findings (evidence loaded,
+// contract adapted, platform approval, delta applicability) that no analytical view exposed before.
+// Severity-ordered so a FAIL/WARNING is read first. Read-only.
+function findingsPanel(rep){
+  const f=((rep||{}).findings)||[]; if(!f.length)return "";
+  const rank={FAIL:0,WARNING:1,INFO:2,PASS:3};
+  const rows=f.slice().sort((a,b)=>(rank[a.severity]??9)-(rank[b.severity]??9)).map(x=>
+    `<li class="${esc(x.severity)}"><div class="txt"><span class="sev ${esc(x.severity)}">${esc(x.severity)}</span> <code>${esc(x.code||"")}</code> — ${esc(x.title||"")}</div><div class="meta">${esc(x.detail||"")}</div></li>`).join("");
+  return `<div class="section-h" style="margin-top:14px">Scout findings (${f.length}) — why this report has its severity</div><ul class="att">${rows}</ul>`;
+}
 async function loadLatestDiag(){return reportGeom(await loadSelectedReport()).diagnostics||null;}
 /* Compact current-analysis summary: which report the page is analyzing + its headline results. */
 function geomSummary(rep){
@@ -371,9 +387,11 @@ function geomLever(diag){
   return `Automation produced <b>no panels on ${sk.length} of ${pp.length} pages</b>; on the ${pr.length} it processed, recall ≈ ${(rec*100).toFixed(0)}% and reading order is ${oa.toFixed(0)}% correct. Biggest lever: page-level detection coverage.`;
 }
 function scatterNote(){return `<div class="samples"><span style="color:var(--pass)">●</span> processed &nbsp; <span style="color:var(--fail)">●</span> skipped (0 panels) &nbsp;·&nbsp; x = panels/page, y = segmentation accuracy</div>`;}
-function renderGeomDiag(diag){
+function renderGeomDiag(diag,manual){
   const gd=document.getElementById("geomdiag"); if(!gd)return;
-  if(!diag||!(diag.per_page||[]).length){gd.innerHTML=`<p class="status">Per-page geometry diagnostics appear once a v2 audit has run.</p>`;return;}
+  if(!diag||!(diag.per_page||[]).length){gd.innerHTML=`<p class="status">${manual
+    ?"Not applicable — this is a manual publication (no generated side), so there is no geometry delta to diagnose."
+    :"Per-page geometry diagnostics appear once a v2 audit has run."}</p>`;return;}
   const sz=diag.panel_size_recall||{};
   const bars=["large","medium","small"].map(k=>{const s=sz[k]||{},w=(s.recall||0)*100;
     return `<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:12px"><span>${k} <span class="samples" style="display:inline">(${s.approved_panels||0})</span></span><span>${s.approved_panels?w.toFixed(0)+'%':'—'}</span></div><div style="height:9px;border-radius:5px;background:var(--surface-2)"><i style="display:block;height:100%;width:${w}%;background:var(--accent);border-radius:5px"></i></div></div>`;}).join("");
@@ -390,7 +408,9 @@ function renderGeomDiag(diag){
 function renderMetaDiag(rep){
   const md=document.getElementById("metadiag"); if(!md)return;
   const ma=(((rep||{}).delta_report||{}).metadata_benchmark||{}).metadata_accuracy;
-  if(!ma||!(ma.editorial_burden||[]).length){md.innerHTML=`<p class="status">Metadata accuracy appears once a Metadata Accuracy v2 report is persisted.</p>`;return;}
+  if(!ma||!(ma.editorial_burden||[]).length){md.innerHTML=`<p class="status">${isManual(rep)
+    ?"Not applicable — this is a manual publication (no generated side), so there is no metadata acceptance to measure."
+    :"Metadata accuracy appears once a Metadata Accuracy v2 report is persisted."}</p>`;return;}
   const eb=ma.editorial_burden,top=eb[0],acc=ma.acceptance||{};
   const lowConf=!!ma.low_confidence_no_inspection;   // §4: 100% + 0 edits -> qualify, don't paint green
   const lever=top.edited?`<b>${esc(top.field)}</b> carries the most editing — ${(top.edit_share*100).toFixed(0)}% of all edits, ${(top.acceptance_rate*100).toFixed(0)}% accepted. Improving that prompt first cuts the most publisher work.`:`Editing is minimal and evenly spread — no single field dominates.`;
@@ -426,7 +446,7 @@ async function engView(){
     }
     h+=`<div class="section-h">Which reports demonstrate the change?</div><div class="tblwrap"><table><thead><tr><th>report</th><th>issue</th><th>precision</th><th>recall</th><th>metadata</th><th>worst</th><th>sha256</th></tr></thead><tbody>`;
     a.records.filter(r=>r.record_kind==="report").forEach((r,i,arr)=>{const brk=i>0&&arr[i-1].geometry_comparability_key!==r.geometry_comparability_key;
-      h+=`<tr class="${brk?'boundary-row':''}"><td><code>${esc(r.report_id?r.report_id.slice(-9):"")}</code></td><td>${esc(r.issue_id)}</td><td class="n">${pct(r.metrics.precision)}</td><td class="n">${pct(r.metrics.recall)}</td><td>${esc(r.metadata_status||"—")}</td><td><span class="sev ${r.worst_severity}">${esc(r.worst_severity)}</span></td><td class="mono" style="font-size:11px">${esc((r.report_sha256||"").slice(0,10))}</td></tr>`;});
+      h+=`<tr class="${brk?'boundary-row':''}"><td><code>${esc(r.report_id?r.report_id.slice(-9):"")}</code></td><td>${issueLabel(r)}</td><td class="n">${pct(r.metrics.precision)}</td><td class="n">${pct(r.metrics.recall)}</td><td>${esc(r.metadata_status||"—")}</td><td><span class="sev ${r.worst_severity}">${esc(r.worst_severity)}</span></td><td class="mono" style="font-size:11px">${esc((r.report_sha256||"").slice(0,10))}</td></tr>`;});
     body.innerHTML=h+`</tbody></table></div>`;
   }catch(e){ body.innerHTML=`<p class="status">Could not load benchmarks (${esc(e.message)}).</p>`; }
 }
@@ -447,8 +467,8 @@ async function intelView(){
     document.getElementById("repbar").innerHTML=await reportBar();
     const a=await loadArchive();
     const rep=await loadSelectedReport();
-    document.getElementById("analysis").innerHTML=geomSummary(rep);
-    renderGeomDiag(reportGeom(rep).diagnostics||null);
+    document.getElementById("analysis").innerHTML=geomSummary(rep)+findingsPanel(rep);
+    renderGeomDiag(reportGeom(rep).diagnostics||null, isManual(rep));
     renderMetaDiag(rep);
     document.getElementById("cmp").innerHTML=cmpTable(a.records.filter(r=>r.record_kind==="report"));
     const items=[]; a.records.filter(r=>r.record_kind==="report"&&r.methodology_boundary).forEach(r=>{
@@ -461,7 +481,7 @@ function cmpTable(reps){
   if(!reps.length)return `<p class="status">No reports yet.</p>`;
   let h=`<div class="tblwrap"><table><thead><tr><th>report</th><th>issue</th><th>event</th><th>measured</th><th>schema</th><th>algo</th><th>precision</th><th>recall</th><th>accepted</th><th>worst</th></tr></thead><tbody>`;
   reps.forEach((r,i,arr)=>{const brk=i>0&&(arr[i-1].geometry_comparability_key!==r.geometry_comparability_key||arr[i-1].metadata_comparability_key!==r.metadata_comparability_key);
-    h+=`<tr class="${brk?'boundary-row':''}"><td><code>${esc(r.report_id?r.report_id.slice(-9):"")}</code></td><td>${esc(r.issue_id)}</td><td class="mono">${esc((r.event_time||"—").slice(0,10))}</td><td class="mono">${esc((r.measurement_time||r.completed_at||"—").slice(0,10))}</td><td class="mono">${esc(r.schema_version||"—")}</td><td class="mono">${esc(r.algorithm_version||"—")}</td><td class="n">${pct(r.metrics.precision)}</td><td class="n">${pct(r.metrics.recall)}</td><td class="n">${pct(r.metrics.unchanged_metadata_rate)}</td><td><span class="sev ${r.worst_severity}">${esc(r.worst_severity)}</span></td></tr>`;});
+    h+=`<tr class="${brk?'boundary-row':''}"><td><code>${esc(r.report_id?r.report_id.slice(-9):"")}</code></td><td>${issueLabel(r)}</td><td class="mono">${esc((r.event_time||"—").slice(0,10))}</td><td class="mono">${esc((r.measurement_time||r.completed_at||"—").slice(0,10))}</td><td class="mono">${esc(r.schema_version||"—")}</td><td class="mono">${esc(r.algorithm_version||"—")}</td><td class="n">${pct(r.metrics.precision)}</td><td class="n">${pct(r.metrics.recall)}</td><td class="n">${pct(r.metrics.unchanged_metadata_rate)}</td><td><span class="sev ${r.worst_severity}">${esc(r.worst_severity)}</span></td></tr>`;});
   return h+`</tbody></table></div>`;
 }
 async function runSearch(){

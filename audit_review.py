@@ -45,10 +45,19 @@ AUDIT_REVIEW_VERSION = "v1"
 # The version of the EVALUATION rules that turn delta numbers into severity-tagged findings
 # (``_project_findings``). Bump when the PASS/WARNING/FAIL/INFO thresholds or rules change; it is
 # one axis of the comparability contract (see docs/architecture/SCOUT_REPORT_INDEX.md).
-EVALUATION_VERSION = "v1"
+# v2: `evidence.loaded` FAIL is reserved for REQUIRED evidence that could not be read; `platform_approval`
+# is OPTIONAL (a separate authority writes it AFTER publication) so its absence is a workflow state
+# (`platform.approval` = WARNING "not platform approved"), not an evidence-read failure.
+EVALUATION_VERSION = "v2"
 
 # Finding severities the UI renders at-a-glance.
 PASS, WARNING, FAIL, INFO = "PASS", "WARNING", "FAIL", "INFO"
+
+# Evidence objects that MUST exist for an audit — their absence is a genuine `evidence.loaded` failure.
+# `platform_approval` is deliberately NOT here: under the ratified Creator·Publisher·Platform authority
+# model, platform approval is a separate human act performed after publication, so `platform_approval.json`
+# is correctly absent on every not-yet-platform-approved revision. Its state is reported by `platform.approval`.
+_REQUIRED_EVIDENCE_ROLES = ("approved_pointer", "processing_snapshot", "review_report")
 _HERE = Path(__file__).resolve().parent
 
 
@@ -285,10 +294,30 @@ def _project_findings(manifest, delta, adapter_error, delta_sha):
         findings.append({"code": code, "severity": severity, "title": title, "detail": detail})
 
     s = manifest["summary"]
-    missing = [o["role"] for o in manifest["objects"] if o["status"] != "read"]
-    add("evidence.loaded", PASS if not missing else FAIL, "Publisher evidence loaded",
+    by_role = {o["role"]: o for o in manifest["objects"]}
+    # `evidence.loaded` FAILs only when a REQUIRED object could not be read — the absence of the optional
+    # platform_approval is NOT an evidence-read failure (it is a not-yet-exercised separate authority).
+    missing_required = [r for r in _REQUIRED_EVIDENCE_ROLES if (by_role.get(r) or {}).get("status") != "read"]
+    add("evidence.loaded", PASS if not missing_required else FAIL, "Publisher evidence loaded",
         f"{s['objects_loaded']}/{s['objects_expected']} objects read"
-        + (f"; not read: {', '.join(missing)}" if missing else ""))
+        + (f"; required not read: {', '.join(missing_required)}" if missing_required else ""))
+
+    # Platform approval is a SEPARATE authority (Creator · Publisher · Edenseek Platform), performed against
+    # the published Review Record AFTER publication — a publish must never write it. So its absence is the
+    # normal state of a creator-approved-but-not-yet-platform-approved revision (a workflow state), NOT an
+    # evidence failure. A `denied`/`error` status IS a real read failure (the object may exist, unreadable).
+    pa_status = (by_role.get("platform_approval") or {}).get("status")
+    if pa_status == "read":
+        add("platform.approval", PASS, "Platform approved",
+            "platform_approval.json present — the Edenseek Platform has certified this revision.")
+    elif pa_status == "missing":
+        add("platform.approval", WARNING, "Not platform approved",
+            "This revision is creator-approved but not yet platform-approved (platform_approval.json absent). "
+            "Platform approval is a separate authority performed after publication — a workflow state, not an "
+            "evidence-read failure.")
+    else:
+        add("platform.approval", FAIL, "Platform approval unreadable",
+            f"platform_approval.json status={pa_status} — Scout could not read it (not merely absent).")
 
     add("publisher.mutation", PASS, "No mutation of edenseek-publishing",
         "Scout read the Publisher repository GetObject-only; writes are IAM-denied.")
