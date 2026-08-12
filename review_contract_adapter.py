@@ -397,6 +397,14 @@ def _normalize_metadata(metadata_obj, side):
             "generation_provenance": gp if isinstance(gp, dict) else None,
             "generation_disposition": out.get("metadata_generation_provenance"),
             "generation_count": (gp.get("generation_count") if isinstance(gp, dict) else None),
+            # Revision provenance (Publisher revision-inheritance path). `origin` is written ONLY by that
+            # path, so its PRESENCE (not its value) discriminates a revision-inherited output from a
+            # generation-path one. Absent -> generation path (first publication OR an in-revision
+            # regeneration). Present values seen: carried_forward | confirmed | null(empty add/split/merge).
+            # `generated`/`regenerated` are in the ratified vocab but not currently emitted. The acceptance
+            # denominator must count only content an LLM produced THIS revision (see delta_metadata_revision).
+            "origin": out.get("origin"),
+            "has_origin": "origin" in out,
             # CBI-2b materials grounding (which approved materials+revisions this output grounded on),
             # from the per-output context_source — the AUTHORITATIVE source (not the run-level pin).
             "grounding": _extract_grounding(out.get("context_source")),

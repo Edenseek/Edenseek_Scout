@@ -23,7 +23,7 @@ import scout_report_index as sri  # noqa: E402
 
 _ALLOWED_RECORD_KEYS = {"artifact_id", "field", "category", "distance", "generated_sha256",
                         "approved_sha256", "generated_empty", "approved_empty",
-                        "generated_disposition", "measures"}
+                        "generated_disposition", "generated_origin", "generated_has_origin", "measures"}
 
 # A fresh per-output generation_provenance (Publisher enhancement #1), sibling of `output`.
 _FRESH_PROV = {"model": "gpt-4.1-mini", "prompt_version": "v1",
@@ -262,13 +262,13 @@ class TestClassifier(unittest.TestCase):
         self.assertTrue(0.0 <= g["average_revision_distance"] <= 1.0)
         self.assertTrue(0.0 <= g["weighted_editorial_intervention_score"]["score"] <= 1.0)
 
-    def test_metadata_accuracy_v2(self):
+    def test_metadata_accuracy_v3(self):
         b = dmr.compute_metadata_benchmark(adapt_review(fx.review_generated()))
         ma = b["metadata_accuracy"]
-        self.assertEqual(ma["version"], "v2")
-        self.assertEqual(ma["denominator_basis"], "fresh_generated_outputs_only")
-        # BACKWARD-IDENTICAL on all-fresh data: with no disposition flag every scored field is fresh,
-        # so v2's fresh-only acceptance equals the global accepted/comparable (the v1 number).
+        self.assertEqual(ma["version"], "v3")
+        self.assertEqual(ma["denominator_basis"], "llm_generated_this_revision_only")
+        # BACKWARD-IDENTICAL on first-publication data (origin ABSENT on every output -> v3 uses the v2
+        # fresh-only branch): acceptance equals the global accepted/comparable (the v1/v2 number).
         self.assertEqual(ma["acceptance"]["numerator"], b["global"]["counts"]["accepted_unchanged"])
         self.assertEqual(ma["acceptance"]["denominator"], b["global"]["comparable_fields"])
         self.assertEqual(ma["excluded_preserved_field_count"], 0)
