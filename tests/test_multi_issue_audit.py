@@ -173,6 +173,36 @@ class TestPostAuditRebuild(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(m.call_args.kwargs.get("rebuild"))
 
+    # --- visibility: a failed rebuild must not stay silent ---
+    def test_rebuild_failure_logs_at_warning_not_info(self):
+        with patch("scout_registry.rebuild_discovered", side_effect=RuntimeError("s3")), \
+             patch("scout_benchmark.rebuild_all"), \
+             patch.object(sda, "logger") as log:
+            out = sda._rebuild_projections()
+        self.assertTrue(out["registry"].startswith("failed"))
+        log.warning.assert_called()        # escalated so it can't hide at INFO
+        log.info.assert_not_called()
+
+    def test_rebuild_success_stays_at_info(self):
+        with patch("scout_registry.rebuild_discovered"), patch("scout_benchmark.rebuild_all"), \
+             patch.object(sda, "logger") as log:
+            out = sda._rebuild_projections()
+        self.assertEqual(out, {"registry": "rebuilt", "benchmark": "rebuilt"})
+        log.info.assert_called()
+        log.warning.assert_not_called()
+
+    def test_cli_all_warns_on_stderr_when_rebuild_failed_but_exit_reflects_audit(self):
+        import io
+        import contextlib
+        result = {"discovered": 1, "counts": {"skipped": 1}, "results": [], "trigger": "manual_all",
+                  "rebuild": {"registry": "rebuilt", "benchmark": "failed: RuntimeError"}}
+        err = io.StringIO()
+        with patch.object(sda, "audit_all_discovered", return_value=result), \
+             contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            rc = sda.main(["--all"])
+        self.assertIn("post-audit rebuild INCOMPLETE", err.getvalue())
+        self.assertEqual(rc, 0)   # rebuild failure is non-fatal — exit code still reflects the AUDIT only
+
 
 if __name__ == "__main__":
     unittest.main()

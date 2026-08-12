@@ -321,7 +321,17 @@ def _rebuild_projections():
         except Exception as e:  # noqa: BLE001 — best-effort; reports already persisted, so never fatal
             logger.exception("Post-audit %s rebuild failed: %s", name, e)
             out[name] = f"failed: {type(e).__name__}"
-    logger.info("Post-audit projection rebuild: %s", out)
+    # Visibility: a best-effort rebuild that FAILS must not stay silent — a stale derived projection would
+    # otherwise hide behind a successful audit (and, if the Registry refreshed by another path, behind a
+    # fresh-looking dashboard). Escalate the summary to WARNING when anything failed; the per-rebuild
+    # traceback is already logged at ERROR above.
+    failed = [name for name, v in out.items() if str(v).startswith("failed")]
+    if failed:
+        logger.warning("Post-audit projection rebuild INCOMPLETE — %s did not rebuild; derived projections "
+                       "(Health / per-scope benchmarks) may be STALE until the next successful rebuild: %s",
+                       ", ".join(failed), out)
+    else:
+        logger.info("Post-audit projection rebuild: %s", out)
     return out
 
 
@@ -370,6 +380,12 @@ def main(argv=None):
         elif "--all" in argv:
             result = audit_all_discovered(force="--force" in argv, trigger="manual_all", rebuild=True)
             print(json.dumps(result, indent=2))
+            # Surface a failed post-audit rebuild to the operator explicitly — the `rebuild` block is easy to
+            # miss in the JSON. Non-fatal (exit code still reflects the AUDIT, not the rebuild).
+            stale = [name for name, v in (result.get("rebuild") or {}).items() if str(v).startswith("failed")]
+            if stale:
+                print(f"WARNING: post-audit rebuild INCOMPLETE ({', '.join(stale)} failed) — derived "
+                      f"projections may be STALE; see logs/scout.log.", file=sys.stderr)
             return 0 if not (result["counts"].get("failed") or result["counts"].get("error")) else 1
         else:
             result = audit_current_revision(force="--force" in argv, trigger="manual")
