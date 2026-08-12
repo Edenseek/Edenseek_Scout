@@ -227,7 +227,7 @@ async function opsPubHealth(body){
     <h3 style="margin-top:18px">Series</h3>${rows(["Universe","Series","Health","Issues healthy","Issue IDs"],serRows)}
     <h3 style="margin-top:18px">Issues</h3>${rows(["Universe","Series","Issue","Health","Publication state","Reasons"],issRows)}
     ${xsPanel}
-    <p class="sub" style="margin-top:10px">${fresh} · derived from <code>/observability/health</code>, <code>/series</code>, <code>/publisher</code>, <code>/cross-series</code></p>`;
+    <p class="sub" style="margin-top:10px">${fresh} · derived from <code>/observability/health</code>, <code>/series</code>, <code>/publisher</code>${xs?", <code>/cross-series</code>":""}</p>`;
 }
 async function opsHealth(body){
   const a=await loadOpsArchive(); const L=a.latest;
