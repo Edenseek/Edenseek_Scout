@@ -301,12 +301,19 @@ def _rebuild_projections():
     NON-FATAL — the immutable reports are already persisted, so a rebuild failure is recorded, never fails the
     audit. Called with no client so each rebuild self-resolves its correctly-regioned client (Registry uses
     the approved region for Discovery + scout region for persist; benchmarks use the scout region)."""
-    import scout_registry
-    import scout_benchmark
-    from datetime import datetime, timezone
-    ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    # Even the setup (imports + timestamp) is best-effort — _rebuild_projections must NEVER raise, so a
+    # multi-issue audit whose reports are already persisted can never turn into a 503 over a refresh.
+    try:
+        import scout_registry
+        import scout_benchmark
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    except Exception as e:  # noqa: BLE001 — pre-imported in every real entry path; guarded for defense-in-depth
+        logger.exception("Post-audit rebuild setup failed: %s", e)
+        return {"registry": f"failed: {type(e).__name__}", "benchmark": f"failed: {type(e).__name__}"}
     out = {}
-    for name, fn in (("registry", lambda: scout_registry.rebuild_discovered()),
+    # One batch timestamp for BOTH projections so their freshness stamps agree.
+    for name, fn in (("registry", lambda: scout_registry.rebuild_discovered(generated_at=ts)),
                      ("benchmark", lambda: scout_benchmark.rebuild_all(generated_at=ts))):
         try:
             fn()

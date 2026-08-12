@@ -152,6 +152,19 @@ class TestPostAuditRebuild(unittest.TestCase):
         self.assertEqual(result["counts"], {"persisted": 1})           # the audit result is intact
         bench.assert_called_once()
 
+    def test_benchmark_failure_is_non_fatal_and_independent(self):
+        # symmetric to the registry-fails case: benchmark raises -> registry still rebuilt, audit intact
+        ctxs, per = self._one_issue()
+        with patch("scout_discovery.discover_contexts", return_value=ctxs), \
+             patch.object(sda, "audit_current_revision", return_value=per), \
+             patch("scout_registry.rebuild_discovered") as reg, \
+             patch("scout_benchmark.rebuild_all", side_effect=RuntimeError("bench down")):
+            result = sda.audit_all_discovered(rebuild=True)
+        self.assertEqual(result["rebuild"]["registry"], "rebuilt")
+        self.assertTrue(result["rebuild"]["benchmark"].startswith("failed"))
+        self.assertEqual(result["counts"], {"persisted": 1})
+        reg.assert_called_once()
+
     def test_endpoint_opts_into_rebuild(self):
         agg = {"discovered": 1, "counts": {"persisted": 1}, "results": [], "trigger": "manual_all",
                "rebuild": {"registry": "rebuilt", "benchmark": "rebuilt"}}
