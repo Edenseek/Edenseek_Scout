@@ -348,24 +348,57 @@ def get_audit_review_reports(username: str = Depends(require_auth)):
         raise HTTPException(status_code=503, detail=f"Report index unavailable: {e}")
 
 
-@app.get("/audit-review/archive")
-def get_audit_review_archive(username: str = Depends(require_auth)):
-    """Read-only Reports Archive (newest first): successful reports + failed runs, with latest/
-    historical/failed marks and methodology boundaries. Reads persisted index + ledger only."""
+def _issue_context(issue_prefix: str):
+    """Resolve an ``IssueContext`` for a dashboard-selected issue prefix, or ``None`` for the env
+    default (unchanged single-issue behavior). A malformed prefix is a 400 (client error), not a 503;
+    a config/discovery failure propagates to the caller's 503 handler. (SXI-2a multi-issue scoping.)"""
+    if not issue_prefix:
+        return None
+    import scout_discovery
+    import scout_context
     try:
-        return scout_archive.build_archive()
+        return scout_discovery.context_for_prefix(issue_prefix)
+    except scout_context.IssueContextError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid issue_prefix: {e}")
+
+
+@app.get("/issues")
+def list_issues(username: str = Depends(require_auth)):
+    """Enumerate discovered published issues (read-only) so the dashboard can scope the analytical
+    views to a chosen issue. Each entry carries the full identity + the ``issue_prefix`` used to scope
+    /audit-review/archive, /audit-review/search and /reports/*. Multi-issue (Increment 1 Discovery)."""
+    try:
+        import scout_discovery
+        contexts = scout_discovery.discover_contexts()
+    except Exception as e:  # noqa: BLE001 — a discovery/config failure -> 503
+        logger.exception(f"Issue enumeration failed: {e}")
+        raise HTTPException(status_code=503, detail="Issue enumeration failed")
+    return {"issues": [{"issue_prefix": c.scout_prefix, **c.identity} for c in contexts]}
+
+
+@app.get("/audit-review/archive")
+def get_audit_review_archive(issue_prefix: str = "", username: str = Depends(require_auth)):
+    """Read-only Reports Archive (newest first): successful reports + failed runs, with latest/
+    historical/failed marks and methodology boundaries. Reads persisted index + ledger only.
+    Optional ``issue_prefix`` scopes the archive to a chosen discovered issue; default = configured."""
+    try:
+        return scout_archive.build_archive(context=_issue_context(issue_prefix))
+    except HTTPException:
+        raise
     except (scout_report_index.ScoutReportIndexError, Exception) as e:  # noqa: BLE001
         logger.warning(f"Archive error: {e}")
         raise HTTPException(status_code=503, detail=f"Archive unavailable: {e}")
 
 
 @app.get("/audit-review/search")
-def get_audit_review_search(q: str = "", username: str = Depends(require_auth)):
+def get_audit_review_search(q: str = "", issue_prefix: str = "", username: str = Depends(require_auth)):
     """Server-side search over persisted archive metadata (e.g. `precision<0.80`,
     `finding:geometry.false_panels`, `severity:WARNING`, `publisher:<id> issue:<id>`). The browser
-    passes the query; all filtering happens here."""
+    passes the query; all filtering happens here. Optional ``issue_prefix`` scopes to a chosen issue."""
     try:
-        archive = scout_archive.build_archive()
+        archive = scout_archive.build_archive(context=_issue_context(issue_prefix))
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Search error: {e}")
         raise HTTPException(status_code=503, detail=f"Search unavailable: {e}")
@@ -464,10 +497,11 @@ def get_observability_health_cross_series(username: str = Depends(require_auth))
 
 
 @app.get("/reports/latest")
-def get_latest_report(username: str = Depends(require_auth)):
-    """The current/latest persisted immutable Scout delta report (read-only)."""
+def get_latest_report(issue_prefix: str = "", username: str = Depends(require_auth)):
+    """The current/latest persisted immutable Scout delta report (read-only). Optional ``issue_prefix``
+    scopes to a chosen discovered issue's latest; default = the configured issue."""
     try:
-        index = scout_report_index.load_index()
+        index = scout_report_index.load_index(context=_issue_context(issue_prefix))
         latest = (index.get("latest") or {})
         key = (latest.get("persisted_key") or {}).get("history")
         if not key:
@@ -483,10 +517,11 @@ def get_latest_report(username: str = Depends(require_auth)):
 
 
 @app.get("/reports/{report_id}")
-def get_report(report_id: str, username: str = Depends(require_auth)):
-    """One immutable persisted Scout delta report by report_id (read-only)."""
+def get_report(report_id: str, issue_prefix: str = "", username: str = Depends(require_auth)):
+    """One immutable persisted Scout delta report by report_id (read-only). Optional ``issue_prefix``
+    scopes the lookup to a chosen discovered issue's index; default = the configured issue."""
     try:
-        index = scout_report_index.load_index()
+        index = scout_report_index.load_index(context=_issue_context(issue_prefix))
         entry = next((e for e in index.get("entries", []) if e.get("report_id") == report_id), None)
         if entry is None:
             raise HTTPException(status_code=404, detail="Unknown report_id")

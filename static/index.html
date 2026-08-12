@@ -162,10 +162,14 @@ function rows(headers,data){if(!data.length)return `<p class="status">None.</p>`
     data.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;}
 
 let view="ops",opsSub="pubhealth",archive=null,timeAxis="meas";
+let selectedIssuePrefix=null,issues=null;   // SXI-2a: multi-issue scoping (null = configured default)
 const el=()=>document.getElementById("view");
 
-/* ---- archive fetch (shared) ---- */
-async function loadArchive(){ if(!archive){archive=await getJSON("/audit-review/archive");} return archive; }
+/* ---- issue scoping + archive fetch (shared) ---- */
+// Append the chosen issue to a scoped endpoint; `sep` is "?" (default) or "&" when a query already exists.
+function issueQS(sep){ return selectedIssuePrefix?((sep||"?")+"issue_prefix="+encodeURIComponent(selectedIssuePrefix)):""; }
+async function loadIssues(){ if(!issues){try{issues=await getJSON("/issues");}catch(e){issues={issues:[]};}} return issues; }
+async function loadArchive(){ if(!archive){archive=await getJSON("/audit-review/archive"+issueQS());} return archive; }
 
 /* ================= OPERATIONS ================= */
 async function opsView(){
@@ -293,26 +297,37 @@ async function loadSelectedReport(){
   const key=selectedReportId||"__latest__";
   if(reportCache[key]!==undefined)return reportCache[key];
   try{ reportCache[key]= selectedReportId
-        ? await getJSON("/reports/"+encodeURIComponent(selectedReportId))
-        : await getJSON("/reports/latest"); }
+        ? await getJSON("/reports/"+encodeURIComponent(selectedReportId)+issueQS())
+        : await getJSON("/reports/latest"+issueQS()); }
   catch(e){ reportCache[key]=null; }
   return reportCache[key];
 }
 /* A compact picker + refresh bar shown atop the analysis views. Reads the archive (newest-first
    report entries) so the founder can see and choose exactly which run they are viewing. */
 async function reportBar(){
-  let reps=[];
+  let reps=[],iss=[];
+  try{ iss=(await loadIssues()).issues||[]; }catch(e){}
   try{ const a=await loadArchive(); reps=(a.records||[]).filter(r=>r.record_kind==="report"); }catch(e){}
   const opt=r=>{const seq="run"+String(r.run_seq).padStart(3,"0"),rid=r.report_id||"",
     d=(r.measurement_time||r.completed_at||r.event_time||"").slice(0,10);
     return `<option value="${esc(rid)}" ${selectedReportId===rid?"selected":""}>${seq} · …${esc(rid.slice(-6))} · ${esc(d)}</option>`;};
+  // SXI-2a: issue picker — shown only when Discovery finds more than one published issue, so a
+  // single-issue deployment is visually unchanged. Labelled by series · issue (title group is SXI-2b).
+  const iopt=i=>{const lbl=(i.series_id||i.issue_prefix||"?")+(i.issue_id?(" · "+i.issue_id):"");
+    return `<option value="${esc(i.issue_prefix||"")}" ${selectedIssuePrefix===i.issue_prefix?"selected":""}>${esc(lbl)}</option>`;};
+  const issuePicker=iss.length>1?`<label>Issue <select id="isssel" onchange="onPickIssue(this.value)">
+      <option value="" ${!selectedIssuePrefix?"selected":""}>Configured default</option>${iss.map(iopt).join("")}</select></label>`:"";
   return `<div class="repbar">
+    ${issuePicker}
     <label>Report <select id="repsel" onchange="onPickReport(this.value)">
       <option value="" ${!selectedReportId?"selected":""}>Latest</option>${reps.map(opt).join("")}</select></label>
     <button class="icbtn sm" onclick="refreshReports()" title="Re-fetch the newest persisted reports">↻ Refresh</button>
     ${reps.length?`<span class="samples">${reps.length} persisted report(s)${selectedReportId?"":" · showing latest"}</span>`:""}</div>`;
 }
 function onPickReport(v){ selectedReportId=v||null; render(); }
+// Switch the analytical views to another discovered issue: reset the report selection + caches so the
+// picker + analysis reload scoped to the chosen issue (its own archive, its own latest).
+function onPickIssue(v){ selectedIssuePrefix=v||null; selectedReportId=null; resetReportCaches(); render(); }
 function refreshReports(){ resetReportCaches(); render(); }
 function reportGeom(rep){return (((rep||{}).delta_report||{}).geometry_delta)||{};}
 async function loadLatestDiag(){return reportGeom(await loadSelectedReport()).diagnostics||null;}
@@ -447,7 +462,7 @@ function cmpTable(reps){
 }
 async function runSearch(){
   const q=document.getElementById("q").value;
-  try{ const r=await getJSON("/audit-review/search?q="+encodeURIComponent(q));
+  try{ const r=await getJSON("/audit-review/search?q="+encodeURIComponent(q)+issueQS("&"));
     document.getElementById("cmp").innerHTML=cmpTable(r.records.filter(x=>x.record_kind==="report"))+`<div class="samples">${r.count} match(es) · filtered server-side</div>`;
   }catch(e){ document.getElementById("cmp").innerHTML=`<p class="status">Search failed (${esc(e.message)}).</p>`; }
 }

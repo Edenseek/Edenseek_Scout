@@ -79,6 +79,23 @@ def _config(env: Mapping[str, str]):
     return approved_bucket, approved_region, scout_bucket, scout_region
 
 
+def context_for_prefix(issue_prefix: str, *, env: Optional[Mapping[str, str]] = None) -> IssueContext:
+    """Reconstruct the ``IssueContext`` for ONE discovered issue prefix WITHOUT re-listing S3.
+
+    An issue's approved surface is always ``{issue}/approved`` and its Scout surface is ``{issue}``;
+    the buckets/regions are shared config — the identical construction ``discover_contexts`` uses per
+    enumerated issue, minus the enumeration. The multi-issue dashboard uses this to scope archive /
+    report reads to a chosen issue. Raises ``IssueContextError`` (bad/malformed prefix) or
+    ``ScoutDiscoveryError`` (unconfigured); callers translate these to 400 / 503.
+    """
+    env = os.environ if env is None else env
+    approved_bucket, approved_region, scout_bucket, scout_region = _config(env)
+    return IssueContext.for_prefixes(
+        approved_bucket=approved_bucket, approved_prefix=f"{issue_prefix}/approved",
+        scout_bucket=scout_bucket, scout_prefix=issue_prefix,
+        approved_region=approved_region, scout_region=scout_region)
+
+
 def discover_contexts(*, client=None, env: Optional[Mapping[str, str]] = None) -> list[IssueContext]:
     """Publisher-wide READ-ONLY enumeration → one ``IssueContext`` per discovered issue.
 

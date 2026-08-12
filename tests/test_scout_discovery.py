@@ -51,6 +51,37 @@ class FakeS3:
         return {"Contents": [{"Key": k} for k in sorted(keys)], "IsTruncated": False}
 
 
+class TestContextForPrefix(unittest.TestCase):
+    """SXI-2a: reconstruct a single issue's context from its prefix WITHOUT re-listing S3."""
+
+    def test_reconstructs_identity_and_prefixes(self):
+        ctx = disc.context_for_prefix(I1, env=ENV)
+        self.assertEqual(ctx.scout_prefix, I1)
+        self.assertEqual(ctx.approved_prefix, f"{I1}/approved")
+        self.assertEqual((ctx.publisher_id, ctx.title_group_id, ctx.series_id, ctx.issue_id),
+                         ("edenseek", "society_universe", "society_of_killers", "issue_001"))
+        self.assertEqual((ctx.approved_bucket, ctx.scout_bucket),
+                         ("edenseek-publishing", "edenseek-scout"))
+
+    def test_equals_discover_contexts_construction(self):
+        # The reconstructed context must be identical to the one Discovery builds for that prefix,
+        # so scoping a read to a prefix reads exactly the surface Discovery/Registry would.
+        s3 = FakeS3({("edenseek-publishing", f"{I1}/approved/published.json"): b"{}"})
+        [dctx] = disc.discover_contexts(client=s3, env=ENV)
+        rctx = disc.context_for_prefix(dctx.scout_prefix, env=ENV)
+        self.assertEqual(rctx.identity, dctx.identity)
+        self.assertEqual((rctx.scout_bucket, rctx.scout_prefix, rctx.approved_bucket, rctx.approved_prefix),
+                         (dctx.scout_bucket, dctx.scout_prefix, dctx.approved_bucket, dctx.approved_prefix))
+
+    def test_malformed_prefix_raises_context_error(self):
+        with self.assertRaises(sc.IssueContextError):
+            disc.context_for_prefix("publishers/edenseek/title_groups/tg/series/s", env=ENV)  # no issue
+
+    def test_unconfigured_raises_discovery_error(self):
+        with self.assertRaises(disc.ScoutDiscoveryError):
+            disc.context_for_prefix(I1, env={})
+
+
 def _pointer(rev):
     return json.dumps({"published_pointer_version": "v1", "revision_id": rev,
                        "revision_key": f"x/{rev}/snap.json"}).encode()
