@@ -162,14 +162,18 @@ function rows(headers,data){if(!data.length)return `<p class="status">None.</p>`
     data.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;}
 
 let view="ops",opsSub="pubhealth",archive=null,timeAxis="meas";
-let selectedIssuePrefix=null,issues=null;   // SXI-2a: multi-issue scoping (null = configured default)
+let selectedIssuePrefix=null,issues=null,opsArchive=null;   // SXI-2a: multi-issue scoping (null = configured default)
 const el=()=>document.getElementById("view");
 
 /* ---- issue scoping + archive fetch (shared) ---- */
 // Append the chosen issue to a scoped endpoint; `sep` is "?" (default) or "&" when a query already exists.
 function issueQS(sep){ return selectedIssuePrefix?((sep||"?")+"issue_prefix="+encodeURIComponent(selectedIssuePrefix)):""; }
 async function loadIssues(){ if(!issues){try{issues=await getJSON("/issues");}catch(e){issues={issues:[]};}} return issues; }
+// The ANALYSIS-view archive follows the issue picker (Engineering/Intelligence). The OPERATIONS Scout-health
+// archive is deliberately UNscoped — Operations shows no picker, so it stays on the configured issue exactly
+// as before SXI-2a, rather than silently following a selection made on another tab.
 async function loadArchive(){ if(!archive){archive=await getJSON("/audit-review/archive"+issueQS());} return archive; }
+async function loadOpsArchive(){ if(!opsArchive){opsArchive=await getJSON("/audit-review/archive");} return opsArchive; }
 
 /* ================= OPERATIONS ================= */
 async function opsView(){
@@ -211,7 +215,7 @@ async function opsPubHealth(body){
     <p class="sub" style="margin-top:10px">${fresh} · derived from <code>/observability/health</code>, <code>/series</code>, <code>/publisher</code></p>`;
 }
 async function opsHealth(body){
-  const a=await loadArchive(); const L=a.latest;
+  const a=await loadOpsArchive(); const L=a.latest;
   if(!L){body.innerHTML=`<p class="status">No Scout synchronization report persisted yet.</p>`;return;}
   const attn=[];
   (L.finding_codes||[]).forEach(()=>{}); // marks come from counts
@@ -292,7 +296,7 @@ function chart(title,series,bnds,legend,metaArr){
    per-report and cleared by resetReportCaches() (on Refresh / after an audit) so the page always
    reflects the newest persisted report instead of the first one fetched this session. */
 let selectedReportId=null, reportCache={};
-function resetReportCaches(){ archive=null; reportCache={}; }
+function resetReportCaches(){ archive=null; opsArchive=null; reportCache={}; }
 async function loadSelectedReport(){
   const key=selectedReportId||"__latest__";
   if(reportCache[key]!==undefined)return reportCache[key];
