@@ -268,11 +268,12 @@ def _scout_bucket_client(client, context):
     return bucket, (client or srp._s3_client(region))
 
 
-def _scoped_entries(client, bucket, prefix, *, needs_reports=False):
+def _scoped_entries(client, bucket, prefix, *, needs_reports=False, context=None):
     """Enumerate every per-issue report index and return the entries whose issue lies within ``prefix``
     (``""`` = platform / all). An issue matches when its prefix equals the scope root or is nested under it.
-    ``needs_reports`` also loads the immutable reports (metadata per-field detail) by absolute key from the
-    shared scout bucket. Read-only."""
+    ``needs_reports`` also loads the immutable reports (metadata per-field detail) by absolute key. The read
+    is scoped by the SAME ``context`` used to resolve ``bucket``, so index enumeration and report reads can
+    never split across buckets. Read-only."""
     entries, reports_by_id = [], {}
     for issue_prefix, idx in sb.discover_issue_indexes(client, bucket):
         if prefix and not (issue_prefix == prefix or issue_prefix.startswith(prefix + "/")):
@@ -285,7 +286,7 @@ def _scoped_entries(client, bucket, prefix, *, needs_reports=False):
                 if not key:
                     continue
                 try:
-                    reports_by_id[e["report_id"]] = json.loads(srp.read_object(client, key))
+                    reports_by_id[e["report_id"]] = json.loads(srp.read_object(client, key, context=context))
                 except Exception:  # noqa: BLE001 — a missing/unreadable report just drops from detail
                     continue
     return entries, reports_by_id
@@ -307,5 +308,5 @@ def build_metadata_intelligence_scoped(level="platform", issue_prefix="", client
     to the scope, and projects (comparability guard inherited)."""
     scope, prefix = _scope_and_prefix(level, issue_prefix)
     bucket, client = _scout_bucket_client(client, context)
-    entries, reports_by_id = _scoped_entries(client, bucket, prefix, needs_reports=True)
+    entries, reports_by_id = _scoped_entries(client, bucket, prefix, needs_reports=True, context=context)
     return metadata_intelligence(entries, reports_by_id, generated_at, scope)

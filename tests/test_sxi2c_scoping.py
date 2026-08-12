@@ -27,7 +27,10 @@ AUTH = ("scout", "testpass")
 
 PUB1 = "publishers/edenseek/title_groups/society_universe/series/society_of_killers/issues"
 PUB2 = "publishers/edenseek/title_groups/i_ride_for_them/series/i_ride_for_them/issues"
-I1, I2, I3 = f"{PUB1}/issue_001", f"{PUB1}/issue_002", f"{PUB2}/issue_001"
+# I4 is a LEADING-STRING SIBLING of society_of_killers (series `society_of_killers2`) under the SAME
+# universe — the exact case that a `startswith(prefix)` filter WITHOUT the trailing "/" would wrongly include.
+PUB4 = "publishers/edenseek/title_groups/society_universe/series/society_of_killers2/issues"
+I1, I2, I3, I4 = f"{PUB1}/issue_001", f"{PUB1}/issue_002", f"{PUB2}/issue_001", f"{PUB4}/issue_001"
 SOC_ROOT = "publishers/edenseek/title_groups/society_universe/series/society_of_killers"
 
 
@@ -72,6 +75,9 @@ def _seed(s3):
         _entry(1, gkey="cmp_gA", issue_id="issue_002")]}).encode()
     s3.store[("edenseek-scout", f"{I3}/reports/report_index.json")] = json.dumps({"entries": [
         _entry(1, gkey="cmp_gA", series_id="i_ride_for_them")]}).encode()
+    # society_of_killers2 — shares the SOC_ROOT string as a prefix; must be excluded by the `+ "/"` boundary.
+    s3.store[("edenseek-scout", f"{I4}/reports/report_index.json")] = json.dumps({"entries": [
+        _entry(1, gkey="cmp_gA", series_id="society_of_killers2")]}).encode()
     return s3
 
 
@@ -94,16 +100,18 @@ class TestScopeAndPrefix(unittest.TestCase):
 class TestScopedEntries(unittest.TestCase):
     def test_filtering_by_scope(self):
         s3 = _seed(FakeS3())
-        self.assertEqual(len(si._scoped_entries(s3, "edenseek-scout", "")[0]), 4)              # platform: all
+        self.assertEqual(len(si._scoped_entries(s3, "edenseek-scout", "")[0]), 5)              # platform: all
         self.assertEqual(len(si._scoped_entries(s3, "edenseek-scout", SOC_ROOT)[0]), 3)         # series: I1(2)+I2(1)
         self.assertEqual(len(si._scoped_entries(s3, "edenseek-scout", I1)[0]), 2)               # issue: only I1
-        self.assertEqual(len(si._scoped_entries(s3, "edenseek-scout", "publishers/edenseek")[0]), 4)  # publisher
+        self.assertEqual(len(si._scoped_entries(s3, "edenseek-scout", "publishers/edenseek")[0]), 5)  # publisher
 
     def test_prefix_is_boundary_safe(self):
-        # a scope prefix must not match a sibling that merely shares a string prefix
+        # The `+ "/"` boundary: a series scope for `society_of_killers` must NOT swallow the leading-string
+        # sibling `society_of_killers2` (I4). Without the trailing "/", startswith would leak it -> 4 entries.
         s3 = _seed(FakeS3())
-        # "society_of_killers" must NOT swallow "i_ride_for_them"; SOC_ROOT filter excludes I3
         soc = si._scoped_entries(s3, "edenseek-scout", SOC_ROOT)[0]
+        self.assertEqual(len(soc), 3)                                        # I1(2)+I2(1) only
+        self.assertNotIn("society_of_killers2", {e["series_id"] for e in soc})
         self.assertTrue(all(e["series_id"] == "society_of_killers" for e in soc))
 
 
@@ -114,7 +122,7 @@ class TestComparabilityGuard(unittest.TestCase):
         s3 = _seed(FakeS3())
         with mock.patch.dict(os.environ, {srp.BUCKET_ENV: "edenseek-scout"}, clear=False):
             proj = si.build_geometry_intelligence_scoped(level="platform", client=s3)
-        self.assertEqual(proj["sample_sizes"]["reports"], 4)
+        self.assertEqual(proj["sample_sizes"]["reports"], 5)
         self.assertEqual(proj["sample_sizes"]["segments"], 2)               # NOT 1 — keys kept apart
         keys = {s["comparability_key"] for s in proj["segments"]}
         self.assertEqual(keys, {"cmp_gA", "cmp_gB"})
@@ -164,6 +172,17 @@ class TestIntelligenceScopeParam(unittest.TestCase):
             resp = client.get("/intelligence/geometry", params={"level": "platform"}, auth=AUTH)
         self.assertEqual(resp.status_code, 200)
         m.assert_called_once_with(level="platform", issue_prefix="")
+
+    def test_default_path_still_single_issue(self):
+        # backward-compat: no level -> the single-issue loader (context=None for the env issue), unchanged.
+        with mock.patch.object(scout_app.scout_intelligence, "build_geometry_intelligence",
+                               return_value={"task": "geometry"}) as single, \
+             mock.patch.object(scout_app.scout_intelligence, "build_geometry_intelligence_scoped") as scoped:
+            resp = client.get("/intelligence/geometry", auth=AUTH)
+        self.assertEqual(resp.status_code, 200)
+        single.assert_called_once()
+        self.assertIsNone(single.call_args.kwargs.get("context"))   # env default
+        scoped.assert_not_called()
 
 
 if __name__ == "__main__":
