@@ -193,6 +193,9 @@ async function opsPubHealth(body){
   try{ [pub,ser,iss]=await Promise.all([
     getJSON("/observability/health/publisher"), getJSON("/observability/health/series"), getJSON("/observability/health")]); }
   catch(e){ body.innerHTML=`<p class="status">Publisher Health projection unavailable: ${esc(e.message)}.</p>`; return; }
+  // SXI-2b: cross-series health is advisory and secondary — fetch it tolerantly so its absence never breaks
+  // the primary Publisher Health panel.
+  let xs=null; try{ xs=await getJSON("/observability/health/cross-series"); }catch(e){}
   const cls=h=>h==="attention"?"warn":(h==="unknown"?"":"ok");
   const word=h=>h==="attention"?"Attention":(h==="unknown"?"Unknown":"Healthy");
   const S=iss.summary||{}, PS=pub.summary||{};
@@ -200,9 +203,20 @@ async function opsPubHealth(body){
   const pubCards=(pub.records||[]).map(p=>`<div class="card"><h3>Publisher · ${esc(p.publisher_id)}</h3>
     <div class="big ${cls(p.health)}">${word(p.health)}</div>
     <div class="sub">series ${p.series_counts.healthy}/${p.series_counts.total} healthy · issues ${p.issue_counts.healthy}/${p.issue_counts.total} healthy</div></div>`).join("");
-  const serRows=(ser.records||[]).map(s=>[esc(s.series_id),word(s.health),`${s.issue_counts.healthy}/${s.issue_counts.total}`,esc((s.issues||[]).join(", "))]);
-  const issRows=(iss.records||[]).map(i=>[esc(i.issue_id),esc(i.series_id),word(i.health),esc(i.publication_state||"—"),esc((i.reasons||[]).join(", ")||"—")]);
+  // SXI-2b: surface the Universe (title_group_id) so `society_universe ▸ society_of_killers` reads as a
+  // hierarchy (Publisher → Universe → Series → Issue), not two unrelated names. Label "Universe" to humans;
+  // the identifier stays title_group_id. Display-only grouping (no rollup, per Keystone).
+  const serRows=(ser.records||[]).map(s=>[esc(s.title_group_id||"—"),esc(s.series_id),word(s.health),`${s.issue_counts.healthy}/${s.issue_counts.total}`,esc((s.issues||[]).join(", "))]);
+  const issRows=(iss.records||[]).map(i=>[esc(i.title_group_id||"—"),esc(i.series_id),esc(i.issue_id),word(i.health),esc(i.publication_state||"—"),esc((i.reasons||[]).join(", ")||"—")]);
   const fresh=iss.registry_generated_at?`Registry as of ${esc(iss.registry_generated_at.slice(0,19).replace("T"," "))} UTC`:"";
+  // SXI-2b: cross-series attention set — which SERIES (across every universe) need a look, platform-wide.
+  let xsPanel="";
+  if(xs){ const XS=xs.summary||{}, attn=xs.attention||[];
+    const attnRows=attn.map(a=>`<li class="${a.health==='attention'?'WARNING':(a.health==='unknown'?'INFO':'PASS')}"><span class="sev ${a.health==='attention'?'WARNING':(a.health==='unknown'?'INFO':'PASS')}">${esc(word(a.health))}</span><div><div class="txt"><b>${esc(a.title_group_id||"—")}</b> ▸ ${esc(a.series_id)}</div><div class="meta">${(a.issue_counts||{}).healthy||0}/${(a.issue_counts||{}).total||0} issues healthy</div></div></li>`).join("");
+    xsPanel=`<h3 style="margin-top:18px">Across series ${info('Comparability / methodology boundary')}</h3>
+      <div class="sub" style="margin-bottom:8px">${XS.healthy||0} healthy · ${XS.attention||0} attention · ${XS.unknown||0} unknown · ${XS.total||0} series (platform-wide)</div>
+      <ul class="att">${attnRows||'<li class="PASS"><span class="sev PASS">Healthy</span><div class="txt">Every series across every universe is healthy.</div></li>'}</ul>`;
+  }
   body.innerHTML=`
     <div class="chips"><span class="pill safe"><span class="d"></span>certified projection</span><span class="pill safe"><span class="d"></span>Registry-derived</span><span class="pill safe"><span class="d"></span>read-only · advisory</span></div>
     <div class="grid g3" style="margin-top:12px">
@@ -210,9 +224,10 @@ async function opsPubHealth(body){
         <div class="big ${cls(overall)}">${word(overall)}</div>
         <div class="sub">${S.healthy||0} healthy · ${S.attention||0} attention · ${S.unknown||0} unknown · ${S.total||0} issue(s)</div></div>
       ${pubCards}</div>
-    <h3 style="margin-top:18px">Series</h3>${rows(["Series","Health","Issues healthy","Issue IDs"],serRows)}
-    <h3 style="margin-top:18px">Issues</h3>${rows(["Issue","Series","Health","Publication state","Reasons"],issRows)}
-    <p class="sub" style="margin-top:10px">${fresh} · derived from <code>/observability/health</code>, <code>/series</code>, <code>/publisher</code></p>`;
+    <h3 style="margin-top:18px">Series</h3>${rows(["Universe","Series","Health","Issues healthy","Issue IDs"],serRows)}
+    <h3 style="margin-top:18px">Issues</h3>${rows(["Universe","Series","Issue","Health","Publication state","Reasons"],issRows)}
+    ${xsPanel}
+    <p class="sub" style="margin-top:10px">${fresh} · derived from <code>/observability/health</code>, <code>/series</code>, <code>/publisher</code>${xs?", <code>/cross-series</code>":""}</p>`;
 }
 async function opsHealth(body){
   const a=await loadOpsArchive(); const L=a.latest;
@@ -366,7 +381,7 @@ function geomSummary(rep){
     :maVal;
   return `<div class="card analysis">
     <div class="ahead"><div><span class="alabel">Currently analyzing</span> &nbsp;<code class="rid">${esc(rid.slice(-9)||"—")}</code></div><div class="rfull">${esc(rid)}</div></div>
-    <div class="statrow">${cell("Publisher",esc(ii.publisher_id||"—"))}${cell("Series",esc(ii.series_id||"—"))}${cell("Issue",esc(ii.issue_id||"—"))}${cell("Measured",esc(md||"—"))}${cell("Geometry",esc(g.geometry_match_version||"—"))}</div>
+    <div class="statrow">${cell("Publisher",esc(ii.publisher_id||"—"))}${cell("Universe",esc(ii.title_group_id||"—"))}${cell("Series",esc(ii.series_id||"—"))}${cell("Issue",esc(ii.issue_id||"—"))}${cell("Measured",esc(md||"—"))}${cell("Geometry",esc(g.geometry_match_version||"—"))}</div>
     <div class="statrow">${cell("Precision "+info('Precision'),pct(g.precision),1)}${cell("Recall "+info('Recall'),pct(g.recall),1)}${cell("Segmentation accuracy",pct((g.segmentation_accuracy||{}).score),1)}${cell("Reading-order fidelity",o.agreement!=null?pct(o.agreement):"—",1)}${cell("Metadata accuracy",maCell,1)}</div></div>`;
 }
 function geomScatter(pp,W,H){
