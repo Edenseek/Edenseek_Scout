@@ -112,6 +112,22 @@ class TestV3RevisionAware(unittest.TestCase):
         self.assertLess(ma["acceptance"]["rate"], 1.0)
         self.assertFalse(ma["low_confidence_no_inspection"])
 
+    def test_empty_class_does_not_trigger_false_partial_coverage(self):
+        # Adversarial-review finding: a mixed revision — generation-path outputs (origin absent) PLUS an
+        # empty add/split/merge output (origin present + null, NO disposition) — must NOT read "partial"
+        # coverage / withhold meets_target. Coverage is checked over generation-path outputs only.
+        r = _with_origin({A1: None})   # A1 = empty class (origin null); A2/A3 = generation path
+        for o in r["generated_metadata"]["llm_enrichment_outputs"]:
+            if o["artifact_id"] == A1:
+                o.pop("metadata_generation_provenance", None)   # empty class: no disposition
+            else:
+                o["metadata_generation_provenance"] = "fresh"   # generation path, flagged fresh
+        ma = dmr.compute_metadata_benchmark(adapt_review(r))["metadata_accuracy"]
+        self.assertEqual(ma["disposition_coverage"], "all")       # A2/A3 both flagged -> all, not partial
+        self.assertFalse(ma["provisional"])
+        self.assertIsNotNone(ma["meets_target"])                  # a real verdict, not withheld
+        self.assertIn(A1, ma["excluded_preserved_artifacts"])     # empty class still excluded from denom
+
 
 if __name__ == "__main__":
     unittest.main()

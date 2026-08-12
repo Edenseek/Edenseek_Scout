@@ -340,13 +340,23 @@ def _metadata_accuracy(records, fresh_global, fields):
     scored = [r for r in records if r.get("category") in _DISTANCE_CATEGORIES]
     fresh = [r for r in scored if is_fresh(r)]
     excluded = [r for r in scored if not is_fresh(r)]
-    # Disposition coverage — the backward-compat default (absent -> fresh) is only safe when the flag is
-    # UNIFORMLY present or absent. The flag is per-artifact (present on every field-record incl.
-    # abstention/unsupported), so coverage is measured over ALL records, not only scored ones — otherwise
-    # an all-abstention-but-flagged revision would read "none". The Publisher contract emits it on every
-    # output; "partial" means a contract violation and is surfaced/gated rather than silently trusted.
-    flagged = sum(1 for r in records if r.get("generated_disposition") is not None)
-    coverage = "none" if flagged == 0 else "all" if flagged == len(records) else "partial"
+    # Disposition coverage — the backward-compat default (absent -> fresh) is only safe when the disposition
+    # flag is UNIFORMLY present or absent AMONG THE GENERATION-PATH OUTPUTS (origin absent). v3-aware: the
+    # revision-inheritance outputs (origin present, incl. the empty add/split/merge class which legitimately
+    # carries NO disposition) are excluded from this check — they are keyed on `origin`, not the disposition,
+    # so a missing disposition there is contract-conformant, not a "partial emission" violation. Restricting
+    # to generation-path records is what stops a legitimate mixed revision (a regenerated output + an empty
+    # add) from falsely reading "partial" and withholding meets_target.
+    gen_path = [r for r in records if not r.get("generated_has_origin")]
+    flagged = sum(1 for r in gen_path if r.get("generated_disposition") is not None)
+    if not gen_path:
+        coverage = "none"                                  # no generation-path outputs -> nothing to check
+    elif flagged == len(gen_path):
+        coverage = "all"
+    elif flagged == 0:
+        coverage = "none"
+    else:
+        coverage = "partial"
     provisional = coverage == "partial"
 
     comparable = fresh_global["comparable_fields"]
