@@ -54,6 +54,7 @@ h2{font-size:16px;margin:22px 0 10px}
 .sub{color:var(--muted);font-size:12.5px;margin-top:5px}
 .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--line)}
 .pill.safe{color:var(--pass);background:var(--pass-bg);border-color:color-mix(in srgb,var(--pass) 30%,transparent)}
+.pill.warn{color:var(--warn);background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
 .pill .d{width:7px;height:7px;border-radius:50%;background:currentColor}
 .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
 .sev{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:5px}
@@ -123,7 +124,7 @@ svg .grid-l{stroke:var(--line-soft)} svg text{fill:var(--muted);font-family:var(
   <button class="icbtn" id="helpbtn">Help</button>
   <button class="icbtn" id="themebtn">Theme</button>
   <button class="icbtn run" id="run-btn" onclick="runAudit()">Run Audit</button>
-  <button class="icbtn run" id="delta-btn" onclick="runDeltaAudit()" title="Re-run the geometry/metadata delta audit on the current approved revision">Run Delta Audit</button>
+  <button class="icbtn run" id="delta-btn" onclick="runDeltaAudit()" title="Re-run the geometry/metadata delta audit across ALL published issues (multi-issue)">Run Delta Audit</button>
 </div></header>
 <main>
   <div class="status" id="run-status"></div>
@@ -321,10 +322,17 @@ function geomSummary(rep){
   const g=reportGeom(rep),ii=rep.issue_identity||{},o=(g.diagnostics||{}).order||{};
   const rid=rep.report_id||"",md=(rep.certified_at||rep.measurement_time||"").slice(0,10);
   const cell=(l,v,big)=>`<div class="stat"><div class="stat-l">${l}</div><div class="stat-v${big?' big-v':''}">${v}</div></div>`;
+  const mm=rep.metadata_metrics||{};
+  const maVal=mm.metadata_accuracy!=null?pct(mm.metadata_accuracy):"—";
+  // §4: a rate of 100% with zero edits reads as "perfect" but usually means bulk Approve-All without
+  // per-artifact inspection — qualify it so the number never stands unmarked (the marker is advisory).
+  const maCell=mm.low_confidence_no_inspection
+    ?`${maVal} <span class="pill warn" title="100% accepted with zero edits — likely bulk-approved without per-artifact inspection. Does not measure LLM quality.">⚠ unverified</span>`
+    :maVal;
   return `<div class="card analysis">
     <div class="ahead"><div><span class="alabel">Currently analyzing</span> &nbsp;<code class="rid">${esc(rid.slice(-9)||"—")}</code></div><div class="rfull">${esc(rid)}</div></div>
     <div class="statrow">${cell("Publisher",esc(ii.publisher_id||"—"))}${cell("Series",esc(ii.series_id||"—"))}${cell("Issue",esc(ii.issue_id||"—"))}${cell("Measured",esc(md||"—"))}${cell("Geometry",esc(g.geometry_match_version||"—"))}</div>
-    <div class="statrow">${cell("Precision "+info('Precision'),pct(g.precision),1)}${cell("Recall "+info('Recall'),pct(g.recall),1)}${cell("Segmentation accuracy",pct((g.segmentation_accuracy||{}).score),1)}${cell("Reading-order fidelity",o.agreement!=null?pct(o.agreement):"—",1)}${cell("Metadata accuracy",(rep.metadata_metrics||{}).metadata_accuracy!=null?pct((rep.metadata_metrics||{}).metadata_accuracy):"—",1)}</div></div>`;
+    <div class="statrow">${cell("Precision "+info('Precision'),pct(g.precision),1)}${cell("Recall "+info('Recall'),pct(g.recall),1)}${cell("Segmentation accuracy",pct((g.segmentation_accuracy||{}).score),1)}${cell("Reading-order fidelity",o.agreement!=null?pct(o.agreement):"—",1)}${cell("Metadata accuracy",maCell,1)}</div></div>`;
 }
 function geomScatter(pp,W,H){
   const pad={l:32,r:12,t:10,b:30},iw=W-pad.l-pad.r,ih=H-pad.t-pad.b,maxD=Math.max(6,...pp.map(p=>p.density||0));
@@ -365,10 +373,11 @@ function renderMetaDiag(rep){
   const ma=(((rep||{}).delta_report||{}).metadata_benchmark||{}).metadata_accuracy;
   if(!ma||!(ma.editorial_burden||[]).length){md.innerHTML=`<p class="status">Metadata accuracy appears once a Metadata Accuracy v2 report is persisted.</p>`;return;}
   const eb=ma.editorial_burden,top=eb[0],acc=ma.acceptance||{};
+  const lowConf=!!ma.low_confidence_no_inspection;   // §4: 100% + 0 edits -> qualify, don't paint green
   const lever=top.edited?`<b>${esc(top.field)}</b> carries the most editing — ${(top.edit_share*100).toFixed(0)}% of all edits, ${(top.acceptance_rate*100).toFixed(0)}% accepted. Improving that prompt first cuts the most publisher work.`:`Editing is minimal and evenly spread — no single field dominates.`;
   let tbl=`<div class="tblwrap"><table><thead><tr><th>field</th><th class="n">accepted</th><th class="n">edited</th><th class="n">edit share</th><th class="n">effort</th><th>method</th></tr></thead><tbody>`;
   eb.forEach(x=>{tbl+=`<tr><td>${esc(x.field)}</td><td class="n">${(x.acceptance_rate*100).toFixed(1)}%</td><td class="n">${x.edited}</td><td class="n">${(x.edit_share*100).toFixed(0)}%</td><td class="n">${x.edit_effort.toFixed(2)}</td><td class="mono" style="font-size:11px">${esc(x.effort_method||"—")}</td></tr>`;});
-  md.innerHTML=`<div class="grid g2" style="margin-bottom:12px"><div class="card"><h3>Metadata acceptance ${info('Metadata accepted / unchanged rate')}</h3><div class="big ok">${pct(acc.rate)}</div><div class="sub">${acc.numerator||0}/${acc.denominator||0} fields taken with no edit · target 75–90% · ${ma.total_edited_fields||0} edits total</div></div>
+  md.innerHTML=`<div class="grid g2" style="margin-bottom:12px"><div class="card"><h3>Metadata acceptance ${info('Metadata accepted / unchanged rate')}</h3><div class="big ${lowConf?'warn':'ok'}">${pct(acc.rate)}</div><div class="sub">${acc.numerator||0}/${acc.denominator||0} fields taken with no edit · target 75–90% · ${ma.total_edited_fields||0} edits total${lowConf?` · <span style="color:var(--warn)">⚠ likely bulk-approved without per-artifact inspection — not an LLM-quality signal</span>`:""}</div></div>
     <div class="card"><h3>Top lever</h3><div class="lever" style="margin:6px 0 0">${lever}</div></div></div>
     <div class="section-h" style="margin-top:4px">Editorial burden — where the editing work concentrates <span class="samples">effort: set-Jaccard for lists, token-Jaccard for text · 1.0 = full replacement</span></div>${tbl}</tbody></table></div>`;
 }
@@ -465,12 +474,18 @@ async function runAudit(){
 }
 async function runDeltaAudit(){
   const btn=document.getElementById("delta-btn"),st=document.getElementById("run-status");
-  btn.disabled=true;st.textContent="Running delta audit on the current approved revision…";
-  try{const r=await fetch("/run-delta-audit",{method:"POST"});if(!r.ok)throw new Error("HTTP "+r.status);const d=await r.json();
-    if(d.status==="skipped"||d.status==="reconciled")st.textContent=`Delta audit: revision already current (${d.status}, run_seq ${d.run_seq??"—"}) — nothing new.`;
-    else st.textContent=`Delta audit complete: run_seq ${d.run_seq}, ${(d.revision_id||"").slice(0,18)}…`;
+  btn.disabled=true;st.textContent="Running multi-issue delta audit across all published issues…";
+  // Multi-issue (Increment 1): audits EVERY discovered published issue, not just the env-configured one,
+  // so a newly-published issue (e.g. a second title group) is actually looked at rather than reported
+  // "nothing new". Aggregate shape: {discovered, counts:{persisted,reconciled,skipped,failed,error}}.
+  try{const r=await fetch("/run-delta-audit-all",{method:"POST"});if(!r.ok)throw new Error("HTTP "+r.status);const d=await r.json();
+    const c=d.counts||{}, fresh=c.persisted||0, current=(c.reconciled||0)+(c.skipped||0), failed=(c.failed||0)+(c.error||0);
+    const n=d.discovered||0;
+    let msg=`Multi-issue delta audit: ${n} ${n===1?"issue":"issues"} — ${fresh} new, ${current} already current`;
+    if(failed)msg+=`, ${failed} FAILED (check logs/scout.log)`;
+    st.textContent=msg+".";
     selectedReportId=null; resetReportCaches(); render();   // jump to the freshly persisted latest
-  }catch(e){ st.textContent="Delta audit failed. Check logs/scout.log."; } finally{ btn.disabled=false; }
+  }catch(e){ st.textContent="Multi-issue delta audit failed. Check logs/scout.log."; } finally{ btn.disabled=false; }
 }
 render();
 </script>

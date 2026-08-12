@@ -112,6 +112,14 @@ class TestV3RevisionAware(unittest.TestCase):
         self.assertLess(ma["acceptance"]["rate"], 1.0)
         self.assertFalse(ma["low_confidence_no_inspection"])
 
+    def test_benchmark_headline_surfaces_low_confidence_marker(self):
+        # §4 dashboard-truthfulness: the compact headline the dashboard reads must carry the marker so a
+        # rate-1.0/zero-edit number can be qualified where it renders (it never gates meets_target).
+        h_low = dmr.benchmark_headline(dmr.compute_metadata_benchmark(adapt_review(_all_accepted_review())))
+        self.assertTrue(h_low["low_confidence_no_inspection"])
+        h_edits = dmr.benchmark_headline(dmr.compute_metadata_benchmark(adapt_review(fx.review_generated())))
+        self.assertFalse(h_edits["low_confidence_no_inspection"])
+
     def test_empty_class_does_not_trigger_false_partial_coverage(self):
         # Adversarial-review finding: a mixed revision — generation-path outputs (origin absent) PLUS an
         # empty add/split/merge output (origin present + null, NO disposition) — must NOT read "partial"

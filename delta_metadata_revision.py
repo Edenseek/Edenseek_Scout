@@ -565,6 +565,9 @@ def benchmark_headline(benchmark):
         "metadata_accuracy": (ma.get("acceptance") or {}).get("rate"),
         "metadata_accuracy_meets_target": ma.get("meets_target"),
         "metadata_accuracy_provisional": ma.get("provisional"),
+        # Advisory: rate 1.0 with zero edits — likely bulk-approved without per-artifact inspection.
+        # Surfaced here so the compact headline the dashboard reads can qualify the number (never gates).
+        "low_confidence_no_inspection": ma.get("low_confidence_no_inspection"),
         "disposition_coverage": ma.get("disposition_coverage"),
         "denominator_basis": ma.get("denominator_basis"),
         "excluded_preserved_field_count": ma.get("excluded_preserved_field_count"),
