@@ -35,11 +35,17 @@ Expected: Discovery enumerates the currently-published issues (today: `society_o
    run_seq ≥ 10) and `i_ride_for_them` #1 `persisted` (first audit).
 2. **Per-issue write isolation:** a `scout_delta_report_*` now exists under **`i_ride_for_them`'s** own issue
    prefix in `edenseek-scout`, and `society_of_killers`'s reports/index/ledger are unchanged (not clobbered).
-3. **⭐ The mixed-provenance checkpoint (`i_ride_for_them` #1, joint with Johnny):** on its delta report,
-   `metadata_benchmark.metadata_accuracy`:
-   - `acceptance.denominator` reflects the **65 fresh** outputs, NOT 100;
-   - `excluded_preserved_artifacts` lists the **35 `preserved_approved`** artifacts;
-   - `disposition_coverage = "all"` (every output flagged).
+3. **⭐ The mixed-provenance checkpoint (`i_ride_for_them` #1, joint with Johnny).** CRITERION IS FIELD-LEVEL,
+   not output-level (the acceptance denominator counts comparable **fields**, never outputs). On its delta
+   report, `metadata_benchmark.metadata_accuracy`:
+   - `denominator_basis = "fresh_generated_outputs_only"`;
+   - `excluded_preserved_artifacts` lists the **35 `preserved_approved`** outputs (and `excluded_preserved_field_count > 0`);
+   - `acceptance.denominator` is the **fresh comparable FIELD count** (≈ 65 fresh outputs × comparable
+     fields/output — for this issue that was **384**, NOT 65 and NOT the full 100 outputs' fields);
+   - `disposition_coverage = "all"`, `provisional = false`.
+   ⚠ Do NOT check `denominator == 65` — 65 is the fresh *output* count, not the field denominator. The correct
+   pass condition is: preserved excluded (35 outputs / N fields) + denominator basis fresh-only + coverage all.
+   Observed live: denom 384 / excluded 35 outputs / 193 fields / rate 1.0 (bulk Approve-All) → PASS.
    This is the first real live exercise of the fresh-only filter — Johnny verifies it from raw `edenseek-scout`,
    same as Track B.
 4. **Per-issue idempotency:** re-running `--all` re-audits nothing already current (all `skipped`/`reconciled`).

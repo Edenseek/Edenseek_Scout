@@ -55,6 +55,10 @@ single-issue path is unchanged; nothing runs multi-issue until explicitly trigge
 Additive, backward-safe (single-issue path unchanged), deterministic, per-issue read/write isolation verified,
 read-and-advise (writes only `edenseek-scout`), idempotent. **Offline-certified.** Remaining: merge + deploy,
 then the live cert — run `--all` on the VM, confirm both `society_of_killers` #1 and `i_ride_for_them` #1 are
-audited with write isolation, and the **`i_ride_for_them` mixed-provenance checkpoint** (acceptance denominator
-= 65 fresh, 35 `preserved_approved` excluded) — the first live exercise of the fresh-only filter. Deploy plan:
+audited with write isolation, and the **`i_ride_for_them` mixed-provenance checkpoint** — the fresh-only filter
+excluding the 35 `preserved_approved` outputs from the acceptance denominator (which is FIELD-level, not
+output-level: 65 fresh outputs → 384 fresh comparable fields; NOT "denominator == 65"). Live result (2026-08-11):
+`denominator_basis = fresh_generated_outputs_only`, denom 384, `excluded_preserved_artifacts` 35,
+`excluded_preserved_field_count` 193, `disposition_coverage` all, `provisional` false, rate 1.0 (bulk Approve-All)
+→ checkpoint PASS (corrected field-level criterion). First live exercise of the fresh-only filter. Deploy plan:
 `DEPLOYMENT_AND_LIVE_CERT.md`.
