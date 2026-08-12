@@ -111,5 +111,68 @@ class TestRunDeltaAuditAllEndpoint(unittest.TestCase):
         self.assertEqual(resp.status_code, 503)
 
 
+class TestPostAuditRebuild(unittest.TestCase):
+    """SXI-2e: --all refreshes the derived Registry + benchmark projections after the audit (non-fatal)."""
+
+    def _one_issue(self):
+        return ([_Ctx("publishers/edenseek/title_groups/tg1/series/s1/issues/i1")],
+                {"status": "persisted", "run_seq": 1})
+
+    def test_rebuild_true_refreshes_registry_and_benchmarks(self):
+        ctxs, per = self._one_issue()
+        with patch("scout_discovery.discover_contexts", return_value=ctxs), \
+             patch.object(sda, "audit_current_revision", return_value=per), \
+             patch("scout_registry.rebuild_discovered") as reg, \
+             patch("scout_benchmark.rebuild_all") as bench:
+            result = sda.audit_all_discovered(rebuild=True)
+        reg.assert_called_once()
+        bench.assert_called_once()
+        self.assertEqual(result["rebuild"], {"registry": "rebuilt", "benchmark": "rebuilt"})
+
+    def test_rebuild_default_false_is_increment1_behavior(self):
+        ctxs, per = self._one_issue()
+        with patch("scout_discovery.discover_contexts", return_value=ctxs), \
+             patch.object(sda, "audit_current_revision", return_value=per), \
+             patch("scout_registry.rebuild_discovered") as reg, \
+             patch("scout_benchmark.rebuild_all") as bench:
+            result = sda.audit_all_discovered()   # default
+        reg.assert_not_called()
+        bench.assert_not_called()
+        self.assertNotIn("rebuild", result)
+
+    def test_rebuild_failure_is_non_fatal_and_recorded(self):
+        ctxs, per = self._one_issue()
+        with patch("scout_discovery.discover_contexts", return_value=ctxs), \
+             patch.object(sda, "audit_current_revision", return_value=per), \
+             patch("scout_registry.rebuild_discovered", side_effect=RuntimeError("s3 down")), \
+             patch("scout_benchmark.rebuild_all") as bench:
+            result = sda.audit_all_discovered(rebuild=True)
+        self.assertTrue(result["rebuild"]["registry"].startswith("failed"))
+        self.assertEqual(result["rebuild"]["benchmark"], "rebuilt")   # benchmark still ran (independent)
+        self.assertEqual(result["counts"], {"persisted": 1})           # the audit result is intact
+        bench.assert_called_once()
+
+    def test_benchmark_failure_is_non_fatal_and_independent(self):
+        # symmetric to the registry-fails case: benchmark raises -> registry still rebuilt, audit intact
+        ctxs, per = self._one_issue()
+        with patch("scout_discovery.discover_contexts", return_value=ctxs), \
+             patch.object(sda, "audit_current_revision", return_value=per), \
+             patch("scout_registry.rebuild_discovered") as reg, \
+             patch("scout_benchmark.rebuild_all", side_effect=RuntimeError("bench down")):
+            result = sda.audit_all_discovered(rebuild=True)
+        self.assertEqual(result["rebuild"]["registry"], "rebuilt")
+        self.assertTrue(result["rebuild"]["benchmark"].startswith("failed"))
+        self.assertEqual(result["counts"], {"persisted": 1})
+        reg.assert_called_once()
+
+    def test_endpoint_opts_into_rebuild(self):
+        agg = {"discovered": 1, "counts": {"persisted": 1}, "results": [], "trigger": "manual_all",
+               "rebuild": {"registry": "rebuilt", "benchmark": "rebuilt"}}
+        with patch.object(sda, "audit_all_discovered", return_value=agg) as m:
+            resp = client.post("/run-delta-audit-all", auth=AUTH)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(m.call_args.kwargs.get("rebuild"))
+
+
 if __name__ == "__main__":
     unittest.main()

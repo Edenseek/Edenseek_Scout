@@ -294,7 +294,38 @@ def audit_current_revision(client=None, force=False, trigger="manual", context=N
             "trigger": trigger}
 
 
-def audit_all_discovered(client=None, force=False, trigger="discovered"):
+def _rebuild_projections():
+    """SXI-2e: after a multi-issue audit, refresh the DERIVED projections so the dashboard reflects the new
+    reports (recompute-from-below): the publisher-wide Registry (drives Health) and the per-scope benchmark
+    projections (drive the SXI-2c/2d per-scope + series-comparison views). Each rebuild is best-effort and
+    NON-FATAL — the immutable reports are already persisted, so a rebuild failure is recorded, never fails the
+    audit. Called with no client so each rebuild self-resolves its correctly-regioned client (Registry uses
+    the approved region for Discovery + scout region for persist; benchmarks use the scout region)."""
+    # Even the setup (imports + timestamp) is best-effort — _rebuild_projections must NEVER raise, so a
+    # multi-issue audit whose reports are already persisted can never turn into a 503 over a refresh.
+    try:
+        import scout_registry
+        import scout_benchmark
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    except Exception as e:  # noqa: BLE001 — pre-imported in every real entry path; guarded for defense-in-depth
+        logger.exception("Post-audit rebuild setup failed: %s", e)
+        return {"registry": f"failed: {type(e).__name__}", "benchmark": f"failed: {type(e).__name__}"}
+    out = {}
+    # One batch timestamp for BOTH projections so their freshness stamps agree.
+    for name, fn in (("registry", lambda: scout_registry.rebuild_discovered(generated_at=ts)),
+                     ("benchmark", lambda: scout_benchmark.rebuild_all(generated_at=ts))):
+        try:
+            fn()
+            out[name] = "rebuilt"
+        except Exception as e:  # noqa: BLE001 — best-effort; reports already persisted, so never fatal
+            logger.exception("Post-audit %s rebuild failed: %s", name, e)
+            out[name] = f"failed: {type(e).__name__}"
+    logger.info("Post-audit projection rebuild: %s", out)
+    return out
+
+
+def audit_all_discovered(client=None, force=False, trigger="discovered", rebuild=False):
     """MULTI-ISSUE orchestrator (Increment 1) — audit EVERY published issue, not just the env-configured
     one. Enumerates issues via Discovery (read-only, published-only: keyed on ``/approved/published.json``),
     then runs the canonical ``audit_current_revision`` per discovered ``IssueContext``.
@@ -304,6 +335,10 @@ def audit_all_discovered(client=None, force=False, trigger="discovered"):
     surface. Per-issue isolation — one issue's failure is recorded and never aborts the rest (mirrors the
     Registry rebuild). Deterministic order (Discovery returns sorted prefixes). Orchestration only; the
     per-issue audit is unchanged.
+
+    ``rebuild=True`` (SXI-2e) additionally refreshes the derived Registry + benchmark projections AFTER the
+    audit so the dashboard's Health and per-scope/series views reflect the new reports. Non-fatal; recorded
+    under ``rebuild`` in the result. Default False preserves the certified Increment-1 behavior exactly.
     """
     import scout_discovery   # local import: keeps the module boundary one-directional
     contexts = scout_discovery.discover_contexts(client=client)
@@ -318,7 +353,10 @@ def audit_all_discovered(client=None, force=False, trigger="discovered"):
         results.append(r)
         counts[r.get("status")] = counts.get(r.get("status"), 0) + 1
     logger.info("Multi-issue audit: %d issue(s) discovered; status counts %s", len(contexts), counts)
-    return {"discovered": len(contexts), "counts": counts, "results": results, "trigger": trigger}
+    result = {"discovered": len(contexts), "counts": counts, "results": results, "trigger": trigger}
+    if rebuild:
+        result["rebuild"] = _rebuild_projections()
+    return result
 
 
 def main(argv=None):
@@ -330,7 +368,7 @@ def main(argv=None):
             result = run_and_persist(dry_run=True)
             print(json.dumps({k: v for k, v in result.items() if k != "report_body"}, indent=2))
         elif "--all" in argv:
-            result = audit_all_discovered(force="--force" in argv, trigger="manual_all")
+            result = audit_all_discovered(force="--force" in argv, trigger="manual_all", rebuild=True)
             print(json.dumps(result, indent=2))
             return 0 if not (result["counts"].get("failed") or result["counts"].get("error")) else 1
         else:
