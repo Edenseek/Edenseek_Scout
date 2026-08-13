@@ -191,6 +191,43 @@ class TestPostAuditRebuild(unittest.TestCase):
         log.info.assert_called()
         log.warning.assert_not_called()
 
+    # --- intake-seam fix: dataset=True runs the consolidated dataset audit per issue ---
+    def test_dataset_true_runs_consolidated_per_issue(self):
+        ctxs = [_Ctx("publishers/edenseek/title_groups/tg1/series/s1/issues/i1")]
+        with patch("scout_discovery.discover_contexts", return_value=ctxs), \
+             patch.object(sda, "audit_current_revision", return_value={"status": "skipped"}), \
+             patch("dataset_auditor.dataset_audit_all_discovered",
+                   return_value={"discovered": 1, "counts": {"audited": 1}}) as ds:
+            result = sda.audit_all_discovered(dataset=True)
+        ds.assert_called_once()
+        self.assertEqual(result["dataset"], {"discovered": 1, "counts": {"audited": 1}})
+
+    def test_dataset_default_false_is_increment1_behavior(self):
+        ctxs = [_Ctx("publishers/edenseek/title_groups/tg1/series/s1/issues/i1")]
+        with patch("scout_discovery.discover_contexts", return_value=ctxs), \
+             patch.object(sda, "audit_current_revision", return_value={"status": "skipped"}), \
+             patch("dataset_auditor.dataset_audit_all_discovered") as ds:
+            result = sda.audit_all_discovered()   # default
+        ds.assert_not_called()
+        self.assertNotIn("dataset", result)
+
+    def test_dataset_audit_failure_is_non_fatal(self):
+        ctxs = [_Ctx("publishers/edenseek/title_groups/tg1/series/s1/issues/i1")]
+        with patch("scout_discovery.discover_contexts", return_value=ctxs), \
+             patch.object(sda, "audit_current_revision", return_value={"status": "persisted", "run_seq": 1}), \
+             patch("dataset_auditor.dataset_audit_all_discovered", side_effect=RuntimeError("boom")):
+            result = sda.audit_all_discovered(dataset=True)
+        self.assertEqual(result["dataset"], {"error": "RuntimeError"})   # recorded, not raised
+        self.assertEqual(result["counts"], {"persisted": 1})              # the audit result is intact
+
+    def test_endpoint_opts_into_dataset(self):
+        agg = {"discovered": 1, "counts": {"persisted": 1}, "results": [], "trigger": "manual_all",
+               "dataset": {"counts": {"audited": 1}}, "rebuild": {"registry": "rebuilt", "benchmark": "rebuilt"}}
+        with patch.object(sda, "audit_all_discovered", return_value=agg) as m:
+            resp = client.post("/run-delta-audit-all", auth=AUTH)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(m.call_args.kwargs.get("dataset"))
+
     def test_cli_all_warns_on_stderr_when_rebuild_failed_but_exit_reflects_audit(self):
         import io
         import contextlib

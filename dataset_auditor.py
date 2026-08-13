@@ -170,6 +170,43 @@ def run_dataset_audit(input_dir=None, context=None):
     }
 
 
+def dataset_audit_all_discovered(client=None, force=False, trigger="discovered_dataset"):
+    """MULTI-ISSUE consolidated dataset audit (the intake-seam fix, Option A) — run the dataset audit for
+    EVERY discovered published issue so each gets a consolidated ``scout_report_`` under its OWN
+    ``{issue_prefix}/history/`` prefix (the artifact Edenseek intake ingests for Diagnostics), not just the
+    env-configured issue.
+
+    Orchestration only: ``run_dataset_audit`` already threads the per-issue ``context`` through the input
+    (``materialize_approved_contract``), the provenance (``publisher_revision_id``/``_key``), the ``issue_id``
+    and the write location — so identity + write-path are correct per issue with no field changes.
+
+    Idempotent: an issue whose latest consolidated report already covers its current published revision is
+    SKIPPED (unless ``force``), so this is safe to run on every ``--all`` without churning new reports.
+    Per-issue isolation — one issue's failure is recorded and never aborts the rest (mirrors the delta
+    ``audit_all_discovered``). Read-only on the Publisher; writes only each issue's ``edenseek-scout`` surface.
+    """
+    import scout_discovery   # local import: keeps the module boundary one-directional
+    contexts = scout_discovery.discover_contexts(client=client)
+    results, counts = [], {}
+    for ctx in contexts:
+        try:
+            current_rev = audit_s3_source.resolve_current_revision(context=ctx).get("revision_id")
+            last_rev = scout_report_publisher.last_published_revision_id(context=ctx)
+            if not force and last_rev is not None and last_rev == current_rev:
+                status, detail = "skipped", {"reason": "already_current", "revision_id": current_rev}
+            else:
+                summary = run_dataset_audit(context=ctx)
+                status = "audited"
+                detail = {"revision_id": current_rev, "quality_score": summary.get("quality_score")}
+        except Exception as e:  # noqa: BLE001 — isolate a per-issue failure; never abort the multi-issue run
+            logger.exception("Multi-issue dataset audit: error on %s: %s", ctx.scout_prefix, e)
+            status, detail = "error", {"error": str(e)}
+        results.append({"issue_prefix": ctx.scout_prefix, "status": status, **detail})
+        counts[status] = counts.get(status, 0) + 1
+    logger.info("Multi-issue dataset audit: %d issue(s) discovered; status counts %s", len(contexts), counts)
+    return {"discovered": len(contexts), "counts": counts, "results": results, "trigger": trigger}
+
+
 def _load_and_score(input_dir):
     inputs = audit_inputs.load_inputs(_resolve_input_dir(input_dir))
     return audit_scoring.run_audit(inputs)
