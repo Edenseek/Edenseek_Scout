@@ -36,7 +36,11 @@ def _resolve_input_dir(input_dir, context=None):
     source is required, and its absence or unavailability fails loudly via
     ``audit_s3_source.materialize_approved_contract`` (raises ``ScoutS3SourceError``).
     """
-    explicit = input_dir or os.getenv("SCOUT_DATASET_DIR")
+    # An explicit caller path wins (tests / local dev). ``SCOUT_DATASET_DIR`` is a SINGLE-issue local
+    # override and must be ignored when a per-issue ``context`` is present — otherwise every discovered issue
+    # in a multi-issue run would read the SAME local directory (identical content/dataset_id/provenance)
+    # while writing under its own prefix.
+    explicit = input_dir or (os.getenv("SCOUT_DATASET_DIR") if context is None else None)
     if explicit:
         return explicit
     return audit_s3_source.materialize_approved_contract(context=context)
@@ -102,10 +106,16 @@ def run_dataset_audit(input_dir=None, context=None):
         "weak_total_flagged": weak["total_flagged"],
         "failure_summary": audit_failure_analysis.failure_summary(root_cause),
     }
-    history = scout.record_audit_history(snapshot)
-    result["blocks"]["audit_history"] = {"history": history, "latest_delta": _latest_delta(history)}
-    # ---- Phase 4: historical intelligence (most-recent dataset) ----
-    result["blocks"]["historical"] = audit_history_analysis.build_historical_intelligence(history)
+    full_history = scout.record_audit_history(snapshot)
+    # Scope the PUBLISHED history to THIS issue. The memory track is a single global list, so a multi-issue
+    # --all interleaves other issues' snapshots; publishing the raw list would embed other issues' data + a
+    # cross-issue latest_delta into this issue's report, and build_historical_intelligence (which analyzes the
+    # "most-recent dataset") would analyze whichever issue ran LAST. Filter by dataset_id — a no-op for a
+    # single-issue history, so single-issue behavior is unchanged.
+    issue_history = [s for s in full_history if s.get("dataset_id") == result["dataset_id"]]
+    result["blocks"]["audit_history"] = {"history": issue_history, "latest_delta": _latest_delta(issue_history)}
+    # ---- Phase 4: historical intelligence (this issue only) ----
+    result["blocks"]["historical"] = audit_history_analysis.build_historical_intelligence(issue_history)
 
     # ---- Phase 5: retrieval readiness intelligence (derived synthesis) ----
     result["blocks"]["retrieval_readiness"] = audit_retrieval_readiness.build_retrieval_readiness(
@@ -168,6 +178,43 @@ def run_dataset_audit(input_dir=None, context=None):
         "highest_leverage_failure": result["blocks"]["highest_leverage"]["highest_leverage_failure"],
         "reports": latest_reports,
     }
+
+
+def dataset_audit_all_discovered(client=None, force=False, trigger="discovered_dataset"):
+    """MULTI-ISSUE consolidated dataset audit (the intake-seam fix, Option A) — run the dataset audit for
+    EVERY discovered published issue so each gets a consolidated ``scout_report_`` under its OWN
+    ``{issue_prefix}/history/`` prefix (the artifact Edenseek intake ingests for Diagnostics), not just the
+    env-configured issue.
+
+    Orchestration only: ``run_dataset_audit`` already threads the per-issue ``context`` through the input
+    (``materialize_approved_contract``), the provenance (``publisher_revision_id``/``_key``), the ``issue_id``
+    and the write location — so identity + write-path are correct per issue with no field changes.
+
+    Idempotent: an issue whose latest consolidated report already covers its current published revision is
+    SKIPPED (unless ``force``), so this is safe to run on every ``--all`` without churning new reports.
+    Per-issue isolation — one issue's failure is recorded and never aborts the rest (mirrors the delta
+    ``audit_all_discovered``). Read-only on the Publisher; writes only each issue's ``edenseek-scout`` surface.
+    """
+    import scout_discovery   # local import: keeps the module boundary one-directional
+    contexts = scout_discovery.discover_contexts(client=client)
+    results, counts = [], {}
+    for ctx in contexts:
+        try:
+            current_rev = audit_s3_source.resolve_current_revision(context=ctx).get("revision_id")
+            last_rev = scout_report_publisher.last_published_revision_id(context=ctx)
+            if not force and last_rev is not None and last_rev == current_rev:
+                status, detail = "skipped", {"reason": "already_current", "revision_id": current_rev}
+            else:
+                summary = run_dataset_audit(context=ctx)
+                status = "audited"
+                detail = {"revision_id": current_rev, "quality_score": summary.get("quality_score")}
+        except Exception as e:  # noqa: BLE001 — isolate a per-issue failure; never abort the multi-issue run
+            logger.exception("Multi-issue dataset audit: error on %s: %s", ctx.scout_prefix, e)
+            status, detail = "error", {"error": str(e)}
+        results.append({"issue_prefix": ctx.scout_prefix, "status": status, **detail})
+        counts[status] = counts.get(status, 0) + 1
+    logger.info("Multi-issue dataset audit: %d issue(s) discovered; status counts %s", len(contexts), counts)
+    return {"discovered": len(contexts), "counts": counts, "results": results, "trigger": trigger}
 
 
 def _load_and_score(input_dir):

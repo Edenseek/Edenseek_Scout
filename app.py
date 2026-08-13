@@ -207,7 +207,7 @@ def run_delta_audit_all_endpoint(username: str = Depends(require_auth)):
     logger.info("Multi-issue delta audit requested")
     try:
         import scout_delta_audit
-        result = scout_delta_audit.audit_all_discovered(trigger="manual_all", rebuild=True)
+        result = scout_delta_audit.audit_all_discovered(trigger="manual_all", rebuild=True, dataset=True)
     except Exception as e:  # noqa: BLE001 — endpoint boundary; a discovery/config failure -> 503
         logger.exception(f"Multi-issue delta audit failed: {e}")
         raise HTTPException(status_code=503, detail="Multi-issue delta audit failed")

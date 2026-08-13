@@ -110,8 +110,17 @@ def record_audit_history(snapshot):
 
         history = track.get("audit_history") or []
         history.append(snapshot)
-        if len(history) > MAX_AUDIT_HISTORY:
-            history = history[-MAX_AUDIT_HISTORY:]
+        # Cap PER dataset_id (issue), not globally: a multi-issue --all interleaves several issues into this
+        # one track, and a global cap would let a busy issue evict another's snapshots. Keep the newest
+        # MAX_AUDIT_HISTORY per dataset_id, preserving chronological order. For a single-issue history this is
+        # identical to history[-MAX_AUDIT_HISTORY:].
+        seen, kept_reversed = {}, []
+        for s in reversed(history):
+            sid = s.get("dataset_id")
+            if seen.get(sid, 0) < MAX_AUDIT_HISTORY:
+                seen[sid] = seen.get(sid, 0) + 1
+                kept_reversed.append(s)
+        history = list(reversed(kept_reversed))
         track["audit_history"] = history
 
         projects["edenseek_dataset"] = track

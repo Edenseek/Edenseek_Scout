@@ -335,7 +335,7 @@ def _rebuild_projections():
     return out
 
 
-def audit_all_discovered(client=None, force=False, trigger="discovered", rebuild=False):
+def audit_all_discovered(client=None, force=False, trigger="discovered", rebuild=False, dataset=False):
     """MULTI-ISSUE orchestrator (Increment 1) — audit EVERY published issue, not just the env-configured
     one. Enumerates issues via Discovery (read-only, published-only: keyed on ``/approved/published.json``),
     then runs the canonical ``audit_current_revision`` per discovered ``IssueContext``.
@@ -346,9 +346,11 @@ def audit_all_discovered(client=None, force=False, trigger="discovered", rebuild
     Registry rebuild). Deterministic order (Discovery returns sorted prefixes). Orchestration only; the
     per-issue audit is unchanged.
 
-    ``rebuild=True`` (SXI-2e) additionally refreshes the derived Registry + benchmark projections AFTER the
-    audit so the dashboard's Health and per-scope/series views reflect the new reports. Non-fatal; recorded
-    under ``rebuild`` in the result. Default False preserves the certified Increment-1 behavior exactly.
+    ``dataset=True`` (intake-seam fix) additionally runs the CONSOLIDATED dataset audit per issue so every
+    issue gets a ``scout_report_`` (the artifact Edenseek intake ingests for Diagnostics), not just the env
+    one. Idempotent per issue; recorded under ``dataset``. ``rebuild=True`` (SXI-2e) then refreshes the
+    derived Registry + benchmark projections. Both non-fatal; both default False, which preserves the
+    certified Increment-1 behavior exactly.
     """
     import scout_discovery   # local import: keeps the module boundary one-directional
     contexts = scout_discovery.discover_contexts(client=client)
@@ -364,6 +366,15 @@ def audit_all_discovered(client=None, force=False, trigger="discovered", rebuild
         counts[r.get("status")] = counts.get(r.get("status"), 0) + 1
     logger.info("Multi-issue audit: %d issue(s) discovered; status counts %s", len(contexts), counts)
     result = {"discovered": len(contexts), "counts": counts, "results": results, "trigger": trigger}
+    if dataset:
+        # Consolidated dataset audit per issue (intake-seam fix). Non-fatal — the delta reports are already
+        # persisted, so a dataset-audit blow-up is recorded, never fails the run.
+        try:
+            import dataset_auditor
+            result["dataset"] = dataset_auditor.dataset_audit_all_discovered(client=client, force=force)
+        except Exception as e:  # noqa: BLE001 — best-effort; never turns a successful delta run into a failure
+            logger.exception("Multi-issue dataset audit failed: %s", e)
+            result["dataset"] = {"error": type(e).__name__}
     if rebuild:
         result["rebuild"] = _rebuild_projections()
     return result
@@ -378,7 +389,8 @@ def main(argv=None):
             result = run_and_persist(dry_run=True)
             print(json.dumps({k: v for k, v in result.items() if k != "report_body"}, indent=2))
         elif "--all" in argv:
-            result = audit_all_discovered(force="--force" in argv, trigger="manual_all", rebuild=True)
+            result = audit_all_discovered(force="--force" in argv, trigger="manual_all",
+                                          rebuild=True, dataset=True)
             print(json.dumps(result, indent=2))
             # Surface a failed post-audit rebuild to the operator explicitly — the `rebuild` block is easy to
             # miss in the JSON. Non-fatal (exit code still reflects the AUDIT, not the rebuild).

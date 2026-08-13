@@ -89,6 +89,21 @@ class TestDatasetMemory(unittest.TestCase):
         self.assertEqual(history[-1]["quality_score"], 34)   # newest retained
         self.assertEqual(history[0]["quality_score"], 5)     # oldest dropped (35 - 30)
 
+    def test_history_capped_PER_dataset_id_not_globally(self):
+        # A multi-issue --all interleaves several issues into this one track; a busy issue must NOT evict
+        # another's snapshots (that would starve the quiet issue's historical block).
+        for q in range(40):
+            s = self._snapshot(q); s["dataset_id"] = "busy"
+            scout.record_audit_history(s)
+        for q in (7, 8):
+            s = self._snapshot(q); s["dataset_id"] = "quiet"
+            scout.record_audit_history(s)
+        history = scout.load_memory()["projects"]["edenseek_dataset"]["audit_history"]
+        busy = [s for s in history if s["dataset_id"] == "busy"]
+        quiet = [s for s in history if s["dataset_id"] == "quiet"]
+        self.assertEqual(len(busy), scout.MAX_AUDIT_HISTORY)          # busy capped
+        self.assertEqual([s["quality_score"] for s in quiet], [7, 8])  # quiet retained, chronological
+
 
 if __name__ == "__main__":
     unittest.main()
