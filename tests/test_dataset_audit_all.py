@@ -39,6 +39,8 @@ class TestDatasetAuditAllDiscovered(unittest.TestCase):
         self.assertEqual(result["counts"], {"audited": 2})
         self.assertEqual(run.call_count, 2)
         self.assertEqual([r["issue_prefix"] for r in result["results"]], [I1, I2])
+        # each issue is audited with its OWN context (the per-issue identity/write-path threading)
+        self.assertEqual([c.kwargs.get("context") for c in run.call_args_list], ctxs)
 
     def test_skips_issue_already_covering_current_revision(self):
         with patch("scout_discovery.discover_contexts", return_value=[_Ctx(I1)]), \
